@@ -39,6 +39,7 @@ async def list_transactions(
     to: date | None = None,
     min_amount: str | None = None,
     max_amount: str | None = None,
+    description: str | None = None,
     cursor: str | None = None,
     limit: int = Query(default=50, ge=1, le=200),
     uid: str = Depends(require_uid),
@@ -60,6 +61,11 @@ async def list_transactions(
         add("occurred_on >= ${n}", from_)
     if to:
         add("occurred_on <= ${n}", to)
+    if description:
+        # Case-insensitive substring match — lets the agent find a transaction by
+        # what it was for ("the bagel one") across the whole table, not just the
+        # current thread's recently-touched working set.
+        add("description ILIKE ${n}", f"%{description}%")
 
     exponent_currency = currency.upper() if currency else "USD"
     try:
@@ -229,6 +235,7 @@ async def delete_transactions_bulk(
     to: date | None = None,
     min_amount: str | None = None,
     max_amount: str | None = None,
+    description: str | None = None,
     idempotency_key: str = Header(..., alias="Idempotency-Key"),
     x_client_id: str | None = Header(default=None, alias="X-Client-Id"),
     uid: str = Depends(require_uid),
@@ -254,6 +261,8 @@ async def delete_transactions_bulk(
         add("occurred_on >= ${n}", from_)
     if to:
         add("occurred_on <= ${n}", to)
+    if description:
+        add("description ILIKE ${n}", f"%{description}%")
 
     exponent_currency = currency.upper() if currency else "USD"
     try:
@@ -267,7 +276,7 @@ async def delete_transactions_bulk(
     payload = {
         "currency": currency, "category": category, "type": type,
         "from": from_.isoformat() if from_ else None, "to": to.isoformat() if to else None,
-        "min_amount": min_amount, "max_amount": max_amount,
+        "min_amount": min_amount, "max_amount": max_amount, "description": description,
     }
 
     async with db.uid_conn(uid) as conn:

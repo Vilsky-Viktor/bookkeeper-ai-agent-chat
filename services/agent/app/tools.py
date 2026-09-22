@@ -157,7 +157,11 @@ def build_tools(jwt: str, x_client_id: str | None, language: str = "en") -> list
         """Edit fields on an existing transaction, identified by transaction_id.
         Resolve "that one" / "the coffee one" from recently referenced transactions or
         a prior query_transactions call — or from a "[transaction: <id>]" marker in the
-        message, which takes priority when present. Only pass fields that change. If you set
+        message, which takes priority when present. If the reference isn't something
+        you've already seen this conversation, call query_transactions with
+        description set to a distinctive word from what the user said (e.g. "bagel")
+        to search the whole table before asking the user which one they mean. Only
+        pass fields that change. If you set
         description, keep it a complete, human-readable phrase with context including
         the merchant/vendor name when relevant (e.g. "indomie purchased in Indomart"),
         not just an item name."""
@@ -210,6 +214,7 @@ def build_tools(jwt: str, x_client_id: str | None, language: str = "en") -> list
         to_date: Optional[str] = None,
         min_amount: Optional[str] = None,
         max_amount: Optional[str] = None,
+        description: Optional[str] = None,
     ) -> dict:
         """Delete every transaction matching these filters (same filters as
         query_transactions) in one operation — pass no filters to delete ALL of the
@@ -224,6 +229,7 @@ def build_tools(jwt: str, x_client_id: str | None, language: str = "en") -> list
             for k, v in {
                 "currency": currency, "category": category, "type": type,
                 "from": from_date, "to": to_date, "min_amount": min_amount, "max_amount": max_amount,
+                "description": description,
             }.items()
             if v is not None
         }
@@ -245,16 +251,23 @@ def build_tools(jwt: str, x_client_id: str | None, language: str = "en") -> list
         to_date: Optional[str] = None,
         min_amount: Optional[str] = None,
         max_amount: Optional[str] = None,
+        description: Optional[str] = None,
         aggregate: bool = False,
     ) -> dict:
         """List transactions matching filters, or (aggregate=true) sums by category and
         month per currency. Use aggregate=true for analysis or savings questions — never
-        state a total from memory or from the conversation summary, always call this."""
+        state a total from memory or from the conversation summary, always call this.
+        description is a case-insensitive substring match against the transaction's
+        description — use it to resolve a vague reference ("the bagel one", "that
+        Starbucks purchase") against the whole table, not just transactions already
+        mentioned earlier in this conversation; try a short, distinctive word from
+        what the user said (e.g. "bagel"), not the full phrase."""
         params = {
             k: v
             for k, v in {
                 "currency": currency, "category": category, "type": type,
                 "from": from_date, "to": to_date, "min_amount": min_amount, "max_amount": max_amount,
+                "description": description,
             }.items()
             if v is not None
         }
@@ -299,20 +312,23 @@ def build_tools(jwt: str, x_client_id: str | None, language: str = "en") -> list
         to_date: Optional[str] = None,
         min_amount: Optional[str] = None,
         max_amount: Optional[str] = None,
+        description: Optional[str] = None,
     ) -> dict:
         """Set the transactions table's filter in the UI (e.g. "show USD expenses over
-        100 from last month"). Calls nothing downstream — the UI re-queries with this
-        filter itself. To clear the filter (e.g. "clear the filter", "reset"), call
-        this with every argument left unset — you must still call it; replying that
-        the filter is cleared without calling this tool does nothing. Clearing resets
-        the table to its default view, the current calendar month — not to every
-        transaction ever, so don't tell the user it now shows "everything"/"all
-        transactions"; say it's back to showing this month."""
+        100 from last month", "show transactions with 'bagel' in the description").
+        description is a case-insensitive substring match. Calls nothing downstream —
+        the UI re-queries with this filter itself. To clear the filter (e.g. "clear
+        the filter", "reset"), call this with every argument left unset — you must
+        still call it; replying that the filter is cleared without calling this tool
+        does nothing. Clearing resets the table to its default view, the current
+        calendar month — not to every transaction ever, so don't tell the user it now
+        shows "everything"/"all transactions"; say it's back to showing this month."""
         filt = {
             k: v
             for k, v in {
                 "currency": currency, "category": category, "type": type,
                 "from": from_date, "to": to_date, "min_amount": min_amount, "max_amount": max_amount,
+                "description": description,
             }.items()
             if v is not None
         }

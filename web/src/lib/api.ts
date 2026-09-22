@@ -32,6 +32,7 @@ export interface TransactionFilter {
   to?: string;
   min_amount?: string;
   max_amount?: string;
+  description?: string;
 }
 
 async function unwrap<T>(res: Response, what: string): Promise<T> {
