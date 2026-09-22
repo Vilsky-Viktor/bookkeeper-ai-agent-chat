@@ -1,0 +1,8 @@
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+asyncpg==0.30.0
+pydantic==2.9.2
+firebase-admin==6.5.0
+google-cloud-firestore==2.18.0
+openai==3.17.0
+python-multipart==0.0.9

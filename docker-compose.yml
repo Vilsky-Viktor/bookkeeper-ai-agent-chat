@@ -1,0 +1,73 @@
+services:
+  proxy:
+    image: caddy:2
+    ports: ["8080:8080"]
+    volumes: ["./Caddyfile:/etc/caddy/Caddyfile:ro"]
+    depends_on: [web, agent, transactions, fake-gcs]
+
+  web:
+    build: ./web
+    command: npm run dev -- --host 0.0.0.0 --port 5173
+    volumes: ["./web:/app", "/app/node_modules"]
+    environment:
+      VITE_RECEIPTS_BUCKET: receipts-local # must match agent's RECEIPTS_BUCKET
+
+  firebase:
+    build: ./firebase
+    ports: ["9099:9099", "8081:8081", "4000:4000"] # auth, firestore, emulator UI
+
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: bookkeeping
+      POSTGRES_USER: owner
+      POSTGRES_PASSWORD: owner_pw
+    volumes:
+      - ./db/init:/docker-entrypoint-initdb.d:ro # creates bookkeeping + chat DBs
+      - pgdata:/var/lib/postgresql/data
+    ports: ["5432:5432"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U owner -d bookkeeping"]
+      interval: 3s
+      retries: 20
+
+  fake-gcs:
+    image: fsouza/fake-gcs-server
+    command: ["-scheme", "http", "-port", "4443", "-backend", "memory"]
+    volumes: ["./gcs:/data"]
+
+  transactions:
+    build: ./services/transactions
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://app_user:app_pw@postgres:5432/bookkeeping
+      FIREBASE_AUTH_EMULATOR_HOST: firebase:9099
+      FIRESTORE_EMULATOR_HOST: firebase:8081
+      GOOGLE_CLOUD_PROJECT: demo-bookkeeping
+      SKIP_SERVICE_AUTH: "true"
+    depends_on:
+      postgres: { condition: service_healthy }
+      firebase: { condition: service_started }
+
+  agent:
+    build: ./services/agent
+    env_file: .env
+    environment:
+      CHAT_DATABASE_URL: postgresql://chat_user:chat_pw@postgres:5432/chat
+      TRANSACTIONS_URL: http://transactions:8000
+      FIREBASE_AUTH_EMULATOR_HOST: firebase:9099
+      FIRESTORE_EMULATOR_HOST: firebase:8081
+      GOOGLE_CLOUD_PROJECT: demo-bookkeeping
+      STORAGE_MODE: local
+      TASKS_MODE: local
+      STORAGE_EMULATOR_HOST: http://fake-gcs:4443
+      RECEIPTS_BUCKET: receipts-local
+      PUBLIC_UPLOAD_BASE: http://localhost:8080/gcs
+      SKIP_SERVICE_AUTH: "true"
+    depends_on:
+      postgres: { condition: service_healthy }
+      transactions: { condition: service_started }
+      fake-gcs: { condition: service_started }
+
+volumes:
+  pgdata:

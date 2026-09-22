@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SMAKER.ai</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <script>
+      // Applied before React mounts so there's no flash of the wrong theme on load.
+      try {
+        var stored = localStorage.getItem("theme");
+        var dark = stored ? stored === "dark" : window.matchMedia("(prefers-color-scheme: dark)").matches;
+        document.documentElement.classList.toggle("dark", dark);
+      } catch (e) {}
+      // Same idea for direction — a cached Hebrew (RTL) preference shouldn't flash as
+      // LTR before lib/i18n's LanguageProvider mounts. Keep this list of RTL codes in
+      // sync with SUPPORTED_LANGUAGES in src/lib/i18n.tsx.
+      try {
+        var lang = localStorage.getItem("language");
+        if (lang) {
+          document.documentElement.lang = lang;
+          document.documentElement.dir = ["he", "ar"].indexOf(lang) !== -1 ? "rtl" : "ltr";
+        }
+      } catch (e) {}
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

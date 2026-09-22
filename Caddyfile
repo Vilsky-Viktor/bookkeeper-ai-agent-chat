@@ -1,0 +1,16 @@
+:8080 {
+    handle /api/chat/* {
+        reverse_proxy agent:8000 {
+            flush_interval -1 # stream SSE immediately
+        }
+    }
+    handle /api/transactions/* {
+        reverse_proxy transactions:8000
+    }
+    handle_path /gcs/* {
+        reverse_proxy fake-gcs:4443 # same-origin uploads, no CORS
+    }
+    handle {
+        reverse_proxy web:5173 # Vite dev server + HMR
+    }
+}

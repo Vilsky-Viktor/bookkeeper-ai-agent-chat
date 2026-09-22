@@ -1,0 +1,9 @@
+.env
+web/node_modules/
+web/dist/
+web/tsconfig.tsbuildinfo
+__pycache__/
+*.pyc
+gcs/receipts-local/*
+!gcs/receipts-local/.gitkeep
+.claude
