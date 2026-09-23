@@ -55,7 +55,14 @@ def _pdf_first_page_to_png(pdf_bytes: bytes) -> bytes:
         doc.close()
 
 
-FRANKFURTER_URL = "https://api.frankfurter.app/latest"
+# Free, no-key, daily-updated exchange rates covering 300+ currencies (vs. ~30 for the
+# ECB-only Frankfurter.app source this replaced, which didn't have UAH). Static JSON on
+# two independent CDN mirrors — jsdelivr first, the project's own Cloudflare Pages
+# mirror as a fallback if that one's unreachable. Source: fawazahmed0/currency-api.
+CURRENCY_API_URLS = [
+    "https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/{code}.json",
+    "https://latest.currency-api.pages.dev/v1/currencies/{code}.json",
+]
 
 
 def _fold_merchant(description: str | None, merchant: str | None) -> str | None:
@@ -284,27 +291,42 @@ def build_tools(jwt: str, x_client_id: str | None, language: str = "en") -> list
     @tool
     async def get_exchange_rate(from_currency: str, to_currency: str) -> dict:
         """Look up the current exchange rate between two currencies (e.g. "what's the
-        exchange rate from USD to EUR", "how much is 50 USD in IDR") — daily reference
-        rates from the European Central Bank via Frankfurter.app, free, no API key.
-        This is a daily rate, not tick-by-tick live market data, and it's for the
-        user's reference only: never use it to silently convert or alter a
-        transaction's actual stated amount/currency — record what the user said
-        exactly. currencies are 3-letter ISO codes."""
+        exchange rate from USD to EUR", "how much is 50 USD in IDR") — free, no API
+        key, daily-updated, covers 300+ currencies. This is a daily rate, not
+        tick-by-tick live market data, and it's for the user's reference only: never
+        use it to silently convert or alter a transaction's actual stated
+        amount/currency — record what the user said exactly. currencies are 3-letter
+        ISO codes."""
         from_currency = from_currency.upper()
         to_currency = to_currency.upper()
-        try:
-            async with httpx.AsyncClient(timeout=10) as c:
-                resp = await c.get(
-                    FRANKFURTER_URL, params={"from": from_currency, "to": to_currency}, follow_redirects=True
+        data = None
+        for url_tpl in CURRENCY_API_URLS:
+            try:
+                async with httpx.AsyncClient(timeout=10) as c:
+                    resp = await c.get(url_tpl.format(code=from_currency.lower()), follow_redirects=True)
+                resp.raise_for_status()
+                data = resp.json()
+                break
+            except httpx.HTTPError:
+                continue
+        if data is None:
+            return {
+                "error": (
+                    f"Couldn't reach the exchange rate service for {from_currency} to "
+                    f"{to_currency} right now — this looks transient, worth trying again."
                 )
-            resp.raise_for_status()
-            data = resp.json()
-            rate = data["rates"][to_currency]
-        except (httpx.HTTPError, KeyError):
-            return {"error": f"Couldn't find an exchange rate for {from_currency} to {to_currency} right now."}
+            }
+        rate = data.get(from_currency.lower(), {}).get(to_currency.lower())
+        if rate is None:
+            return {
+                "error": (
+                    f"{from_currency} or {to_currency} isn't a currency code this data "
+                    "source recognizes — double-check it with the user."
+                )
+            }
         return {
             "from": from_currency, "to": to_currency, "rate": rate, "date": data.get("date"),
-            "note": "European Central Bank daily reference rate, not real-time.",
+            "note": "Daily reference rate, not real-time.",
         }
 
     @tool

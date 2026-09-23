@@ -57,8 +57,8 @@ image at build time — editing their source requires `docker compose up -d --bu
   and reused on future similar purchases, with an LLM fallback that recognizes
   near-duplicate wording it doesn't match exactly.
 - **Exchange rates.** "What's 50 USD in EUR?" calls a free, keyless daily reference
-  rate (European Central Bank data via Frankfurter.app) — explicitly a reference
-  rate, never used to silently convert or alter a transaction's actual stated
+  rate covering 300+ currencies — explicitly a reference rate, never used to silently
+  convert or alter a transaction's actual stated
   amount/currency.
 - **Live updates.** A same-tab SSE event updates the table instantly; a Firestore
   `sync/{uid}` document signals other open tabs/devices to refetch (each client tags
@@ -94,7 +94,7 @@ agent ──asyncpg────────────────────�
 agent ──OpenAI (chat + gpt-4o vision)──► primary model, with a fallback model on failure
 agent ──Firebase Auth emulator──► verify_id_token (never skipped, even locally)
 agent ──Firestore emulator──► sync/{uid} live-update signal
-agent ──Frankfurter.app──► exchange-rate lookups (no key, free)
+agent ──currency-api (jsdelivr CDN)──► exchange-rate lookups (no key, free)
 ```
 
 The agent never impersonates a user: every call it makes to the transactions service
@@ -217,8 +217,8 @@ docker-compose.yml
 
 ## Known gaps
 
-- `get_exchange_rate` returns the ECB's *daily* reference rate, not live
-  tick-by-tick market data.
+- `get_exchange_rate` returns a *daily* reference rate, not live tick-by-tick market
+  data.
 - Production-only concerns (App Check, an external load balancer, real Cloud Tasks,
   an eval gate, Terraform/CI, Cloud Run autoscaling) are intentionally out of scope —
   this is a local dev stack, not a deployable one.
