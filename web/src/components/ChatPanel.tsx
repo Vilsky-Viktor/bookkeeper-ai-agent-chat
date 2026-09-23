@@ -1,6 +1,6 @@
 import { fetchEventSource } from "@microsoft/fetch-event-source";
 import { useQueryClient } from "@tanstack/react-query";
-import { Mic, Paperclip, Send, Square } from "lucide-react";
+import { Mic, Paperclip, Send, Sparkles, Square } from "lucide-react";
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import {
   authHeaders,
@@ -248,12 +248,24 @@ const ChatPanel = forwardRef<ChatPanelHandle, Props>(function ChatPanel(
     await send(caption, target.object, imageUrl ?? undefined);
   }
 
+  // Press-and-hold, not click-to-toggle: holdingRef tracks whether the pointer is
+  // still down through the async getUserMedia gap, so a very quick tap (released
+  // before the mic permission prompt/resolve even finishes) doesn't leave recording
+  // stuck on with nothing to stop it.
+  const holdingRef = useRef(false);
+
   async function startRecording() {
+    holdingRef.current = true;
     let stream: MediaStream;
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     } catch {
       setMessages((m) => [...m, { role: "assistant", text: t("micError") }]);
+      holdingRef.current = false;
+      return;
+    }
+    if (!holdingRef.current) {
+      stream.getTracks().forEach((track) => track.stop());
       return;
     }
     const mimeType = ["audio/webm", "audio/mp4"].find((type) => MediaRecorder.isTypeSupported(type));
@@ -288,12 +300,20 @@ const ChatPanel = forwardRef<ChatPanelHandle, Props>(function ChatPanel(
     setRecording(true);
   }
 
-  function toggleRecording() {
-    if (recording) {
-      mediaRecorderRef.current?.stop();
-    } else {
-      startRecording();
+  function handleMicPointerDown(e: React.PointerEvent<HTMLButtonElement>) {
+    e.preventDefault(); // don't steal focus from the textarea or trigger text selection
+    e.currentTarget.setPointerCapture(e.pointerId);
+    startRecording();
+  }
+
+  function handleMicPointerUp(e: React.PointerEvent<HTMLButtonElement>) {
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch {
+      // already released
     }
+    holdingRef.current = false;
+    mediaRecorderRef.current?.stop();
   }
 
   async function confirmReceipt() {
@@ -357,7 +377,8 @@ const ChatPanel = forwardRef<ChatPanelHandle, Props>(function ChatPanel(
           </div>
         )}
         {streaming && !pendingText && (
-          <div className="self-center text-xs text-zinc-400 dark:text-zinc-500">
+          <div className="mt-1.5 flex items-center gap-2 self-center text-base text-zinc-400 dark:text-zinc-500">
+            <Sparkles size={18} className="animate-pulse" />
             <span className="animate-pulse">{t("thinking")}</span>
           </div>
         )}
@@ -411,7 +432,8 @@ const ChatPanel = forwardRef<ChatPanelHandle, Props>(function ChatPanel(
       </div>
       <div className="relative z-10 border-t border-zinc-200 p-2.5 shadow-[0_-4px_6px_-1px_rgb(0_0_0_/_0.05),0_-2px_4px_-2px_rgb(0_0_0_/_0.05)] dark:border-zinc-800">
         {transcribing && (
-          <div className="mb-1.5 text-xs text-zinc-400 dark:text-zinc-500">
+          <div className="mb-1.5 flex items-center justify-center gap-2 text-base text-zinc-400 dark:text-zinc-500">
+            <Mic size={18} className="animate-pulse" />
             <span className="animate-pulse">{t("transcribing")}</span>
           </div>
         )}
@@ -429,7 +451,7 @@ const ChatPanel = forwardRef<ChatPanelHandle, Props>(function ChatPanel(
                 handleSendClick();
               }
             }}
-            className="w-full resize-none rounded-lg border border-zinc-200 bg-white pt-2 pb-10 ps-3 pe-3 text-sm text-zinc-900 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-400/40 disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:placeholder-zinc-500 dark:focus:ring-zinc-400/40"
+            className="w-full resize-none rounded-lg border border-zinc-200 bg-white pt-2 pb-14 ps-3 pe-3 text-sm text-zinc-900 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-400/40 disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:placeholder-zinc-500 dark:focus:ring-zinc-400/40"
           />
           <input
             type="file"
@@ -438,29 +460,32 @@ const ChatPanel = forwardRef<ChatPanelHandle, Props>(function ChatPanel(
             className="hidden"
             onChange={handleFileChange}
           />
-          <div className="absolute bottom-4 end-2 flex flex-row gap-1.5">
+          <div className="absolute bottom-3 end-2 flex flex-row gap-1.5">
             <Tooltip label={t("uploadReceipt")} align="end">
               <button
                 onClick={() => fileInputRef.current?.click()}
                 disabled={streaming || recording || transcribing}
                 aria-label={t("uploadReceipt")}
-                className="flex h-8 w-8 items-center justify-center rounded-md text-zinc-500 transition-colors hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-50 dark:text-zinc-400 dark:hover:bg-zinc-800"
+                className="flex h-9 w-9 items-center justify-center rounded-md text-zinc-500 transition-colors hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-50 dark:text-zinc-400 dark:hover:bg-zinc-800"
               >
-                <Paperclip size={18} />
+                <Paperclip size={20} />
               </button>
             </Tooltip>
             <Tooltip label={recording ? t("stopRecording") : t("recordVoice")} align="end">
               <button
-                onClick={toggleRecording}
+                onPointerDown={handleMicPointerDown}
+                onPointerUp={handleMicPointerUp}
+                onPointerCancel={handleMicPointerUp}
+                onContextMenu={(e) => e.preventDefault()}
                 disabled={streaming || transcribing}
                 aria-label={recording ? t("stopRecording") : t("recordVoice")}
                 className={
                   recording
-                    ? "flex h-8 w-8 animate-pulse items-center justify-center rounded-md bg-red-600 text-white transition-colors hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-50"
-                    : "flex h-8 w-8 items-center justify-center rounded-md text-zinc-500 transition-colors hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-50 dark:text-zinc-400 dark:hover:bg-zinc-800"
+                    ? "flex h-9 w-9 animate-pulse touch-none select-none items-center justify-center rounded-md bg-red-600 text-white transition-colors hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-50"
+                    : "flex h-9 w-9 touch-none select-none items-center justify-center rounded-md text-zinc-500 transition-colors hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-50 dark:text-zinc-400 dark:hover:bg-zinc-800"
                 }
               >
-                {recording ? <Square size={15} fill="currentColor" /> : <Mic size={18} />}
+                {recording ? <Square size={16} fill="currentColor" /> : <Mic size={20} />}
               </button>
             </Tooltip>
             <Tooltip label={t("send")} align="end">
@@ -468,9 +493,9 @@ const ChatPanel = forwardRef<ChatPanelHandle, Props>(function ChatPanel(
                 onClick={handleSendClick}
                 disabled={streaming || recording || transcribing || !input.trim()}
                 aria-label={t("send")}
-                className="flex h-8 w-8 items-center justify-center rounded-md bg-zinc-600 text-white transition-colors hover:bg-zinc-500 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-300 dark:text-zinc-900 dark:hover:bg-zinc-200"
+                className="flex h-9 w-9 items-center justify-center rounded-md bg-zinc-600 text-white transition-colors hover:bg-zinc-500 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-300 dark:text-zinc-900 dark:hover:bg-zinc-200"
               >
-                <Send size={17} />
+                <Send size={19} />
               </button>
             </Tooltip>
           </div>
