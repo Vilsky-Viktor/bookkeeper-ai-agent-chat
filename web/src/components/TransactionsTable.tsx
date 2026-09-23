@@ -37,7 +37,8 @@ export default function TransactionsTable({ filter, onViewImage, onReferenceTran
   const { t, tCategory } = useTranslation();
 
   return (
-    <table className="w-full overflow-hidden rounded-xl border border-zinc-200 bg-white text-sm dark:border-zinc-800 dark:bg-zinc-900">
+    <div className="overflow-x-auto rounded-xl border border-zinc-200 dark:border-zinc-800">
+    <table className="w-full min-w-[640px] overflow-hidden text-sm bg-white dark:bg-zinc-900">
       <thead>
         <tr className="bg-zinc-50 dark:bg-zinc-800/60">
           <th className="px-3 py-2 text-start font-medium text-zinc-600 dark:text-zinc-400">{t("colDate")}</th>
@@ -85,5 +86,6 @@ export default function TransactionsTable({ filter, onViewImage, onReferenceTran
         })}
       </tbody>
     </table>
+    </div>
   );
 }
