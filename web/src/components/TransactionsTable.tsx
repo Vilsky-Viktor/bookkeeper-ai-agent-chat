@@ -37,7 +37,7 @@ export default function TransactionsTable({ filter, onViewImage, onReferenceTran
   const { t, tCategory } = useTranslation();
 
   return (
-    <div className="overflow-x-auto rounded-xl border border-zinc-200 dark:border-zinc-800">
+    <div className="overflow-x-auto border border-zinc-200 dark:border-zinc-800">
     <table className="w-full min-w-[640px] overflow-hidden text-sm bg-white dark:bg-zinc-900">
       <thead>
         <tr className="bg-zinc-50 dark:bg-zinc-800/60">

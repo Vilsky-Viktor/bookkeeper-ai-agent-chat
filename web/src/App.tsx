@@ -187,7 +187,7 @@ function AppContent({ user }: { user: User | null }) {
           aria-orientation={isDesktop ? "vertical" : "horizontal"}
           className="order-2 h-1.5 w-full shrink-0 cursor-row-resize touch-none bg-zinc-200 transition-colors hover:bg-zinc-300 active:bg-zinc-400 dark:bg-zinc-800 dark:hover:bg-zinc-700 dark:active:bg-zinc-600 md:h-full md:w-1.5 md:cursor-col-resize"
         />
-        <div className="order-1 min-h-0 min-w-0 flex-1 overflow-auto p-4 md:order-3">
+        <div className="order-1 min-h-0 min-w-0 flex-1 overflow-auto md:order-3">
           <TransactionsTable
             filter={filter}
             onViewImage={setViewingImage}
