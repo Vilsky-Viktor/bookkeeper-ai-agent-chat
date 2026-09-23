@@ -438,21 +438,33 @@ const ChatPanel = forwardRef<ChatPanelHandle, Props>(function ChatPanel(
           </div>
         )}
         <div className="relative">
-          <textarea
-            ref={textInputRef}
-            rows={4}
-            placeholder={t("chatPlaceholder")}
-            value={input}
-            disabled={streaming || transcribing}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey && !streaming) {
-                e.preventDefault(); // Enter sends; Shift+Enter for a newline
-                handleSendClick();
-              }
-            }}
-            className="w-full resize-none rounded-lg border border-zinc-200 bg-white pt-2 pb-10 ps-3 pe-3 text-sm text-zinc-900 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-400/40 disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:placeholder-zinc-500 dark:focus:ring-zinc-400/40"
-          />
+          {/* The rounded/bordered frame is a separate element from the <textarea> —
+              the textarea's own box stops well above the frame's bottom edge, with a
+              fixed dead-space strip between them that's never part of the scrollable
+              text area. A textarea's padding-bottom alone isn't safe for this: once
+              typed content overflows, the browser auto-scrolls to keep the caret in
+              view and doesn't keep trailing padding on screen, so text would
+              eventually scroll up underneath the corner buttons. Making the dead
+              space a real sibling element, outside the textarea's box entirely, means
+              no scroll position can ever put text there. */}
+          <div className="rounded-lg border border-zinc-200 bg-white focus-within:ring-2 focus-within:ring-zinc-400/40 dark:border-zinc-700 dark:bg-zinc-900">
+            <textarea
+              ref={textInputRef}
+              rows={4}
+              placeholder={t("chatPlaceholder")}
+              value={input}
+              disabled={streaming || transcribing}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey && !streaming) {
+                  e.preventDefault(); // Enter sends; Shift+Enter for a newline
+                  handleSendClick();
+                }
+              }}
+              className="block w-full resize-none border-0 bg-transparent pt-2 ps-3 pe-3 text-sm text-zinc-900 placeholder-zinc-400 focus:outline-none disabled:opacity-50 dark:text-zinc-100 dark:placeholder-zinc-500"
+            />
+            <div className="h-10" aria-hidden="true" />
+          </div>
           <input
             type="file"
             accept="image/*,application/pdf"
