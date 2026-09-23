@@ -1,6 +1,6 @@
 import { fetchEventSource } from "@microsoft/fetch-event-source";
 import { useQueryClient } from "@tanstack/react-query";
-import { Mic, Paperclip, Send, Sparkles, Square } from "lucide-react";
+import { Mic, Paperclip, Sparkles, Square } from "lucide-react";
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import {
   authHeaders,
@@ -430,7 +430,7 @@ const ChatPanel = forwardRef<ChatPanelHandle, Props>(function ChatPanel(
         )}
         <div ref={messagesEndRef} />
       </div>
-      <div className="relative z-10 border-t border-zinc-200 p-2.5 shadow-[0_-4px_6px_-1px_rgb(0_0_0_/_0.05),0_-2px_4px_-2px_rgb(0_0_0_/_0.05)] dark:border-zinc-800">
+      <div className="relative z-10 border-t border-zinc-200 pt-4 pb-8 ps-8 pe-8 shadow-[0_-4px_6px_-1px_rgb(0_0_0_/_0.05),0_-2px_4px_-2px_rgb(0_0_0_/_0.05)] dark:border-zinc-800">
         {transcribing && (
           <div className="mb-1.5 flex items-center justify-center gap-2 text-base text-zinc-400 dark:text-zinc-500">
             <Mic size={18} className="animate-pulse" />
@@ -451,7 +451,7 @@ const ChatPanel = forwardRef<ChatPanelHandle, Props>(function ChatPanel(
                 handleSendClick();
               }
             }}
-            className="w-full resize-none rounded-lg border border-zinc-200 bg-white pt-2 pb-14 ps-3 pe-3 text-sm text-zinc-900 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-400/40 disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:placeholder-zinc-500 dark:focus:ring-zinc-400/40"
+            className="w-full resize-none rounded-lg border border-zinc-200 bg-white pt-2 pb-10 ps-3 pe-3 text-sm text-zinc-900 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-400/40 disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:placeholder-zinc-500 dark:focus:ring-zinc-400/40"
           />
           <input
             type="file"
@@ -460,17 +460,25 @@ const ChatPanel = forwardRef<ChatPanelHandle, Props>(function ChatPanel(
             className="hidden"
             onChange={handleFileChange}
           />
-          <div className="absolute bottom-3 end-2 flex flex-row gap-1.5">
-            <Tooltip label={t("uploadReceipt")} align="end">
+          {/* Attach and Mic are big circles straddling the input's bottom corners —
+              half in, half out — Send stays inline, above the mic circle, so the two
+              don't collide. The absolute positioning lives on a wrapper OUTSIDE each
+              Tooltip, not on the button itself — Tooltip's own root is `relative`
+              (so its tooltip bubble anchors to the button), and that would otherwise
+              become the positioning context instead of this textarea wrapper. */}
+          <div className="absolute bottom-0 start-0 translate-x-[-35%] translate-y-[35%]">
+            <Tooltip label={t("uploadReceipt")} align="start">
               <button
                 onClick={() => fileInputRef.current?.click()}
                 disabled={streaming || recording || transcribing}
                 aria-label={t("uploadReceipt")}
-                className="flex h-9 w-9 items-center justify-center rounded-md text-zinc-500 transition-colors hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-50 dark:text-zinc-400 dark:hover:bg-zinc-800"
+                className="flex h-12 w-12 items-center justify-center rounded-full bg-white text-zinc-500 shadow-md ring-1 ring-zinc-200 transition-colors hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-800 dark:text-zinc-400 dark:ring-zinc-700 dark:hover:bg-zinc-700"
               >
                 <Paperclip size={20} />
               </button>
             </Tooltip>
+          </div>
+          <div className="absolute bottom-0 end-0 translate-x-[35%] translate-y-[35%]">
             <Tooltip label={recording ? t("stopRecording") : t("recordVoice")} align="end">
               <button
                 onPointerDown={handleMicPointerDown}
@@ -481,21 +489,11 @@ const ChatPanel = forwardRef<ChatPanelHandle, Props>(function ChatPanel(
                 aria-label={recording ? t("stopRecording") : t("recordVoice")}
                 className={
                   recording
-                    ? "flex h-9 w-9 animate-pulse touch-none select-none items-center justify-center rounded-md bg-red-600 text-white transition-colors hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-50"
-                    : "flex h-9 w-9 touch-none select-none items-center justify-center rounded-md text-zinc-500 transition-colors hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-50 dark:text-zinc-400 dark:hover:bg-zinc-800"
+                    ? "flex h-12 w-12 animate-pulse touch-none select-none items-center justify-center rounded-full bg-red-600 text-white shadow-md transition-colors hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-50"
+                    : "flex h-12 w-12 touch-none select-none items-center justify-center rounded-full bg-white text-zinc-500 shadow-md ring-1 ring-zinc-200 transition-colors hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-800 dark:text-zinc-400 dark:ring-zinc-700 dark:hover:bg-zinc-700"
                 }
               >
-                {recording ? <Square size={16} fill="currentColor" /> : <Mic size={20} />}
-              </button>
-            </Tooltip>
-            <Tooltip label={t("send")} align="end">
-              <button
-                onClick={handleSendClick}
-                disabled={streaming || recording || transcribing || !input.trim()}
-                aria-label={t("send")}
-                className="flex h-9 w-9 items-center justify-center rounded-md bg-zinc-600 text-white transition-colors hover:bg-zinc-500 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-300 dark:text-zinc-900 dark:hover:bg-zinc-200"
-              >
-                <Send size={19} />
+                {recording ? <Square size={17} fill="currentColor" /> : <Mic size={22} />}
               </button>
             </Tooltip>
           </div>
