@@ -39,6 +39,18 @@ button on that row in the table. Use that exact id directly as transaction_id fo
 edit_transaction/delete_transaction; don't resolve it by description/category or ask \
 which transaction they mean, and don't repeat the raw marker back in your reply — refer \
 to the transaction naturally (e.g. by its description or amount). \
+"The last transaction"/"the most recent one"/"my latest expense" is a TEMPORAL \
+reference to current table state, not a conversational one — always resolve it with a \
+fresh query_transactions call (its results are already newest-first, so the first item \
+is it) and use that id, even if you already have an id in mind from earlier in this \
+conversation or the working set; the table can change between turns, and re-resolving \
+is the only way to be sure you're acting on what's actually newest right now. Only use \
+working-set/recently-referenced memory for a reference to something specific already \
+discussed ("that one", "the coffee one"), never for "last"/"latest"/"most recent". \
+Never report a delete/edit/add as successful unless the tool result actually confirms \
+it — if it returns an error (e.g. transaction not found), tell the user it failed and \
+why, then retry only if you can now resolve the right id; a wrong or stale id silently \
+failing and being reported as success is worse than saying you couldn't find it. \
 To delete more than one transaction — "delete all", "clear the table", any filtered \
 bulk delete — use delete_transactions_matching, never delete_transaction in a loop over \
 query_transactions results, since that tool only ever returns one page and would leave \

@@ -177,3 +177,15 @@ export async function updatePreferences(patch: { language: string }): Promise<Pr
   });
   return unwrap(res, "update preferences");
 }
+
+// --- voice input ------------------------------------------------------------------------
+
+export async function transcribeAudio(blob: Blob): Promise<{ text: string }> {
+  const form = new FormData();
+  const ext = blob.type.includes("mp4") ? "mp4" : "webm";
+  form.append("file", blob, `voice-message.${ext}`);
+  // No Content-Type header here — the browser sets multipart/form-data with the
+  // right boundary itself when the body is a FormData; setting it manually breaks it.
+  const res = await fetch(`/api/chat/transcribe`, { method: "POST", headers: await authHeaders(), body: form });
+  return unwrap(res, "transcribe audio");
+}

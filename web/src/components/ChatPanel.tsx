@@ -1,6 +1,6 @@
 import { fetchEventSource } from "@microsoft/fetch-event-source";
 import { useQueryClient } from "@tanstack/react-query";
-import { Paperclip, Send } from "lucide-react";
+import { Mic, Paperclip, Send, Square } from "lucide-react";
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import {
   authHeaders,
@@ -8,6 +8,7 @@ import {
   fetchAllTransactions,
   getThreadMessages,
   requestUploadTarget,
+  transcribeAudio,
   uploadReceiptImage,
 } from "../lib/api";
 import type { TransactionFilter } from "../lib/api";
@@ -66,9 +67,18 @@ const ChatPanel = forwardRef<ChatPanelHandle, Props>(function ChatPanel(
   const [streaming, setStreaming] = useState(false);
   const [pendingText, setPendingText] = useState("");
   const [proposed, setProposed] = useState<{ items: ProposedItem[]; receipt_uri: string } | null>(null);
+  const [recording, setRecording] = useState(false);
+  const [transcribing, setTranscribing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textInputRef = useRef<HTMLTextAreaElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  // A ref, not a closure read of `input` — recording can run for a while and the
+  // onstop handler below is created once at recording start, so a plain closure
+  // would send whatever was typed at that moment, not anything typed since.
+  const inputRef = useRef(input);
+  inputRef.current = input;
   const threadIdRef = useRef(threadId);
   threadIdRef.current = threadId;
   // A ref, not a closure read of the `filter` prop — set_filter and export can be
@@ -238,6 +248,54 @@ const ChatPanel = forwardRef<ChatPanelHandle, Props>(function ChatPanel(
     await send(caption, target.object, imageUrl ?? undefined);
   }
 
+  async function startRecording() {
+    let stream: MediaStream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch {
+      setMessages((m) => [...m, { role: "assistant", text: t("micError") }]);
+      return;
+    }
+    const mimeType = ["audio/webm", "audio/mp4"].find((type) => MediaRecorder.isTypeSupported(type));
+    const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+    audioChunksRef.current = [];
+    recorder.ondataavailable = (e) => {
+      if (e.data.size > 0) audioChunksRef.current.push(e.data);
+    };
+    recorder.onstop = async () => {
+      stream.getTracks().forEach((track) => track.stop());
+      setRecording(false);
+      const blob = new Blob(audioChunksRef.current, { type: recorder.mimeType || "audio/webm" });
+      if (blob.size === 0) return;
+      setTranscribing(true);
+      try {
+        const { text } = await transcribeAudio(blob);
+        if (text.trim()) {
+          const combined = inputRef.current.trim() ? `${inputRef.current.trim()} ${text.trim()}` : text.trim();
+          setInput("");
+          setTranscribing(false);
+          await send(combined);
+          return;
+        }
+      } catch {
+        setMessages((m) => [...m, { role: "assistant", text: t("micError") }]);
+      }
+      setTranscribing(false);
+      textInputRef.current?.focus();
+    };
+    mediaRecorderRef.current = recorder;
+    recorder.start();
+    setRecording(true);
+  }
+
+  function toggleRecording() {
+    if (recording) {
+      mediaRecorderRef.current?.stop();
+    } else {
+      startRecording();
+    }
+  }
+
   async function confirmReceipt() {
     if (!proposed) return;
     await createTransactionBatch(proposed.items as unknown as Record<string, unknown>[], crypto.randomUUID());
@@ -352,13 +410,18 @@ const ChatPanel = forwardRef<ChatPanelHandle, Props>(function ChatPanel(
         <div ref={messagesEndRef} />
       </div>
       <div className="relative z-10 border-t border-zinc-200 p-2.5 shadow-[0_-4px_6px_-1px_rgb(0_0_0_/_0.05),0_-2px_4px_-2px_rgb(0_0_0_/_0.05)] dark:border-zinc-800">
+        {transcribing && (
+          <div className="mb-1.5 text-xs text-zinc-400 dark:text-zinc-500">
+            <span className="animate-pulse">{t("transcribing")}</span>
+          </div>
+        )}
         <div className="relative">
           <textarea
             ref={textInputRef}
             rows={4}
             placeholder={t("chatPlaceholder")}
             value={input}
-            disabled={streaming}
+            disabled={streaming || transcribing}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey && !streaming) {
@@ -366,7 +429,7 @@ const ChatPanel = forwardRef<ChatPanelHandle, Props>(function ChatPanel(
                 handleSendClick();
               }
             }}
-            className="w-full resize-none rounded-lg border border-zinc-200 bg-white py-2 ps-3 pe-12 text-sm text-zinc-900 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-400/40 disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:placeholder-zinc-500 dark:focus:ring-zinc-400/40"
+            className="w-full resize-none rounded-lg border border-zinc-200 bg-white pt-2 pb-10 ps-3 pe-3 text-sm text-zinc-900 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-400/40 disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:placeholder-zinc-500 dark:focus:ring-zinc-400/40"
           />
           <input
             type="file"
@@ -375,21 +438,35 @@ const ChatPanel = forwardRef<ChatPanelHandle, Props>(function ChatPanel(
             className="hidden"
             onChange={handleFileChange}
           />
-          <div className="absolute end-2 top-1/2 flex -translate-y-1/2 flex-col gap-1.5">
+          <div className="absolute bottom-4 end-2 flex flex-row gap-1.5">
             <Tooltip label={t("uploadReceipt")} align="end">
               <button
                 onClick={() => fileInputRef.current?.click()}
-                disabled={streaming}
+                disabled={streaming || recording || transcribing}
                 aria-label={t("uploadReceipt")}
                 className="flex h-8 w-8 items-center justify-center rounded-md text-zinc-500 transition-colors hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-50 dark:text-zinc-400 dark:hover:bg-zinc-800"
               >
                 <Paperclip size={18} />
               </button>
             </Tooltip>
+            <Tooltip label={recording ? t("stopRecording") : t("recordVoice")} align="end">
+              <button
+                onClick={toggleRecording}
+                disabled={streaming || transcribing}
+                aria-label={recording ? t("stopRecording") : t("recordVoice")}
+                className={
+                  recording
+                    ? "flex h-8 w-8 animate-pulse items-center justify-center rounded-md bg-red-600 text-white transition-colors hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-50"
+                    : "flex h-8 w-8 items-center justify-center rounded-md text-zinc-500 transition-colors hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-50 dark:text-zinc-400 dark:hover:bg-zinc-800"
+                }
+              >
+                {recording ? <Square size={15} fill="currentColor" /> : <Mic size={18} />}
+              </button>
+            </Tooltip>
             <Tooltip label={t("send")} align="end">
               <button
                 onClick={handleSendClick}
-                disabled={streaming || !input.trim()}
+                disabled={streaming || recording || transcribing || !input.trim()}
                 aria-label={t("send")}
                 className="flex h-8 w-8 items-center justify-center rounded-md bg-zinc-600 text-white transition-colors hover:bg-zinc-500 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-300 dark:text-zinc-900 dark:hover:bg-zinc-200"
               >

@@ -46,6 +46,9 @@ image at build time — editing their source requires `docker compose up -d --bu
   through chat.
 - **CSV export.** "Export this view" builds a CSV client-side from the table's current
   filter and drops it into the chat as a clickable file attachment.
+- **Voice input.** Record a message with the mic button; it's transcribed
+  (Whisper) server-side and dropped into the message box for you to review or edit
+  before sending — same as typing it, nothing is sent automatically.
 - **Receipts.** Upload a photo or PDF; GPT-4o vision extracts line items and
   categorizes each one, and the UI shows editable proposed rows — nothing is written
   until you confirm. There's no separate merchant field: a merchant/place name, when
@@ -180,6 +183,7 @@ the chat input), `src/components/TransactionsTable.tsx`.
 | `LLM_MODEL` | no | default `gpt-4o` — chat + receipt vision |
 | `LLM_FALLBACK_MODEL` | no | default `gpt-4o-mini` |
 | `LLM_SUMMARY_MODEL` | no | default `gpt-4o-mini` — rolling chat summary |
+| `TRANSCRIBE_MODEL` | no | default `whisper-1` — voice-input transcription |
 | `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` / `LANGFUSE_HOST` | no | tracing no-ops if unset |
 
 `DAILY_TURN_LIMIT` (default 200) and `DAILY_RECEIPT_LIMIT` (default 50) are also

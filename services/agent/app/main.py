@@ -1,10 +1,12 @@
 import json
 import logging
+import os
 import uuid
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, File, Header, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
+from openai import AsyncOpenAI
 from pydantic import BaseModel
 
 from . import chat_db, context, quotas, signal, storage, tasks
@@ -18,6 +20,9 @@ from .tools import build_tools
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("agent")
+
+TRANSCRIBE_MODEL = os.environ.get("TRANSCRIBE_MODEL", "whisper-1")
+_transcribe_client = AsyncOpenAI(api_key=os.environ["LLM_API_KEY"])
 
 RECENT_MESSAGE_LIMIT = 40  # rows fetched before token-budget trimming (context.py)
 
@@ -112,6 +117,34 @@ async def create_upload_target(uid: str = Depends(require_uid)):
     `receipt_object` on the next /api/chat/chat call."""
     object_id = str(uuid.uuid4())
     return storage.upload_target(uid, object_id)
+
+
+# --- voice input -----------------------------------------------------------------------
+
+@app.post("/api/chat/transcribe")
+async def transcribe_audio(file: UploadFile = File(...), uid: str = Depends(require_uid)):
+    """Transcribes a recorded voice message to text — the frontend then drops that
+    text into the message box for the user to review/edit before sending, same as any
+    typed message. Doesn't touch quotas itself; the actual chat turn it feeds into
+    does."""
+    audio_bytes = await file.read()
+    if not audio_bytes:
+        raise HTTPException(status_code=400, detail="empty audio")
+
+    async with chat_db.uid_conn(uid) as conn:
+        preferences_row = await chat_db.get_preferences(conn, uid)
+    language = (dict(preferences_row) if preferences_row else {}).get("language")
+
+    try:
+        resp = await _transcribe_client.audio.transcriptions.create(
+            model=TRANSCRIBE_MODEL,
+            file=(file.filename or "audio.webm", audio_bytes, file.content_type or "audio/webm"),
+            language=language if language in SUPPORTED_LANGUAGES else None,
+        )
+    except Exception as e:
+        log.warning("transcription failed: %s", e)
+        raise HTTPException(status_code=502, detail="Couldn't transcribe that — please try again.") from e
+    return {"text": resp.text}
 
 
 # --- chat (SSE) ----------------------------------------------------------------------

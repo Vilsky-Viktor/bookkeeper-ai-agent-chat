@@ -193,7 +193,11 @@ def build_tools(jwt: str, x_client_id: str | None, language: str = "en") -> list
         delete_transactions_matching instead; it deletes in a single server-side
         operation instead of one id at a time. query_transactions only ever returns
         one page of results (up to 50), so looping delete_transaction over its output
-        silently misses everything past the first page."""
+        silently misses everything past the first page. "The last transaction"/"most
+        recent" means current table state — resolve it with a fresh query_transactions
+        call (newest-first) right before this, don't reuse an id from earlier in the
+        conversation. If this returns an error, that transaction was NOT deleted — say
+        so, don't report success anyway."""
         async with http_client() as c:
             resp = await c.delete(
                 f"/api/transactions/transactions/{transaction_id}",
