@@ -89,7 +89,7 @@ async def _extract_line_items(image_bytes: bytes, content_type: str, language: s
             {
                 "role": "user",
                 "content": [
-                    {"type": "text", "text": RECEIPT_EXTRACTION_PROMPT.format(language=language_name)},
+                    {"type": "text", "text": RECEIPT_EXTRACTION_PROMPT.replace("{language}", language_name)},
                     {"type": "image_url", "image_url": {"url": f"data:{content_type};base64,{b64}"}},
                 ],
             }
