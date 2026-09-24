@@ -33,9 +33,10 @@ image at build time — editing their source requires `docker compose up -d --bu
 ## Code quality tooling
 
 Each Python service is its own independent Poetry project (own `pyproject.toml` +
-`poetry.lock`, no shared config across services) with `black`, `isort`, and `mypy` as
-dev dependencies, run via [`poethepoet`](https://github.com/nat-n/poethepoet) tasks —
-the Poetry equivalent of `web`'s npm scripts:
+`poetry.lock`, no shared config across services) with `black`, `isort`, `mypy`, and
+`pytest` (+ `pytest-asyncio`) as dev dependencies, run via
+[`poethepoet`](https://github.com/nat-n/poethepoet) tasks — the Poetry equivalent of
+`web`'s npm scripts:
 
 ```bash
 cd services/agent   # or services/transactions
@@ -44,11 +45,20 @@ poetry run poe start         # run the service (what the Dockerfile's CMD uses)
 poetry run poe format        # black + isort, writes
 poetry run poe format:check  # same, check-only
 poetry run poe lint          # mypy
-poetry run poe check         # all three checks in one go
+poetry run poe test          # pytest
+poetry run poe check         # format:check + lint + test, in one go
 ```
 
-The same tasks also run inside the already-built containers, e.g.
-`docker compose exec agent poetry run poe check`.
+`format`/`format:check`/`lint` also run inside the already-built containers (e.g.
+`docker compose exec agent poetry run poe lint`), since `app/` is baked into the
+image. `test`/`check` need the local (non-Docker) `poetry install --with dev` above
+instead — `tests/` is deliberately not copied into the runtime image.
+
+Each service's `tests/` directory covers its business logic (money/idempotency/
+categorization, context assembly, tool HTTP calls, quotas, pagination, etc.) with
+mocked DB connections and HTTP transports — no live Postgres or network access needed
+to run them — plus a handful of endpoint-level tests via FastAPI's `TestClient`,
+covering both success and error paths (400/401/404/409/429/501 as appropriate).
 
 The frontend uses ESLint (flat config, `typescript-eslint` + React Hooks/Refresh
 plugins) and Prettier instead:
