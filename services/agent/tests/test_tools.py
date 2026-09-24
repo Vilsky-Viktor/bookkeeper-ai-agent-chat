@@ -299,6 +299,61 @@ class TestExtractReceipt:
         assert result["items"][0]["category"] == "other"
 
 
+class TestExtractLineItems:
+    async def test_prompt_includes_todays_date_with_no_placeholder_left_over(self, monkeypatch):
+        # A misread receipt date (e.g. wrong year) is a real failure mode for the
+        # vision model — giving it today's date as an anchor is the mitigation. This
+        # guards the substitution itself: no literal "{today}"/"{language}" leftover,
+        # and the date that lands in the prompt is the real one, not hardcoded.
+        captured = {}
+
+        async def fake_create(**kwargs):
+            captured["prompt"] = kwargs["messages"][0]["content"][0]["text"]
+            response = MagicMock()
+            response.choices = [MagicMock(message=MagicMock(content='{"is_receipt": false}'))]
+            return response
+
+        monkeypatch.setattr(tools_module._vision_client.chat.completions, "create", fake_create)
+
+        await tools_module._extract_line_items(b"imgdata", "image/jpeg", "en")
+
+        today = tools_module.datetime.date.today().isoformat()
+        assert today in captured["prompt"]
+        assert "{today}" not in captured["prompt"]
+        assert "{language}" not in captured["prompt"]
+        # Guards the specific failure mode that prompted this: a receipt printing a
+        # relative label ("Today, 5:52 PM") instead of a calendar date, which the
+        # model has no way to resolve without being told what "today" actually is.
+        assert "Today" in captured["prompt"] and "Yesterday" in captured["prompt"]
+        # Guards a second, separate failure mode: a receipt (e.g. an app/delivery
+        # order) that lists item names and quantities but no per-item price — the
+        # model must not invent a per-item amount (observed: it used the quantity
+        # number, e.g. "3", as if it were a price) and must fall back to the
+        # receipt's real total instead.
+        assert "never use a quantity number as if it were a price" in captured["prompt"]
+        assert "collapse everything into ONE item" in captured["prompt"]
+        # Guards a third failure mode: a receipt with a real per-item price plus extra
+        # charges on top (delivery/packaging/service fee) that raise the actual total
+        # paid — observed: the model reported only the product subtotal and silently
+        # dropped the fees, understating what was actually spent.
+        assert "sum of every item" in captured["prompt"]
+        assert "Delivery & packaging" in captured["prompt"]
+        # A fee must get its own line item even with only one product — folding it
+        # into that product's amount was tried and rejected (it corrupts both the
+        # amount and the category attributed to the actual purchase).
+        assert "not even when there's only one product" in captured["prompt"]
+        # Guards the same pattern in its restaurant-bill form: many dishes plus a
+        # shared service charge/tip/tax, sometimes printed only as a percentage with
+        # no computed amount of its own — the model must compute it, and must not
+        # split or fold it into the individual dishes.
+        assert "restaurant bill with many" in captured["prompt"]
+        assert "calculate the actual amount yourself" in captured["prompt"]
+        # Guards a fourth failure mode: an unreadable merchant name written as the
+        # placeholder "Unknown" instead of null, which then folds into the
+        # description as if it were a real merchant.
+        assert 'set "merchant" to null' in captured["prompt"]
+
+
 class TestFoldMerchant:
     def test_merchant_appended_when_not_already_in_description(self):
         assert tools_module._fold_merchant("rice", "Alfamart") == "rice - Alfamart"
@@ -314,3 +369,16 @@ class TestFoldMerchant:
 
     def test_neither_returns_none(self):
         assert tools_module._fold_merchant(None, None) is None
+
+    def test_literal_unknown_merchant_is_treated_as_no_merchant(self):
+        # Observed: the model wrote "Unknown" as the merchant when it genuinely
+        # couldn't read one, which folded in as "3x Camel White 20 - Unknown" — a
+        # placeholder that looks like a real (wrong) merchant name.
+        assert tools_module._fold_merchant("3x Camel White 20", "Unknown") == "3x Camel White 20"
+
+    def test_placeholder_merchant_case_insensitive(self):
+        assert tools_module._fold_merchant("rice", "UNKNOWN") == "rice"
+        assert tools_module._fold_merchant("rice", "N/A") == "rice"
+
+    def test_unknown_merchant_with_no_description_returns_none(self):
+        assert tools_module._fold_merchant(None, "Unknown") is None

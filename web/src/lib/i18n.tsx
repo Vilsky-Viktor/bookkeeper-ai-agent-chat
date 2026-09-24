@@ -51,6 +51,7 @@ const translations = {
     openInNewTab: "Open in a new tab",
     extractReceiptCaption: "Please extract this receipt.",
     savedTransactions: "Saved {n} transaction(s) from the receipt.",
+    saveFailed: "Couldn't save: {error}",
     viewAttachment: "View attachment",
   },
   es: {
@@ -84,6 +85,7 @@ const translations = {
     openInNewTab: "Abrir en una pestaña nueva",
     extractReceiptCaption: "Por favor, extrae este recibo.",
     savedTransactions: "Se guardaron {n} transacción(es) del recibo.",
+    saveFailed: "No se pudo guardar: {error}",
     viewAttachment: "Ver archivo adjunto",
   },
   id: {
@@ -117,6 +119,7 @@ const translations = {
     openInNewTab: "Buka di tab baru",
     extractReceiptCaption: "Tolong ekstrak struk ini.",
     savedTransactions: "{n} transaksi dari struk berhasil disimpan.",
+    saveFailed: "Gagal menyimpan: {error}",
     viewAttachment: "Lihat lampiran",
   },
   fr: {
@@ -150,6 +153,7 @@ const translations = {
     openInNewTab: "Ouvrir dans un nouvel onglet",
     extractReceiptCaption: "Merci d'extraire ce reçu.",
     savedTransactions: "{n} transaction(s) du reçu enregistrée(s).",
+    saveFailed: "Échec de l'enregistrement : {error}",
     viewAttachment: "Voir la pièce jointe",
   },
   de: {
@@ -183,6 +187,7 @@ const translations = {
     openInNewTab: "In neuem Tab öffnen",
     extractReceiptCaption: "Bitte extrahiere diesen Beleg.",
     savedTransactions: "{n} Transaktion(en) aus dem Beleg gespeichert.",
+    saveFailed: "Speichern fehlgeschlagen: {error}",
     viewAttachment: "Anhang ansehen",
   },
   pt: {
@@ -216,6 +221,7 @@ const translations = {
     openInNewTab: "Abrir em uma nova aba",
     extractReceiptCaption: "Por favor, extraia este recibo.",
     savedTransactions: "{n} transação(ões) do recibo salva(s).",
+    saveFailed: "Não foi possível salvar: {error}",
     viewAttachment: "Ver anexo",
   },
   he: {
@@ -249,6 +255,7 @@ const translations = {
     openInNewTab: "פתח בכרטיסייה חדשה",
     extractReceiptCaption: "אנא חלץ את הקבלה הזו.",
     savedTransactions: "נשמרו {n} עסקאות מהקבלה.",
+    saveFailed: "לא ניתן היה לשמור: {error}",
     viewAttachment: "צפה בקובץ המצורף",
   },
   ru: {
@@ -282,6 +289,7 @@ const translations = {
     openInNewTab: "Открыть в новой вкладке",
     extractReceiptCaption: "Пожалуйста, извлеките данные из этого чека.",
     savedTransactions: "Сохранено {n} транзакций из чека.",
+    saveFailed: "Не удалось сохранить: {error}",
     viewAttachment: "Просмотреть вложение",
   },
   uk: {
@@ -315,6 +323,7 @@ const translations = {
     openInNewTab: "Відкрити в новій вкладці",
     extractReceiptCaption: "Будь ласка, витягніть дані з цього чека.",
     savedTransactions: "Збережено {n} транзакцій із чека.",
+    saveFailed: "Не вдалося зберегти: {error}",
     viewAttachment: "Переглянути вкладення",
   },
   ar: {
@@ -348,6 +357,7 @@ const translations = {
     openInNewTab: "فتح في علامة تبويب جديدة",
     extractReceiptCaption: "يرجى استخراج بيانات هذا الإيصال.",
     savedTransactions: "تم حفظ {n} معاملة من الإيصال.",
+    saveFailed: "تعذّر الحفظ: {error}",
     viewAttachment: "عرض المرفق",
   },
 } as const;

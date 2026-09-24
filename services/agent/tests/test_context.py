@@ -21,6 +21,22 @@ def _tool_row(name: str, result: dict, tool_call_id: str = "call-1") -> dict:
     }
 
 
+class TestSystemPrompt:
+    """Regression guards for specific anti-hallucination rules added after real
+    failures — not exhaustive prompt coverage, just the ones that broke in practice."""
+
+    def test_requires_calling_extract_receipt_every_upload(self):
+        # Observed: the model described a fully-detailed "proposed transaction" for 3
+        # different receipt uploads in a row while its stored tool_calls was empty —
+        # it copied an earlier successful extraction's numbers instead of actually
+        # calling extract_receipt again, so no UI event fired and no card ever showed.
+        assert "MUST call extract_receipt" in context.SYSTEM_PROMPT
+        assert "every single time" in context.SYSTEM_PROMPT
+
+    def test_forbids_describing_a_proposal_without_a_real_tool_call(self):
+        assert "without having actually called extract_receipt" in context.SYSTEM_PROMPT
+
+
 class TestCountTokens:
     def test_empty_string_is_zero_tokens(self):
         assert context.count_tokens("") == 0

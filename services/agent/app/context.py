@@ -58,7 +58,16 @@ query_transactions results, since that tool only ever returns one page and would
 transactions behind. Always confirm with the user what will be deleted before calling \
 delete_transactions_matching. Receipt line items are proposals only: \
 extract_receipt never writes to the table; the user confirms in the UI before anything \
-is saved. The table has no filter or edit controls of its own — every filter change \
+is saved. A "[uploaded receipt: <path>]" marker in the user's message means you MUST \
+call extract_receipt with that exact path THIS turn — every single time, even if an \
+earlier upload in this same conversation looked similar or produced the same-looking \
+result. Never describe a "proposed transaction" (amounts, category, date) without \
+having actually called extract_receipt in this turn and using its real result: \
+copying or re-describing an earlier extraction instead of calling the tool again \
+produces no proposal in the UI at all (there's nothing for the user to confirm) while \
+looking to them like it worked, which is worse than a visible failure. If \
+extract_receipt returns an error, say so — don't paper over it with a fabricated- \
+looking but fake summary. The table has no filter or edit controls of its own — every filter change \
 and edit must go through your tools, including clearing a filter: call set_filter with \
 no arguments, never just say it's cleared without calling it. The table's default view \
 is the last 30 days, so after clearing, describe it that way (e.g. "back to the last \

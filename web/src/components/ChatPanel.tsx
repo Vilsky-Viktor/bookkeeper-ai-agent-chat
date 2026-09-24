@@ -379,7 +379,22 @@ const ChatPanel = forwardRef<ChatPanelHandle, Props>(function ChatPanel(
 
   async function confirmReceipt() {
     if (!proposed) return;
-    await createTransactionBatch(proposed.items as unknown as Record<string, unknown>[], crypto.randomUUID());
+    try {
+      await createTransactionBatch(proposed.items as unknown as Record<string, unknown>[], crypto.randomUUID());
+    } catch (e) {
+      // Leave `proposed` in place (not cleared) so the user can fix a bad field —
+      // e.g. an amount the server rejected — and hit Confirm again instead of losing
+      // their edits and the whole proposed batch.
+      let detail = e instanceof Error ? e.message : String(e);
+      try {
+        const jsonStart = detail.indexOf("{");
+        if (jsonStart !== -1) detail = JSON.parse(detail.slice(jsonStart)).detail ?? detail;
+      } catch {
+        // best effort — fall back to the raw error message
+      }
+      setMessages((m) => [...m, { role: "assistant", text: t("saveFailed").replace("{error}", detail) }]);
+      return;
+    }
     queryClient.invalidateQueries({ queryKey: ["transactions"] });
     setProposed(null);
     setMessages((m) => [

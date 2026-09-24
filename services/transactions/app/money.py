@@ -13,6 +13,7 @@ _EXPONENTS = {
     "HUF": 0,
     "PYG": 0,
     "UGX": 0,
+    "IDR": 0,
     "BHD": 3,
     "KWD": 3,
     "OMR": 3,
@@ -32,7 +33,14 @@ def exponent_for(currency: str) -> int:
 
 
 def to_minor(amount: str, currency: str) -> int:
-    """Decimal string -> integer minor units. Rejects more decimals than the currency allows."""
+    """Decimal string -> integer minor units. Rejects more decimals than the currency
+    allows. `amount` must already be a clean canonical decimal string — "." as the
+    real decimal point only, no thousands separator of any kind (",", ".", " ", etc.)
+    — for ANY currency, not just ones with an unusual exponent. That normalization is
+    the caller's job (e.g. the receipt-extraction prompt, which sees the source
+    formatting and can tell a decimal point from a thousands separator); this
+    function has no way to guess which one a lone "." means from the string alone, so
+    it treats every "." as a real decimal point and just enforces precision."""
     exp = exponent_for(currency)
     try:
         d = Decimal(amount)
@@ -40,7 +48,12 @@ def to_minor(amount: str, currency: str) -> int:
         raise InvalidAmount(f"not a valid decimal amount: {amount!r}") from e
     _, _, e_exp = d.as_tuple()
     if isinstance(e_exp, int) and -e_exp > exp:
-        raise InvalidAmount(f"{currency} allows at most {exp} decimal place(s)")
+        raise InvalidAmount(
+            f"{currency} allows at most {exp} decimal place(s) — got {amount!r}. If this "
+            'came from a receipt printed with a locale that uses "." as a thousands '
+            "separator instead of a decimal point, that's likely misread as extra "
+            "precision here — re-check the intended amount."
+        )
     minor = int((d * (10**exp)).to_integral_exact(rounding=ROUND_HALF_UP))
     if minor <= 0:
         raise InvalidAmount("amount must be positive")
