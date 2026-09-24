@@ -11,7 +11,7 @@ import {
   transcribeAudio,
   uploadReceiptImage,
 } from "../lib/api";
-import type { TransactionFilter } from "../lib/api";
+import type { StoredMessage, TransactionFilter } from "../lib/api";
 import { createCsvObjectUrl } from "../lib/csv";
 import { defaultFilter, exportFilename } from "../lib/filters";
 import { useTranslation } from "../lib/i18n";
@@ -26,6 +26,27 @@ interface DisplayMessage {
   imageUrl?: string;
   csvUrl?: string;
   csvFilename?: string;
+  // Only set for messages loaded from history (not ones just sent locally) — used to
+  // paginate further back via before_seq. See loadEarlierMessages.
+  seq?: number;
+}
+
+// Matches the backend default (see get_messages in main.py) so the first page and
+// each "load earlier" page fetch the same amount.
+const MESSAGE_PAGE_LIMIT = 50;
+
+function mapStoredMessages(items: StoredMessage[]): DisplayMessage[] {
+  const mapped: DisplayMessage[] = [];
+  for (const m of items) {
+    if (m.role === "user" && m.content?.text) {
+      // The stored text carries a "[uploaded receipt: ...]" marker when a receipt was
+      // attached (see main.py) — split it back into text + a viewable image.
+      mapped.push({ role: "user", seq: m.seq, ...splitReceiptMarker(m.content.text) });
+    } else if (m.role === "assistant" && m.content?.text) {
+      mapped.push({ role: "assistant", seq: m.seq, text: m.content.text });
+    }
+  }
+  return mapped;
 }
 
 interface ProposedItem {
@@ -69,9 +90,13 @@ const ChatPanel = forwardRef<ChatPanelHandle, Props>(function ChatPanel(
   const [proposed, setProposed] = useState<{ items: ProposedItem[]; receipt_uri: string } | null>(null);
   const [recording, setRecording] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
+  const [hasMoreOlder, setHasMoreOlder] = useState(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textInputRef = useRef<HTMLTextAreaElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messageListRef = useRef<HTMLDivElement>(null);
+  const justLoadedOlderRef = useRef(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   // A ref, not a closure read of `input` — recording can run for a while and the
@@ -97,7 +122,8 @@ const ChatPanel = forwardRef<ChatPanelHandle, Props>(function ChatPanel(
       setMessages([]);
       return;
     }
-    getThreadMessages(threadId).then(async (res) => {
+    setHasMoreOlder(false);
+    getThreadMessages(threadId, { limit: MESSAGE_PAGE_LIMIT }).then(async (res) => {
       const loaded: DisplayMessage[] = [];
       // Indexes of assistant messages whose turn called export_transactions — the CSV
       // itself is a client-side blob (see confirmReceipt/send's csvAttachment), never
@@ -109,14 +135,15 @@ const ChatPanel = forwardRef<ChatPanelHandle, Props>(function ChatPanel(
         if (m.role === "user" && m.content?.text) {
           // The stored text carries a "[uploaded receipt: ...]" marker when a receipt
           // was attached (see main.py) — split it back into text + a viewable image.
-          loaded.push({ role: "user", ...splitReceiptMarker(m.content.text) });
+          loaded.push({ role: "user", seq: m.seq, ...splitReceiptMarker(m.content.text) });
         } else if (m.role === "assistant" && m.content?.text) {
           const toolCalls = m.content.tool_calls as { name?: string }[] | undefined;
           if (toolCalls?.some((c) => c.name === "export_transactions")) exportIndexes.push(loaded.length);
-          loaded.push({ role: "assistant", text: m.content.text });
+          loaded.push({ role: "assistant", seq: m.seq, text: m.content.text });
         }
       }
       setMessages(loaded);
+      setHasMoreOlder(res.has_more);
       if (exportIndexes.length === 0) return;
       try {
         const items = await fetchAllTransactions(filterRef.current);
@@ -129,7 +156,41 @@ const ChatPanel = forwardRef<ChatPanelHandle, Props>(function ChatPanel(
     });
   }, [threadId]);
 
+  async function loadEarlierMessages() {
+    const oldestSeq = messages[0]?.seq;
+    if (!threadId || loadingOlder || !hasMoreOlder || oldestSeq === undefined) return;
+    setLoadingOlder(true);
+    try {
+      const res = await getThreadMessages(threadId, { beforeSeq: oldestSeq, limit: MESSAGE_PAGE_LIMIT });
+      const older = mapStoredMessages(res.items);
+      const container = messageListRef.current;
+      const prevScrollHeight = container?.scrollHeight ?? 0;
+      justLoadedOlderRef.current = true;
+      setMessages((cur) => [...older, ...cur]);
+      setHasMoreOlder(res.has_more);
+      // Prepending content pushes everything down — without this the view jumps to
+      // the top instead of staying where the user was reading.
+      requestAnimationFrame(() => {
+        if (container) container.scrollTop += container.scrollHeight - prevScrollHeight;
+      });
+    } finally {
+      setLoadingOlder(false);
+    }
+  }
+
+  function handleMessageListScroll(e: React.UIEvent<HTMLDivElement>) {
+    if (e.currentTarget.scrollTop < 80 && hasMoreOlder && !loadingOlder) {
+      loadEarlierMessages();
+    }
+  }
+
   useEffect(() => {
+    // Prepending older messages (loadEarlierMessages) also changes `messages`, but it
+    // has its own scroll-position handling — jumping to the bottom here would fight it.
+    if (justLoadedOlderRef.current) {
+      justLoadedOlderRef.current = false;
+      return;
+    }
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, pendingText]);
 
@@ -346,7 +407,21 @@ const ChatPanel = forwardRef<ChatPanelHandle, Props>(function ChatPanel(
 
   return (
     <>
-      <div className="flex flex-1 flex-col gap-2.5 overflow-y-auto p-3">
+      <div ref={messageListRef} onScroll={handleMessageListScroll} className="flex flex-1 flex-col gap-2.5 overflow-y-auto p-3">
+        {loadingOlder && (
+          <div className="flex items-center justify-center gap-2 self-center py-1 text-xs text-zinc-400 dark:text-zinc-500">
+            <Sparkles size={14} className="animate-pulse" />
+            <span className="animate-pulse">{t("loadingEarlier")}</span>
+          </div>
+        )}
+        {!loadingOlder && hasMoreOlder && (
+          <button
+            onClick={loadEarlierMessages}
+            className="self-center rounded-full border border-zinc-200 px-3 py-1 text-xs text-zinc-500 transition-colors hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800"
+          >
+            {t("loadEarlierMessages")}
+          </button>
+        )}
         {messages.map((m, i) => (
           <div key={i} className={`flex max-w-[90%] flex-col gap-1.5 ${m.role === "user" ? "self-end items-end" : "self-start items-start"}`}>
             <div

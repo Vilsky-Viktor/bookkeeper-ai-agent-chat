@@ -103,6 +103,28 @@ async def all_messages(conn: asyncpg.Connection, uid: str, thread_id: str) -> li
     )
 
 
+async def messages_page(
+    conn: asyncpg.Connection, uid: str, thread_id: str, before_seq: int | None, limit: int
+) -> tuple[list[asyncpg.Record], bool]:
+    """The `limit` most recent messages older than `before_seq` (or the very latest
+    page when None), returned oldest-first — powers the chat panel's initial load and
+    "load earlier" pagination so a long-running thread doesn't fetch its entire
+    history on every open. Fetches one extra row to detect has_more without a second
+    COUNT query."""
+    if before_seq is None:
+        rows = await conn.fetch(
+            "SELECT * FROM messages WHERE uid=$1 AND thread_id=$2 ORDER BY seq DESC LIMIT $3",
+            uid, thread_id, limit + 1,
+        )
+    else:
+        rows = await conn.fetch(
+            "SELECT * FROM messages WHERE uid=$1 AND thread_id=$2 AND seq < $3 ORDER BY seq DESC LIMIT $4",
+            uid, thread_id, before_seq, limit + 1,
+        )
+    has_more = len(rows) > limit
+    return list(reversed(rows[:limit])), has_more
+
+
 async def messages_since(conn: asyncpg.Connection, uid: str, thread_id: str, after_seq: int) -> list[asyncpg.Record]:
     return await conn.fetch(
         "SELECT * FROM messages WHERE uid=$1 AND thread_id=$2 AND seq > $3 ORDER BY seq ASC",

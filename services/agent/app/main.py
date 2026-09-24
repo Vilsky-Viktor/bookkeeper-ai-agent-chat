@@ -4,7 +4,7 @@ import os
 import uuid
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI, File, Header, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, Header, HTTPException, Query, UploadFile
 from fastapi.responses import StreamingResponse
 from openai import AsyncOpenAI
 from pydantic import BaseModel
@@ -74,13 +74,18 @@ def _message_out(row) -> dict:
 
 
 @app.get("/api/chat/threads/{thread_id}/messages")
-async def get_messages(thread_id: str, uid: str = Depends(require_uid)):
+async def get_messages(
+    thread_id: str,
+    before_seq: int | None = None,
+    limit: int = Query(default=50, ge=1, le=200),
+    uid: str = Depends(require_uid),
+):
     async with chat_db.uid_conn(uid) as conn:
         thread = await chat_db.get_thread(conn, uid, thread_id)
         if thread is None:
             raise HTTPException(status_code=404, detail="thread not found")
-        rows = await chat_db.all_messages(conn, uid, thread_id)
-    return {"items": [_message_out(r) for r in rows]}
+        rows, has_more = await chat_db.messages_page(conn, uid, thread_id, before_seq, limit)
+    return {"items": [_message_out(r) for r in rows], "has_more": has_more}
 
 
 # --- preferences ---------------------------------------------------------------------

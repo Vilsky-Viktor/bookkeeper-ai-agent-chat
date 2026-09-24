@@ -132,8 +132,17 @@ export interface StoredMessage {
   created_at: string;
 }
 
-export async function getThreadMessages(threadId: string): Promise<{ items: StoredMessage[] }> {
-  const res = await fetch(`/api/chat/threads/${threadId}/messages`, { headers: await authHeaders() });
+export async function getThreadMessages(
+  threadId: string,
+  opts?: { beforeSeq?: number; limit?: number },
+): Promise<{ items: StoredMessage[]; has_more: boolean }> {
+  const params = new URLSearchParams();
+  if (opts?.beforeSeq !== undefined) params.set("before_seq", String(opts.beforeSeq));
+  if (opts?.limit !== undefined) params.set("limit", String(opts.limit));
+  const qs = params.toString();
+  const res = await fetch(`/api/chat/threads/${threadId}/messages${qs ? `?${qs}` : ""}`, {
+    headers: await authHeaders(),
+  });
   return unwrap(res, "get thread messages");
 }
 
