@@ -57,18 +57,15 @@ export default function TransactionsTable({ filter, onViewImage, onReferenceTran
   }
 
   return (
-    <div
-      onScroll={handleScroll}
-      className="min-h-0 flex-1 overflow-auto border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900"
-    >
+    <div onScroll={handleScroll} className="min-h-0 flex-1 overflow-auto">
       <table className="w-full min-w-[640px] border-spacing-0 text-sm bg-white dark:bg-zinc-900">
         <thead className="sticky top-0 z-10 will-change-transform bg-zinc-50 dark:bg-zinc-800">
           <tr>
-            <th className="px-3 py-2 text-start font-medium text-zinc-600 dark:text-zinc-400">{t("colDate")}</th>
-            <th className="px-3 py-2 text-start font-medium text-zinc-600 dark:text-zinc-400">{t("colAmount")}</th>
-            <th className="px-3 py-2 text-start font-medium text-zinc-600 dark:text-zinc-400">{t("colCurrency")}</th>
-            <th className="px-3 py-2 text-start font-medium text-zinc-600 dark:text-zinc-400">{t("colCategory")}</th>
-            <th className="px-3 py-2 text-start font-medium text-zinc-600 dark:text-zinc-400">{t("colDescription")}</th>
+            <th className="px-3 py-2 text-start font-normal text-zinc-600 dark:text-zinc-400">{t("colDate")}</th>
+            <th className="px-3 py-2 text-start font-normal text-zinc-600 dark:text-zinc-400">{t("colAmount")}</th>
+            <th className="px-3 py-2 text-start font-normal text-zinc-600 dark:text-zinc-400">{t("colCurrency")}</th>
+            <th className="px-3 py-2 text-start font-normal text-zinc-600 dark:text-zinc-400">{t("colCategory")}</th>
+            <th className="px-3 py-2 text-start font-normal text-zinc-600 dark:text-zinc-400">{t("colDescription")}</th>
             <th className="px-3 py-2" />
           </tr>
         </thead>
@@ -118,7 +115,7 @@ export default function TransactionsTable({ filter, onViewImage, onReferenceTran
           })}
           {isFetchingNextPage && (
             <tr>
-              <td colSpan={6} className="px-3 py-3 text-center text-xs text-zinc-400 dark:text-zinc-500">
+              <td colSpan={6} className="px-3 py-3 text-center text-xs text-zinc-400 dark:text-zinc-600">
                 {t("loadingEarlier")}
               </td>
             </tr>

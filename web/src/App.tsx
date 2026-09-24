@@ -97,13 +97,13 @@ function AppContent({ user }: { user: User | null }) {
 
   if (!user) {
     return (
-      <div className="flex h-screen items-center justify-center bg-zinc-50 dark:bg-zinc-950">
+      <div className="flex h-screen items-center justify-center bg-zinc-100 dark:bg-[#141416]">
         <div className="flex flex-col items-center gap-4 rounded-2xl border border-zinc-200 bg-white p-10 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
           <h1 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">SMAKER.ai</h1>
           <p className="text-sm text-zinc-500 dark:text-zinc-400">{t("signInSubtitle")}</p>
           <button
             onClick={() => signIn()}
-            className="inline-flex items-center gap-2 rounded-lg bg-zinc-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-zinc-500 dark:bg-zinc-300 dark:text-zinc-900 dark:hover:bg-zinc-200"
+            className="inline-flex items-center gap-2 rounded-lg bg-sky-200 px-4 py-2 text-sm font-medium text-sky-900 transition-colors hover:bg-sky-300 dark:bg-sky-900/70 dark:text-sky-100 dark:hover:bg-sky-900/90"
           >
             {t("signInButton")}
           </button>
@@ -115,8 +115,8 @@ function AppContent({ user }: { user: User | null }) {
   const avatarLetter = (user.email ?? user.uid).charAt(0).toUpperCase();
 
   return (
-    <div className="flex h-screen flex-col bg-zinc-50 dark:bg-zinc-950">
-      <header className="relative z-10 flex items-center justify-between border-b border-zinc-200 bg-white px-4 py-2.5 shadow-[0_4px_6px_-1px_rgb(0_0_0_/_0.05),0_2px_4px_-2px_rgb(0_0_0_/_0.05)] dark:border-zinc-800 dark:bg-zinc-900">
+    <div className="flex h-screen flex-col bg-zinc-100 dark:bg-[#141416]">
+      <header className="relative z-10 flex items-center justify-between px-5 py-3">
         <div className="flex items-center gap-1.5 text-zinc-900 dark:text-zinc-100">
           <Coins size={18} />
           <span className="text-sm font-semibold">SMAKER.ai</span>
@@ -125,7 +125,7 @@ function AppContent({ user }: { user: User | null }) {
           <button
             onClick={() => setMenuOpen((o) => !o)}
             aria-label={user.email ?? user.uid}
-            className="flex h-8 w-8 items-center justify-center rounded-full bg-zinc-200 text-xs font-semibold text-zinc-700 transition-colors hover:bg-zinc-300 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
+            className="flex h-8 w-8 items-center justify-center rounded-full bg-sky-200 text-xs font-semibold text-sky-900 transition-colors hover:bg-sky-300 dark:bg-sky-900/70 dark:text-sky-100 dark:hover:bg-sky-900/90"
           >
             {avatarLetter}
           </button>
@@ -135,13 +135,13 @@ function AppContent({ user }: { user: User | null }) {
                 {user.email ?? user.uid}
               </div>
               <div className="px-2.5 py-1.5">
-                <label className="mb-1 block text-[11px] font-medium uppercase tracking-wide text-zinc-400 dark:text-zinc-500">
+                <label className="mb-1 block text-[11px] font-medium uppercase tracking-wide text-zinc-400 dark:text-zinc-600">
                   {t("language")}
                 </label>
                 <select
                   value={language}
                   onChange={(e) => setLanguage(e.target.value)}
-                  className="w-full rounded-md border border-zinc-200 bg-white px-2 py-1.5 text-sm text-zinc-700 focus:outline-none focus:ring-1 focus:ring-zinc-400/40 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300"
+                  className="w-full rounded-md border border-zinc-200 bg-white px-2 py-1.5 text-sm text-zinc-700 focus:outline-none focus:ring-2 focus:ring-sky-500/40 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300"
                 >
                   {SUPPORTED_LANGUAGES.map((l) => (
                     <option key={l.code} value={l.code}>
@@ -155,14 +155,14 @@ function AppContent({ user }: { user: User | null }) {
                   toggleTheme();
                   setMenuOpen(false);
                 }}
-                className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2.5 text-start text-sm text-zinc-700 transition-colors hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2.5 text-start text-sm text-zinc-700 transition-colors hover:bg-sky-50 dark:text-zinc-300 dark:hover:bg-sky-950/40"
               >
                 {theme === "dark" ? <Sun size={17} /> : <Moon size={17} />}
                 {theme === "dark" ? t("lightMode") : t("darkMode")}
               </button>
               <button
                 onClick={() => signOut()}
-                className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2.5 text-start text-sm text-zinc-700 transition-colors hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2.5 text-start text-sm text-zinc-700 transition-colors hover:bg-sky-50 dark:text-zinc-300 dark:hover:bg-sky-950/40"
               >
                 <LogOut size={17} />
                 {t("signOut")}
@@ -171,9 +171,9 @@ function AppContent({ user }: { user: User | null }) {
           )}
         </div>
       </header>
-      <div className="flex min-h-0 flex-1 flex-col md:flex-row">
+      <div className="flex min-h-0 flex-1 flex-col p-3 pt-0 md:flex-row">
         <div
-          className="order-3 flex min-h-0 flex-col bg-white dark:bg-zinc-900 md:order-1"
+          className="order-3 flex min-h-0 flex-col gap-3 md:order-1"
           style={isDesktop ? { width: chatSize } : { height: chatSize }}
         >
           <ChatPanel
@@ -189,9 +189,9 @@ function AppContent({ user }: { user: User | null }) {
           {...chatHandleProps}
           role="separator"
           aria-orientation={isDesktop ? "vertical" : "horizontal"}
-          className="order-2 h-1.5 w-full shrink-0 cursor-row-resize touch-none bg-zinc-200 transition-colors hover:bg-zinc-300 active:bg-zinc-400 dark:bg-zinc-800 dark:hover:bg-zinc-700 dark:active:bg-zinc-600 md:h-full md:w-1.5 md:cursor-col-resize"
+          className="order-2 my-2 h-1 w-full shrink-0 cursor-row-resize touch-none self-center rounded-full bg-zinc-200 transition-colors hover:bg-zinc-300 active:bg-zinc-400 dark:bg-zinc-800 dark:hover:bg-zinc-700 dark:active:bg-zinc-600 md:mx-2 md:my-0 md:h-full md:w-1 md:cursor-col-resize"
         />
-        <div className="order-1 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden md:order-3">
+        <div className="order-1 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-xl bg-white shadow-sm dark:bg-zinc-900 md:order-3">
           <TransactionsTable
             filter={filter}
             onViewImage={setViewingImage}

@@ -46,7 +46,12 @@ export default function ReceiptModal({ url, onClose }: Props) {
           // broken-image icon (see ReceiptThumb.tsx for the same fallback in chat).
           <div className="px-6 py-8 text-center text-sm">
             <p className="mb-2.5 text-zinc-500 dark:text-zinc-400">{t("cantPreview")}</p>
-            <a href={url} target="_blank" rel="noreferrer" className="text-zinc-900 underline dark:text-zinc-100">
+            <a
+              href={url}
+              target="_blank"
+              rel="noreferrer"
+              className="font-medium text-sky-600 underline dark:text-sky-400"
+            >
               {t("openInNewTab")}
             </a>
           </div>

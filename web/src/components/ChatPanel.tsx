@@ -77,7 +77,7 @@ export interface ChatPanelHandle {
 }
 
 const proposedInputClass =
-  "rounded-md border border-zinc-200 bg-white px-1.5 py-1 text-xs text-zinc-900 focus:outline-none focus:ring-1 focus:ring-zinc-400/40 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:focus:ring-zinc-400/40";
+  "rounded-md border border-zinc-200 bg-white px-1.5 py-1 text-xs text-zinc-900 focus:outline-none focus:ring-2 focus:ring-sky-500/40 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:focus:ring-sky-400/40";
 
 const ChatPanel = forwardRef<ChatPanelHandle, Props>(function ChatPanel(
   { threadId, onThreadId, filter, onFilterSet, onViewImage },
@@ -410,10 +410,10 @@ const ChatPanel = forwardRef<ChatPanelHandle, Props>(function ChatPanel(
       <div
         ref={messageListRef}
         onScroll={handleMessageListScroll}
-        className="flex flex-1 flex-col gap-2.5 overflow-y-auto p-3"
+        className="flex min-h-0 flex-1 flex-col gap-2.5 overflow-y-auto rounded-xl bg-white p-3 shadow-sm dark:bg-zinc-900"
       >
         {loadingOlder && (
-          <div className="flex items-center justify-center gap-2 self-center py-1 text-xs text-zinc-400 dark:text-zinc-500">
+          <div className="flex items-center justify-center gap-2 self-center py-1 text-xs text-zinc-400 dark:text-zinc-600">
             <Sparkles size={14} className="animate-pulse" />
             <span className="animate-pulse">{t("loadingEarlier")}</span>
           </div>
@@ -421,7 +421,7 @@ const ChatPanel = forwardRef<ChatPanelHandle, Props>(function ChatPanel(
         {!loadingOlder && hasMoreOlder && (
           <button
             onClick={loadEarlierMessages}
-            className="self-center rounded-full border border-zinc-200 px-3 py-1 text-xs text-zinc-500 transition-colors hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800"
+            className="self-center rounded-full border border-sky-200 px-3 py-1 text-xs font-medium text-sky-700 transition-colors hover:bg-sky-50 dark:border-sky-900 dark:text-sky-300 dark:hover:bg-sky-950/40"
           >
             {t("loadEarlierMessages")}
           </button>
@@ -434,8 +434,8 @@ const ChatPanel = forwardRef<ChatPanelHandle, Props>(function ChatPanel(
             <div
               className={`whitespace-pre-wrap rounded-xl px-3 py-2 text-sm leading-relaxed ${
                 m.role === "user"
-                  ? "bg-zinc-600 text-white dark:bg-zinc-300 dark:text-zinc-900"
-                  : "bg-zinc-100 text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100"
+                  ? "bg-sky-200 text-sky-900 dark:bg-sky-900/70 dark:text-sky-100"
+                  : "bg-zinc-100 text-zinc-900 dark:bg-zinc-800/80 dark:text-zinc-100"
               }`}
             >
               {m.text}
@@ -454,12 +454,12 @@ const ChatPanel = forwardRef<ChatPanelHandle, Props>(function ChatPanel(
           </div>
         ))}
         {streaming && pendingText && (
-          <div className="max-w-[90%] self-start whitespace-pre-wrap rounded-xl bg-zinc-100 px-3 py-2 text-sm leading-relaxed text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100">
+          <div className="max-w-[90%] self-start whitespace-pre-wrap rounded-xl bg-zinc-100 px-3 py-2 text-sm leading-relaxed text-zinc-900 dark:bg-zinc-800/80 dark:text-zinc-100">
             {pendingText}
           </div>
         )}
         {streaming && !pendingText && (
-          <div className="mt-1.5 flex items-center gap-2 self-center text-base text-zinc-400 dark:text-zinc-500">
+          <div className="mt-1.5 flex items-center gap-2 self-center text-base text-zinc-400 dark:text-zinc-600">
             <Sparkles size={18} className="animate-pulse" />
             <span className="animate-pulse">{t("thinking")}</span>
           </div>
@@ -497,13 +497,13 @@ const ChatPanel = forwardRef<ChatPanelHandle, Props>(function ChatPanel(
             <div className="mt-2 flex gap-2">
               <button
                 onClick={confirmReceipt}
-                className="rounded-lg bg-zinc-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-zinc-500 dark:bg-zinc-300 dark:text-zinc-900 dark:hover:bg-zinc-200"
+                className="rounded-lg bg-sky-200 px-3 py-1.5 text-xs font-medium text-sky-900 transition-colors hover:bg-sky-300 dark:bg-sky-900/70 dark:text-sky-100 dark:hover:bg-sky-900/90"
               >
                 {t("confirmAndSave")}
               </button>
               <button
                 onClick={() => setProposed(null)}
-                className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 transition-colors hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                className="rounded-lg border border-sky-600 px-3 py-1.5 text-xs font-medium text-sky-600 transition-colors hover:bg-sky-50 dark:border-sky-400 dark:text-sky-400 dark:hover:bg-sky-950/40"
               >
                 {t("cancel")}
               </button>
@@ -512,9 +512,9 @@ const ChatPanel = forwardRef<ChatPanelHandle, Props>(function ChatPanel(
         )}
         <div ref={messagesEndRef} />
       </div>
-      <div className="relative z-10 border-t border-zinc-200 pt-4 pb-8 ps-8 pe-8 shadow-[0_-4px_6px_-1px_rgb(0_0_0_/_0.05),0_-2px_4px_-2px_rgb(0_0_0_/_0.05)] dark:border-zinc-800">
+      <div className="relative z-10 shrink-0 rounded-xl bg-white pt-4 pb-8 ps-8 pe-8 shadow-sm dark:bg-zinc-900">
         {transcribing && (
-          <div className="mb-1.5 flex items-center justify-center gap-2 text-base text-zinc-400 dark:text-zinc-500">
+          <div className="mb-1.5 flex items-center justify-center gap-2 text-base text-zinc-400 dark:text-zinc-600">
             <Mic size={18} className="animate-pulse" />
             <span className="animate-pulse">{t("transcribing")}</span>
           </div>
@@ -529,7 +529,7 @@ const ChatPanel = forwardRef<ChatPanelHandle, Props>(function ChatPanel(
               eventually scroll up underneath the corner buttons. Making the dead
               space a real sibling element, outside the textarea's box entirely, means
               no scroll position can ever put text there. */}
-          <div className="rounded-lg border border-zinc-200 bg-white focus-within:ring-2 focus-within:ring-zinc-400/40 dark:border-zinc-700 dark:bg-zinc-900">
+          <div className="rounded-lg border border-zinc-200 bg-white focus-within:ring-1 focus-within:ring-sky-500/40 dark:border-zinc-700 dark:bg-zinc-900">
             <textarea
               ref={textInputRef}
               rows={4}
@@ -543,7 +543,7 @@ const ChatPanel = forwardRef<ChatPanelHandle, Props>(function ChatPanel(
                   handleSendClick();
                 }
               }}
-              className="block w-full resize-none border-0 bg-transparent pt-2 ps-3 pe-3 text-sm text-zinc-900 placeholder-zinc-400 focus:outline-none disabled:opacity-50 dark:text-zinc-100 dark:placeholder-zinc-500"
+              className="block w-full resize-none border-0 bg-transparent pt-4 ps-5 pe-5 text-sm text-zinc-900 placeholder-zinc-400 focus:outline-none disabled:opacity-50 dark:text-zinc-100 dark:placeholder-zinc-600"
             />
             <div className="h-10" aria-hidden="true" />
           </div>
@@ -566,7 +566,7 @@ const ChatPanel = forwardRef<ChatPanelHandle, Props>(function ChatPanel(
                 onClick={() => fileInputRef.current?.click()}
                 disabled={streaming || recording || transcribing}
                 aria-label={t("uploadReceipt")}
-                className="flex h-12 w-12 items-center justify-center rounded-full bg-white text-zinc-500 shadow-md ring-1 ring-zinc-200 transition-colors hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-800 dark:text-zinc-400 dark:ring-zinc-700 dark:hover:bg-zinc-700"
+                className="flex h-12 w-12 items-center justify-center rounded-full bg-white text-sky-600 shadow-md ring-1 ring-zinc-200 transition-colors hover:bg-sky-50 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-800 dark:text-sky-400 dark:ring-zinc-700 dark:hover:bg-sky-950/40"
               >
                 <Paperclip size={20} />
               </button>
@@ -584,7 +584,7 @@ const ChatPanel = forwardRef<ChatPanelHandle, Props>(function ChatPanel(
                 className={
                   recording
                     ? "flex h-12 w-12 animate-pulse touch-none select-none items-center justify-center rounded-full bg-red-600 text-white shadow-md transition-colors hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-50"
-                    : "flex h-12 w-12 touch-none select-none items-center justify-center rounded-full bg-white text-zinc-500 shadow-md ring-1 ring-zinc-200 transition-colors hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-800 dark:text-zinc-400 dark:ring-zinc-700 dark:hover:bg-zinc-700"
+                    : "flex h-12 w-12 touch-none select-none items-center justify-center rounded-full bg-white text-sky-600 shadow-md ring-1 ring-zinc-200 transition-colors hover:bg-sky-50 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-800 dark:text-sky-400 dark:ring-zinc-700 dark:hover:bg-sky-950/40"
                 }
               >
                 {recording ? <Square size={17} fill="currentColor" /> : <Mic size={22} />}

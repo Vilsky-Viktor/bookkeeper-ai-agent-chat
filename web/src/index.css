@@ -16,7 +16,7 @@ body,
 }
 
 body {
-  @apply bg-zinc-50 text-zinc-900 antialiased dark:bg-zinc-950 dark:text-zinc-100 font-sans;
+  @apply bg-zinc-50 text-zinc-900 antialiased dark:bg-[#141416] dark:text-zinc-100 font-sans;
 }
 
 /* Tailwind's preflight resets button cursor to the browser default — buttons should
