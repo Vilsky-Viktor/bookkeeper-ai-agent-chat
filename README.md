@@ -219,10 +219,12 @@ the chat input), `src/components/TransactionsTable.tsx`.
 
 | Variable | Required | Notes |
 |---|---|---|
-| `LLM_API_KEY` | yes | OpenAI API key |
-| `LLM_MODEL` | no | default `gpt-4o` — chat + receipt vision |
+| `LLM_API_KEY` | yes | API key for the selected provider |
+| `LLM_PROVIDER` | no | default `openai` — see "Swapping the LLM provider" below |
+| `LLM_MODEL` | no | default `gpt-4o` — main chat/tool-calling loop |
 | `LLM_FALLBACK_MODEL` | no | default `gpt-4o-mini` |
 | `LLM_SUMMARY_MODEL` | no | default `gpt-4o-mini` — rolling chat summary |
+| `LLM_VISION_MODEL` | no | default: same as `LLM_MODEL` — receipt image extraction |
 | `TRANSCRIBE_MODEL` | no | default `whisper-1` — voice-input transcription |
 | `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` / `LANGFUSE_HOST` | no | tracing no-ops if unset |
 
@@ -230,6 +232,39 @@ the chat input), `src/components/TransactionsTable.tsx`.
 overridable but aren't in `.env.example` since the defaults are fine for local dev.
 Everything else — database URLs, emulator hosts, storage mode — is wired directly in
 `docker-compose.yml` and doesn't need to be set by hand.
+
+### Swapping the LLM provider
+
+Every chat model in `services/agent` — the main tool-calling loop, the fallback and
+summary models, and the receipt-vision extraction call — is built through a single
+factory, `build_chat_model()` in `app/llm.py`, keyed on `LLM_PROVIDER`. There's no
+separate code path for receipt vision anymore (it used to go through its own raw
+OpenAI client); it goes through the same factory as everything else, just with
+`json_mode=True`.
+
+Supported today: `openai` (default), `anthropic`, `google`. Switching is `LLM_PROVIDER`
++ matching `LLM_API_KEY` + a model name that provider recognizes (e.g. `LLM_MODEL=
+claude-haiku-4-5` or `LLM_MODEL=gemini-2.5-flash`) — no code change. The receipt-vision
+call's multimodal message (`tools.py`'s `HumanMessage` with an `image_url` content
+block) works unchanged across all three; `langchain-anthropic` and
+`langchain-google-genai` both translate that OpenAI-shaped block internally. The one
+real difference between providers is JSON-only output: OpenAI's `response_format`
+json_object mode has no Anthropic equivalent (Claude relies on the prompt asking for
+JSON, which it follows reliably), while Gemini has its own native mechanism
+(`response_mime_type`) — `_build_anthropic`/`_build_google` in `app/llm.py` handle this
+per-provider so call sites don't need to know or care.
+
+To add another provider: write one builder function (importing that provider's
+LangChain integration package inside the function, not at module level, so an
+uninstalled package only breaks if that provider is actually selected), add it to the
+`_PROVIDER_BUILDERS` map, add the package to `pyproject.toml`, and set `LLM_PROVIDER`.
+
+Voice-input transcription (`/api/chat/transcribe`) is the one call site that doesn't
+go through `build_chat_model()` — LangChain has no unified speech-to-text model
+abstraction the way it does `BaseChatModel`. It's centralized the same way, just with
+its own registry: `transcribe_client()` and `_TRANSCRIBE_CLIENT_BUILDERS` in
+`app/llm.py`, also keyed on `LLM_PROVIDER`. Adding a provider that supports
+transcription means a builder in that registry too.
 
 ## Layout
 

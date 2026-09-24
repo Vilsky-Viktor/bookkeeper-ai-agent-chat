@@ -1,15 +1,13 @@
 import json
 import logging
-import os
 import uuid
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, File, Header, HTTPException, Query, UploadFile
 from fastapi.responses import StreamingResponse
-from openai import AsyncOpenAI
 from pydantic import BaseModel
 
-from . import chat_db, context, quotas, signal, storage, tasks
+from . import chat_db, context, llm, quotas, signal, storage, tasks
 from .auth import bearer_token, require_uid
 from .graph import build_graph, initial_state
 from .langfuse_obs import traced_turn
@@ -20,9 +18,6 @@ from .tools import build_tools
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("agent")
-
-TRANSCRIBE_MODEL = os.environ.get("TRANSCRIBE_MODEL", "whisper-1")
-_transcribe_client = AsyncOpenAI(api_key=os.environ["LLM_API_KEY"])
 
 RECENT_MESSAGE_LIMIT = 40  # rows fetched before token-budget trimming (context.py)
 
@@ -148,8 +143,8 @@ async def transcribe_audio(file: UploadFile = File(...), uid: str = Depends(requ
     # doesn't accept None as "no hint", so this is only added when there's a real value.
     transcribe_kwargs = {"language": language} if language in SUPPORTED_LANGUAGES else {}
     try:
-        resp = await _transcribe_client.audio.transcriptions.create(
-            model=TRANSCRIBE_MODEL,
+        resp = await llm.transcribe_client().audio.transcriptions.create(
+            model=llm.TRANSCRIBE_MODEL,
             file=(file.filename or "audio.webm", audio_bytes, file.content_type or "audio/webm"),
             **transcribe_kwargs,
         )

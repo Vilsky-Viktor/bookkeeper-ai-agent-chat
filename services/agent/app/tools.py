@@ -11,15 +11,13 @@ from typing import Annotated, Optional
 
 import httpx
 import pymupdf
+from langchain_core.messages import HumanMessage
 from langchain_core.tools import BaseTool, InjectedToolCallId, tool
-from openai import AsyncOpenAI
 
-from . import storage
+from . import llm, storage
 from .languages import SUPPORTED_LANGUAGES
 
 TRANSACTIONS_URL = os.environ["TRANSACTIONS_URL"]
-
-_vision_client = AsyncOpenAI(api_key=os.environ["LLM_API_KEY"])
 
 RECEIPT_EXTRACTION_PROMPT = """First decide whether this image/document is actually a \
 purchase receipt, invoice, or similar proof-of-purchase listing items and prices — \
@@ -155,21 +153,15 @@ async def _extract_line_items(image_bytes: bytes, content_type: str, language: s
     prompt = RECEIPT_EXTRACTION_PROMPT.replace("{language}", language_name).replace(
         "{today}", datetime.date.today().isoformat()
     )
-    resp = await _vision_client.chat.completions.create(
-        model=os.environ.get("LLM_MODEL", "gpt-4o"),
-        messages=[
-            {
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": prompt},
-                    {"type": "image_url", "image_url": {"url": f"data:{content_type};base64,{b64}"}},
-                ],
-            }
-        ],
-        response_format={"type": "json_object"},
-        temperature=0,
+    message = HumanMessage(
+        content=[
+            {"type": "text", "text": prompt},
+            {"type": "image_url", "image_url": {"url": f"data:{content_type};base64,{b64}"}},
+        ]
     )
-    return json.loads(resp.choices[0].message.content or "{}")
+    response = await llm.vision_model().ainvoke([message])
+    text = response.content if isinstance(response.content, str) else str(response.content)
+    return json.loads(text or "{}")
 
 
 def build_tools(jwt: str, x_client_id: str | None, language: str = "en") -> list[BaseTool]:

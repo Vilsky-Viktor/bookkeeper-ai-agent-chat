@@ -307,13 +307,12 @@ class TestExtractLineItems:
         # and the date that lands in the prompt is the real one, not hardcoded.
         captured = {}
 
-        async def fake_create(**kwargs):
-            captured["prompt"] = kwargs["messages"][0]["content"][0]["text"]
-            response = MagicMock()
-            response.choices = [MagicMock(message=MagicMock(content='{"is_receipt": false}'))]
-            return response
+        class _FakeVisionModel:
+            async def ainvoke(self, messages):
+                captured["prompt"] = messages[0].content[0]["text"]
+                return MagicMock(content='{"is_receipt": false}')
 
-        monkeypatch.setattr(tools_module._vision_client.chat.completions, "create", fake_create)
+        monkeypatch.setattr(tools_module.llm, "vision_model", lambda: _FakeVisionModel())
 
         await tools_module._extract_line_items(b"imgdata", "image/jpeg", "en")
 

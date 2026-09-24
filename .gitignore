@@ -7,3 +7,5 @@ __pycache__/
 gcs/receipts-local/*
 !gcs/receipts-local/.gitkeep
 .claude
+**/.mypy_cache
+**/.pytest_cache
