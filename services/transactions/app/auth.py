@@ -1,8 +1,9 @@
 """JWT verification. Always on, local too — this is the isolation boundary
 (see architecture doc, Security section)."""
 
-from firebase_admin import auth as fb_auth, initialize_app
 from fastapi import Header, HTTPException
+from firebase_admin import auth as fb_auth
+from firebase_admin import initialize_app
 
 initialize_app()  # honors FIREBASE_AUTH_EMULATOR_HOST / GOOGLE_CLOUD_PROJECT
 

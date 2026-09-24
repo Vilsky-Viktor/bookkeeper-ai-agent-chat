@@ -1,7 +1,9 @@
 FROM python:3.12-slim
 ENV PYTHONUNBUFFERED=1
+RUN pip install --no-cache-dir poetry==1.8.4
+ENV POETRY_VIRTUALENVS_IN_PROJECT=true
 WORKDIR /app
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY pyproject.toml poetry.lock ./
+RUN poetry install --no-root --with dev
 COPY app ./app
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["poetry", "run", "poe", "start"]

@@ -9,11 +9,15 @@ interface Props {
 
 export default function ReceiptModal({ url, onClose }: Props) {
   const [failed, setFailed] = useState(false);
-  const { t } = useTranslation();
-
-  useEffect(() => {
+  // Resetting `failed` when `url` changes during render (React's documented pattern
+  // for this) instead of in an effect — avoids the extra render pass an effect-based
+  // reset would cause. See https://react.dev/learn/you-might-not-need-an-effect
+  const [prevUrl, setPrevUrl] = useState(url);
+  if (url !== prevUrl) {
+    setPrevUrl(url);
     setFailed(false);
-  }, [url]);
+  }
+  const { t } = useTranslation();
 
   useEffect(() => {
     if (!url) return;

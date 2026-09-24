@@ -1,12 +1,24 @@
 """Integer minor-unit money handling. Amounts are stored as amount_minor (bigint),
 scaled by the currency's ISO 4217 exponent, so aggregates never hit floating point."""
 
-from decimal import Decimal, ROUND_HALF_UP, InvalidOperation
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
 # Currencies with an exponent other than the default 2.
 _EXPONENTS = {
-    "JPY": 0, "KRW": 0, "VND": 0, "CLP": 0, "ISK": 0, "HUF": 0, "PYG": 0, "UGX": 0,
-    "BHD": 3, "KWD": 3, "OMR": 3, "JOD": 3, "TND": 3, "LYD": 3,
+    "JPY": 0,
+    "KRW": 0,
+    "VND": 0,
+    "CLP": 0,
+    "ISK": 0,
+    "HUF": 0,
+    "PYG": 0,
+    "UGX": 0,
+    "BHD": 3,
+    "KWD": 3,
+    "OMR": 3,
+    "JOD": 3,
+    "TND": 3,
+    "LYD": 3,
 }
 _DEFAULT_EXPONENT = 2
 
@@ -29,7 +41,7 @@ def to_minor(amount: str, currency: str) -> int:
     _, _, e_exp = d.as_tuple()
     if isinstance(e_exp, int) and -e_exp > exp:
         raise InvalidAmount(f"{currency} allows at most {exp} decimal place(s)")
-    minor = int((d * (10 ** exp)).to_integral_exact(rounding=ROUND_HALF_UP))
+    minor = int((d * (10**exp)).to_integral_exact(rounding=ROUND_HALF_UP))
     if minor <= 0:
         raise InvalidAmount("amount must be positive")
     return minor

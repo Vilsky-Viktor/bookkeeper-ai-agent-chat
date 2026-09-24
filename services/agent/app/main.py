@@ -44,6 +44,7 @@ async def healthz():
 
 # --- threads -----------------------------------------------------------------------
 
+
 @app.get("/api/chat/threads")
 async def list_threads(uid: str = Depends(require_uid)):
     async with chat_db.uid_conn(uid) as conn:
@@ -90,6 +91,7 @@ async def get_messages(
 
 # --- preferences ---------------------------------------------------------------------
 
+
 class PreferencesUpdate(BaseModel):
     language: str
 
@@ -115,6 +117,7 @@ async def update_preferences_endpoint(body: PreferencesUpdate, uid: str = Depend
 
 # --- receipt uploads ------------------------------------------------------------------
 
+
 @app.post("/api/chat/uploads")
 async def create_upload_target(uid: str = Depends(require_uid)):
     """Returns a signed GCS URL in production, a direct fake-gcs URL locally. The
@@ -125,6 +128,7 @@ async def create_upload_target(uid: str = Depends(require_uid)):
 
 
 # --- voice input -----------------------------------------------------------------------
+
 
 @app.post("/api/chat/transcribe")
 async def transcribe_audio(file: UploadFile = File(...), uid: str = Depends(require_uid)):
@@ -140,11 +144,14 @@ async def transcribe_audio(file: UploadFile = File(...), uid: str = Depends(requ
         preferences_row = await chat_db.get_preferences(conn, uid)
     language = (dict(preferences_row) if preferences_row else {}).get("language")
 
+    # The SDK's `language` param takes a plain str (or must be omitted entirely) — it
+    # doesn't accept None as "no hint", so this is only added when there's a real value.
+    transcribe_kwargs = {"language": language} if language in SUPPORTED_LANGUAGES else {}
     try:
         resp = await _transcribe_client.audio.transcriptions.create(
             model=TRANSCRIBE_MODEL,
             file=(file.filename or "audio.webm", audio_bytes, file.content_type or "audio/webm"),
-            language=language if language in SUPPORTED_LANGUAGES else None,
+            **transcribe_kwargs,
         )
     except Exception as e:
         log.warning("transcription failed: %s", e)
@@ -153,6 +160,7 @@ async def transcribe_audio(file: UploadFile = File(...), uid: str = Depends(requ
 
 
 # --- chat (SSE) ----------------------------------------------------------------------
+
 
 class ChatRequest(BaseModel):
     thread_id: str | None = None
@@ -221,7 +229,12 @@ async def chat(
 
                 user_tokens = context.count_tokens(user_text)
                 inserted = await chat_db.insert_message(
-                    conn, uid, thread_id, "user", {"text": user_text}, user_tokens,
+                    conn,
+                    uid,
+                    thread_id,
+                    "user",
+                    {"text": user_text},
+                    user_tokens,
                     client_msg_id=body.client_msg_id,
                 )
                 if inserted is None:
@@ -326,15 +339,22 @@ async def chat(
                     tool_content = {"tool_call_id": tool_call_id, "name": name, "result": result}
                     compact = context.compact_tool_result(name, result)
                     await chat_db.insert_message(
-                        conn, uid, thread_id, "tool", tool_content,
-                        context.count_tokens(json.dumps(result, default=str)), compact=compact,
+                        conn,
+                        uid,
+                        thread_id,
+                        "tool",
+                        tool_content,
+                        context.count_tokens(json.dumps(result, default=str)),
+                        compact=compact,
                     )
                     working_set.update(_working_set_entries(name, result))
 
                 working_set = _cap_working_set(working_set)
                 await chat_db.update_working_set(conn, uid, thread_id, working_set)
                 await chat_db.touch_thread(conn, uid, thread_id)
-                await quotas.add_tokens(conn, uid, total_tokens_used or (user_tokens + context.count_tokens(assistant_text)))
+                await quotas.add_tokens(
+                    conn, uid, total_tokens_used or (user_tokens + context.count_tokens(assistant_text))
+                )
 
                 latest = await conn.fetchrow(
                     "SELECT max(seq) AS max_seq FROM messages WHERE uid=$1 AND thread_id=$2", uid, thread_id
@@ -368,6 +388,7 @@ async def chat(
 
 
 # --- internal ------------------------------------------------------------------------
+
 
 class SummarizeRequest(BaseModel):
     uid: str

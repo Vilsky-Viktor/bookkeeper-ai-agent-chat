@@ -5,7 +5,9 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from . import db
-from .routers import aggregates, categorize as categorize_router, transactions
+from .routers import aggregates
+from .routers import categorize as categorize_router
+from .routers import transactions
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("transactions")
@@ -18,9 +20,7 @@ async def _purge_idempotency_keys_loop() -> None:
         await asyncio.sleep(3600)
         try:
             async with db._pool.acquire() as conn:  # type: ignore[union-attr]
-                await conn.execute(
-                    "DELETE FROM idempotency_keys WHERE created_at < now() - interval '24 hours'"
-                )
+                await conn.execute("DELETE FROM idempotency_keys WHERE created_at < now() - interval '24 hours'")
         except Exception:
             log.exception("idempotency purge failed")
 

@@ -125,10 +125,16 @@ export async function listThreads(): Promise<{ items: ThreadSummary[] }> {
   return unwrap(res, "list threads");
 }
 
+export interface StoredMessageContent {
+  text?: string;
+  tool_calls?: { name?: string }[];
+  [key: string]: unknown;
+}
+
 export interface StoredMessage {
   seq: number;
   role: "user" | "assistant" | "tool";
-  content: Record<string, any>;
+  content: StoredMessageContent;
   created_at: string;
 }
 

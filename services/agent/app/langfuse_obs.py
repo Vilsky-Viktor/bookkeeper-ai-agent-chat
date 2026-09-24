@@ -17,9 +17,7 @@ def traced_turn(uid: str, thread_id: str, request_id: str, tags: list[str]):
     top-level trace (setting them only as LangChain metadata can leave them on child
     spans — see doc note under 'What is traced')."""
     with langfuse.start_as_current_observation(as_type="span", name="chat-turn"):
-        with propagate_attributes(
-            user_id=uid, session_id=thread_id, tags=tags, metadata={"request_id": request_id}
-        ):
+        with propagate_attributes(user_id=uid, session_id=thread_id, tags=tags, metadata={"request_id": request_id}):
             yield CallbackHandler()
 
 

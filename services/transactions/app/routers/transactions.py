@@ -86,9 +86,7 @@ async def list_transactions(
         params.append(c_date_parsed)
         params.append(c_created_at_parsed)
         params.append(c_id)
-        clauses.append(
-            f"(occurred_on, created_at, id) < (${len(params) - 2}, ${len(params) - 1}, ${len(params)})"
-        )
+        clauses.append(f"(occurred_on, created_at, id) < (${len(params) - 2}, ${len(params) - 1}, ${len(params)})")
 
     params.append(limit)
     # created_at (not id, which is a random uuid) breaks ties within the same
@@ -131,9 +129,7 @@ async def create_transactions(
                     amount_minor = to_minor(t.amount, t.currency)
                 except InvalidAmount as e:
                     raise HTTPException(status_code=400, detail=str(e)) from e
-                category = t.category or await categorize(
-                    conn, uid, t.description, amount_minor, t.currency, t.type
-                )
+                category = t.category or await categorize(conn, uid, t.description, amount_minor, t.currency, t.type)
                 row = await conn.fetchrow(
                     """
                     INSERT INTO transactions
@@ -142,8 +138,15 @@ async def create_transactions(
                     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
                     RETURNING *
                     """,
-                    uid, t.occurred_on, t.type, amount_minor, t.currency, category,
-                    t.description, t.receipt_uri, t.batch_id,
+                    uid,
+                    t.occurred_on,
+                    t.type,
+                    amount_minor,
+                    t.currency,
+                    category,
+                    t.description,
+                    t.receipt_uri,
+                    t.batch_id,
                 )
                 created.append(_row_to_out(row))
 
@@ -176,9 +179,7 @@ async def patch_transaction(
     async with db.uid_conn(uid) as conn:
 
         async def handler() -> tuple[int, dict]:
-            existing = await conn.fetchrow(
-                "SELECT * FROM transactions WHERE uid=$1 AND id=$2", uid, transaction_id
-            )
+            existing = await conn.fetchrow("SELECT * FROM transactions WHERE uid=$1 AND id=$2", uid, transaction_id)
             if not existing:
                 raise HTTPException(status_code=404, detail="transaction not found")
 
@@ -274,9 +275,14 @@ async def delete_transactions_bulk(
         raise HTTPException(status_code=400, detail=str(e)) from e
 
     payload = {
-        "currency": currency, "category": category, "type": type,
-        "from": from_.isoformat() if from_ else None, "to": to.isoformat() if to else None,
-        "min_amount": min_amount, "max_amount": max_amount, "description": description,
+        "currency": currency,
+        "category": category,
+        "type": type,
+        "from": from_.isoformat() if from_ else None,
+        "to": to.isoformat() if to else None,
+        "min_amount": min_amount,
+        "max_amount": max_amount,
+        "description": description,
     }
 
     async with db.uid_conn(uid) as conn:

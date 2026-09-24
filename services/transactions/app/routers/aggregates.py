@@ -36,7 +36,8 @@ async def aggregates(
     sql = (
         "SELECT currency, category, to_char(date_trunc('month', occurred_on), 'YYYY-MM') AS month, "
         "SUM(amount_minor) AS total_minor, COUNT(*) AS count "
-        "FROM transactions WHERE " + " AND ".join(clauses)
+        "FROM transactions WHERE "
+        + " AND ".join(clauses)
         + " GROUP BY currency, category, month ORDER BY month DESC, currency, category"
     )
     async with db.uid_conn(uid) as conn:

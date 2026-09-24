@@ -6,9 +6,10 @@ budget is spent (never splitting a tool call from its result), rolling summary."
 import datetime
 import json
 import os
+from typing import Any
 
 import tiktoken
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
+from langchain_core.messages import AIMessage, AnyMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
 
 from .languages import SUPPORTED_LANGUAGES
 
@@ -153,18 +154,22 @@ def build_context(
     recent_rows: list,  # oldest-first, from chat_db.recent_messages
     current_user_text: str,
     current_images: list[str] | None = None,
-) -> list[BaseMessage]:
+) -> list[AnyMessage]:
     budget = int(CONTEXT_WINDOW * (1 - OUTPUT_RESERVE_FRACTION))
     used = 0
 
-    sys_text = SYSTEM_PROMPT + f"\nToday's date is {datetime.date.today().isoformat()}. Resolve \"today\"," \
-        " \"yesterday\", \"last month\" etc. against this date, not your training cutoff."
+    sys_text = (
+        SYSTEM_PROMPT + f'\nToday\'s date is {datetime.date.today().isoformat()}. Resolve "today",'
+        ' "yesterday", "last month" etc. against this date, not your training cutoff.'
+    )
     if preferences and preferences.get("default_currency"):
         sys_text += f"\nUser's default currency: {preferences['default_currency']}."
     language_name = SUPPORTED_LANGUAGES.get((preferences or {}).get("language") or "en", "English")
-    sys_text += f"\nAlways reply in {language_name}, regardless of what language the user writes in " \
-        "— this is the language set in their settings, and the whole interface (including receipt " \
+    sys_text += (
+        f"\nAlways reply in {language_name}, regardless of what language the user writes in "
+        "— this is the language set in their settings, and the whole interface (including receipt "
         "extraction) is shown in it."
+    )
     working_set = thread.get("working_set")
     if isinstance(working_set, str):
         working_set = json.loads(working_set) if working_set else {}
@@ -193,12 +198,12 @@ def build_context(
         used += turn_tokens
     selected.reverse()
 
-    messages: list[BaseMessage] = [SystemMessage(content=sys_text)]
+    messages: list[AnyMessage] = [SystemMessage(content=sys_text)]
     for turn in selected:
         messages.extend(turn)
 
     if current_images:
-        content_blocks = [{"type": "text", "text": current_user_text}]
+        content_blocks: list[str | dict[str, Any]] = [{"type": "text", "text": current_user_text}]
         for url in current_images:
             content_blocks.append({"type": "image_url", "image_url": {"url": url}})
         messages.append(HumanMessage(content=content_blocks))

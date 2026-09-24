@@ -42,5 +42,6 @@ async def add_tokens(conn: asyncpg.Connection, uid: str, tokens: int) -> None:
         INSERT INTO usage_counters (uid, day, tokens) VALUES ($1, current_date, $2)
         ON CONFLICT (uid, day) DO UPDATE SET tokens = usage_counters.tokens + $2
         """,
-        uid, tokens,
+        uid,
+        tokens,
     )

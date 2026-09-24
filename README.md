@@ -30,6 +30,36 @@ image at build time — editing their source requires `docker compose up -d --bu
 <service>` to take effect, a plain `restart` won't pick it up. `web` bind-mounts
 `./web` and runs Vite's dev server, so frontend edits hot-reload immediately.
 
+## Code quality tooling
+
+Each Python service is its own independent Poetry project (own `pyproject.toml` +
+`poetry.lock`, no shared config across services) with `black`, `isort`, and `mypy` as
+dev dependencies, run via [`poethepoet`](https://github.com/nat-n/poethepoet) tasks —
+the Poetry equivalent of `web`'s npm scripts:
+
+```bash
+cd services/agent   # or services/transactions
+poetry install --with dev   # only needed for local (non-Docker) use
+poetry run poe start         # run the service (what the Dockerfile's CMD uses)
+poetry run poe format        # black + isort, writes
+poetry run poe format:check  # same, check-only
+poetry run poe lint          # mypy
+poetry run poe check         # all three checks in one go
+```
+
+The same tasks also run inside the already-built containers, e.g.
+`docker compose exec agent poetry run poe check`.
+
+The frontend uses ESLint (flat config, `typescript-eslint` + React Hooks/Refresh
+plugins) and Prettier instead:
+
+```bash
+cd web
+npm run lint           # eslint .
+npm run format          # prettier --write .
+npm run format:check    # prettier --check .
+```
+
 ## What it does
 
 - **Chat-driven transactions.** Add, edit, delete (one at a time or bulk by filter),
@@ -198,16 +228,19 @@ db/init/                     Postgres schema + RLS policies (bookkeeping DB, cha
 firebase/                    Auth + Firestore emulator container
 gcs/receipts-local/          fake-gcs-server's on-disk backing store
 services/transactions/       FastAPI — owns Postgres, CRUD, categorization, idempotency
+  pyproject.toml / poetry.lock own Poetry project — deps, black/isort/mypy, poe tasks
   app/routers/                 transactions.py, aggregates.py, categorize.py
   app/categorize.py            corrections-first, LLM-fallback categorization
   app/money.py                 decimal string <-> integer minor-unit conversion
 services/agent/               FastAPI + LangGraph — owns chat DB, SSE chat, tools
+  pyproject.toml / poetry.lock own Poetry project — deps, black/isort/mypy, poe tasks
   app/tools.py                  add/edit/delete_transaction(s), query, set_filter,
                                  export, extract_receipt, get_exchange_rate
   app/context.py                system prompt + token-budgeted context assembly
   app/languages.py              supported chat/receipt-translation languages
   app/graph.py                  the LangGraph StateGraph (model ⇄ tools loop)
 web/                          React + Vite + TypeScript — chat pane + transactions table
+  eslint.config.js / .prettierrc.json  lint + format config
   src/lib/i18n.tsx               translation dictionaries, RTL handling, useTranslation()
   src/lib/sync.ts                Firestore cross-tab live-update listener
   src/components/                ChatPanel, TransactionsTable, ReceiptModal, Tooltip, …

@@ -15,8 +15,18 @@ import asyncpg
 from openai import AsyncOpenAI
 
 CATEGORIES = [
-    "groceries", "dining", "transport", "housing", "utilities", "entertainment",
-    "health", "shopping", "travel", "income", "fees", "other",
+    "groceries",
+    "dining",
+    "transport",
+    "housing",
+    "utilities",
+    "entertainment",
+    "health",
+    "shopping",
+    "travel",
+    "income",
+    "fees",
+    "other",
 ]
 
 # Short definitions so an ambiguous single item (e.g. toothpaste from a minimarket
@@ -53,7 +63,8 @@ def normalize_item(description: str | None) -> str:
 async def _lookup_correction(conn: asyncpg.Connection, uid: str, item_key: str) -> str | None:
     row = await conn.fetchrow(
         "SELECT category FROM category_corrections WHERE uid=$1 AND item_key=$2",
-        uid, item_key,
+        uid,
+        item_key,
     )
     return row["category"] if row else None
 
@@ -69,7 +80,9 @@ async def save_correction(conn: asyncpg.Connection, uid: str, description: str |
         VALUES ($1,$2,$3)
         ON CONFLICT (uid, item_key) DO UPDATE SET category = EXCLUDED.category
         """,
-        uid, item_key, category,
+        uid,
+        item_key,
+        category,
     )
 
 
@@ -103,9 +116,7 @@ async def categorize(
         uid,
     )
     history_text = (
-        "\n".join(f'- "{r["item_key"]}" -> {r["category"]}' for r in history_rows)
-        if history_rows
-        else "(none yet)"
+        "\n".join(f'- "{r["item_key"]}" -> {r["category"]}' for r in history_rows) if history_rows else "(none yet)"
     )
 
     # The category list is a starting point, not a hard enum: the user can type any
@@ -137,9 +148,9 @@ async def categorize(
         f"{history_text}\n\n"
         "If this transaction's description clearly describes the same purchase as one "
         "of those corrections — even worded differently, abbreviated, or naming the "
-        "merchant/place slightly differently (e.g. \"coffee at Starbucks\" and "
-        "\"Starbucks latte\" are the same kind of purchase; \"claude subscription\" "
-        "and \"Claude AI subscription payment\" are the same purchase) — use that "
+        'merchant/place slightly differently (e.g. "coffee at Starbucks" and '
+        '"Starbucks latte" are the same kind of purchase; "claude subscription" '
+        'and "Claude AI subscription payment" are the same purchase) — use that '
         "correction's category, even if it's a custom one not in the list above. "
         "Otherwise classify based on what the item itself is — the same place can "
         "sell items across several categories in one purchase (e.g. a minimarket "

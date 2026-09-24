@@ -137,7 +137,7 @@ const ChatPanel = forwardRef<ChatPanelHandle, Props>(function ChatPanel(
           // was attached (see main.py) — split it back into text + a viewable image.
           loaded.push({ role: "user", seq: m.seq, ...splitReceiptMarker(m.content.text) });
         } else if (m.role === "assistant" && m.content?.text) {
-          const toolCalls = m.content.tool_calls as { name?: string }[] | undefined;
+          const toolCalls = m.content.tool_calls;
           if (toolCalls?.some((c) => c.name === "export_transactions")) exportIndexes.push(loaded.length);
           loaded.push({ role: "assistant", seq: m.seq, text: m.content.text });
         }
@@ -407,7 +407,11 @@ const ChatPanel = forwardRef<ChatPanelHandle, Props>(function ChatPanel(
 
   return (
     <>
-      <div ref={messageListRef} onScroll={handleMessageListScroll} className="flex flex-1 flex-col gap-2.5 overflow-y-auto p-3">
+      <div
+        ref={messageListRef}
+        onScroll={handleMessageListScroll}
+        className="flex flex-1 flex-col gap-2.5 overflow-y-auto p-3"
+      >
         {loadingOlder && (
           <div className="flex items-center justify-center gap-2 self-center py-1 text-xs text-zinc-400 dark:text-zinc-500">
             <Sparkles size={14} className="animate-pulse" />
@@ -423,7 +427,10 @@ const ChatPanel = forwardRef<ChatPanelHandle, Props>(function ChatPanel(
           </button>
         )}
         {messages.map((m, i) => (
-          <div key={i} className={`flex max-w-[90%] flex-col gap-1.5 ${m.role === "user" ? "self-end items-end" : "self-start items-start"}`}>
+          <div
+            key={i}
+            className={`flex max-w-[90%] flex-col gap-1.5 ${m.role === "user" ? "self-end items-end" : "self-start items-start"}`}
+          >
             <div
               className={`whitespace-pre-wrap rounded-xl px-3 py-2 text-sm leading-relaxed ${
                 m.role === "user"

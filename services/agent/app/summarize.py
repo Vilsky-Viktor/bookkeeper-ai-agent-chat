@@ -70,6 +70,9 @@ async def run_summarize(uid: str, thread_id: str, through_seq: int) -> None:
             UPDATE threads SET summary = $1, summarized_through = $2, updated_at = now()
             WHERE uid = $3 AND id = $4 AND (summarized_through IS NULL OR summarized_through < $2)
             """,
-            new_summary, through_seq, uid, thread_id,
+            new_summary,
+            through_seq,
+            uid,
+            thread_id,
         )
     log.info("summarized thread %s through seq %s", thread_id, through_seq)

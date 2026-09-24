@@ -57,62 +57,74 @@ export default function TransactionsTable({ filter, onViewImage, onReferenceTran
   }
 
   return (
-    <div onScroll={handleScroll} className="min-h-0 flex-1 overflow-auto border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
-    <table className="w-full min-w-[640px] border-spacing-0 text-sm bg-white dark:bg-zinc-900">
-      <thead className="sticky top-0 z-10 will-change-transform bg-zinc-50 dark:bg-zinc-800">
-        <tr>
-          <th className="px-3 py-2 text-start font-medium text-zinc-600 dark:text-zinc-400">{t("colDate")}</th>
-          <th className="px-3 py-2 text-start font-medium text-zinc-600 dark:text-zinc-400">{t("colAmount")}</th>
-          <th className="px-3 py-2 text-start font-medium text-zinc-600 dark:text-zinc-400">{t("colCurrency")}</th>
-          <th className="px-3 py-2 text-start font-medium text-zinc-600 dark:text-zinc-400">{t("colCategory")}</th>
-          <th className="px-3 py-2 text-start font-medium text-zinc-600 dark:text-zinc-400">{t("colDescription")}</th>
-          <th className="px-3 py-2" />
-        </tr>
-      </thead>
-      <tbody>
-        {items && items.length === 0 && (
+    <div
+      onScroll={handleScroll}
+      className="min-h-0 flex-1 overflow-auto border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900"
+    >
+      <table className="w-full min-w-[640px] border-spacing-0 text-sm bg-white dark:bg-zinc-900">
+        <thead className="sticky top-0 z-10 will-change-transform bg-zinc-50 dark:bg-zinc-800">
           <tr>
-            <td colSpan={6} className="px-3 py-10 text-center text-sm text-zinc-500 dark:text-zinc-400">
-              {t("noTransactions")}
-            </td>
+            <th className="px-3 py-2 text-start font-medium text-zinc-600 dark:text-zinc-400">{t("colDate")}</th>
+            <th className="px-3 py-2 text-start font-medium text-zinc-600 dark:text-zinc-400">{t("colAmount")}</th>
+            <th className="px-3 py-2 text-start font-medium text-zinc-600 dark:text-zinc-400">{t("colCurrency")}</th>
+            <th className="px-3 py-2 text-start font-medium text-zinc-600 dark:text-zinc-400">{t("colCategory")}</th>
+            <th className="px-3 py-2 text-start font-medium text-zinc-600 dark:text-zinc-400">{t("colDescription")}</th>
+            <th className="px-3 py-2" />
           </tr>
-        )}
-        {items?.map((tx) => {
-          const receiptUrl = receiptViewUrl(tx.receipt_uri);
-          return (
-            <tr key={tx.id} className="border-t border-zinc-100 hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-800/40">
-              <td className="px-3 py-3.5 text-zinc-700 dark:text-zinc-300">{formatDate(tx.occurred_on)}</td>
-              <td className={tx.type === "expense" ? "px-3 py-3.5 text-red-600 dark:text-red-400" : "px-3 py-3.5 text-emerald-600 dark:text-emerald-400"}>
-                {tx.type === "expense" ? "-" : ""}
-                {formatAmount(tx.amount)}
-              </td>
-              <td className="px-3 py-3.5 text-zinc-700 dark:text-zinc-300">{tx.currency}</td>
-              <td className="px-3 py-3.5 text-zinc-700 dark:text-zinc-300">{tCategory(tx.category)}</td>
-              <td className="px-3 py-3.5 text-zinc-700 dark:text-zinc-300">{tx.description || ""}</td>
-              <td className="px-3 py-3.5">
-                <div className="flex items-center justify-end gap-1">
-                  {receiptUrl && (
-                    <IconButton onClick={() => onViewImage(receiptUrl)} label={t("viewReceipt")} align="end">
-                      <Paperclip size={14} />
-                    </IconButton>
-                  )}
-                  <IconButton onClick={() => onReferenceTransaction(tx.id)} label={t("referenceInChat")} align="end">
-                    <Hash size={14} />
-                  </IconButton>
-                </div>
+        </thead>
+        <tbody>
+          {items && items.length === 0 && (
+            <tr>
+              <td colSpan={6} className="px-3 py-10 text-center text-sm text-zinc-500 dark:text-zinc-400">
+                {t("noTransactions")}
               </td>
             </tr>
-          );
-        })}
-        {isFetchingNextPage && (
-          <tr>
-            <td colSpan={6} className="px-3 py-3 text-center text-xs text-zinc-400 dark:text-zinc-500">
-              {t("loadingEarlier")}
-            </td>
-          </tr>
-        )}
-      </tbody>
-    </table>
+          )}
+          {items?.map((tx) => {
+            const receiptUrl = receiptViewUrl(tx.receipt_uri);
+            return (
+              <tr
+                key={tx.id}
+                className="border-t border-zinc-100 hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-800/40"
+              >
+                <td className="px-3 py-3.5 text-zinc-700 dark:text-zinc-300">{formatDate(tx.occurred_on)}</td>
+                <td
+                  className={
+                    tx.type === "expense"
+                      ? "px-3 py-3.5 text-red-600 dark:text-red-400"
+                      : "px-3 py-3.5 text-emerald-600 dark:text-emerald-400"
+                  }
+                >
+                  {tx.type === "expense" ? "-" : ""}
+                  {formatAmount(tx.amount)}
+                </td>
+                <td className="px-3 py-3.5 text-zinc-700 dark:text-zinc-300">{tx.currency}</td>
+                <td className="px-3 py-3.5 text-zinc-700 dark:text-zinc-300">{tCategory(tx.category)}</td>
+                <td className="px-3 py-3.5 text-zinc-700 dark:text-zinc-300">{tx.description || ""}</td>
+                <td className="px-3 py-3.5">
+                  <div className="flex items-center justify-end gap-1">
+                    {receiptUrl && (
+                      <IconButton onClick={() => onViewImage(receiptUrl)} label={t("viewReceipt")} align="end">
+                        <Paperclip size={14} />
+                      </IconButton>
+                    )}
+                    <IconButton onClick={() => onReferenceTransaction(tx.id)} label={t("referenceInChat")} align="end">
+                      <Hash size={14} />
+                    </IconButton>
+                  </div>
+                </td>
+              </tr>
+            );
+          })}
+          {isFetchingNextPage && (
+            <tr>
+              <td colSpan={6} className="px-3 py-3 text-center text-xs text-zinc-400 dark:text-zinc-500">
+                {t("loadingEarlier")}
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
     </div>
   );
 }

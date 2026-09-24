@@ -2,7 +2,7 @@
 FastAPI", no LangGraph Server/Platform, no checkpointer — the graph runs once per HTTP
 request and threads persist in the chat DB instead, see chat_db.py)."""
 
-from langchain_core.messages import BaseMessage
+from langchain_core.messages import AnyMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool
 from langgraph.graph import END, START, MessagesState, StateGraph
@@ -30,5 +30,5 @@ def build_graph(tools: list[BaseTool]):
     return graph.compile()
 
 
-def initial_state(messages: list[BaseMessage]) -> MessagesState:
+def initial_state(messages: list[AnyMessage]) -> MessagesState:
     return {"messages": messages}

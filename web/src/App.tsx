@@ -21,10 +21,14 @@ export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [authReady, setAuthReady] = useState(false);
 
-  useEffect(() => onAuthStateChanged(auth, (u) => {
-    setUser(u);
-    setAuthReady(true);
-  }), []);
+  useEffect(
+    () =>
+      onAuthStateChanged(auth, (u) => {
+        setUser(u);
+        setAuthReady(true);
+      }),
+    [],
+  );
 
   if (!authReady) return null;
 

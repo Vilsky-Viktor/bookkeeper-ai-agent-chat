@@ -7,6 +7,7 @@ import asyncio
 import os
 
 from langchain_openai import ChatOpenAI
+from pydantic import SecretStr
 
 CALL_TIMEOUT = 60.0
 LLM_CONCURRENCY = int(os.environ.get("LLM_CONCURRENCY", "40"))
@@ -20,7 +21,7 @@ SUMMARY_MODEL = os.environ.get("LLM_SUMMARY_MODEL", "gpt-4o-mini")
 def _client(model: str, temperature: float = 0.2) -> ChatOpenAI:
     return ChatOpenAI(
         model=model,
-        api_key=os.environ["LLM_API_KEY"],
+        api_key=SecretStr(os.environ["LLM_API_KEY"]),
         timeout=CALL_TIMEOUT,
         max_retries=2,  # openai SDK: retries 429/5xx only, backoff+jitter, honors Retry-After
         temperature=temperature,

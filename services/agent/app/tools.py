@@ -140,8 +140,11 @@ def build_tools(jwt: str, x_client_id: str | None, language: str = "en") -> list
                 json={
                     "transactions": [
                         {
-                            "occurred_on": occurred_on, "type": type, "amount": amount,
-                            "currency": currency, "description": description,
+                            "occurred_on": occurred_on,
+                            "type": type,
+                            "amount": amount,
+                            "currency": currency,
+                            "description": description,
                         }
                     ]
                 },
@@ -175,8 +178,12 @@ def build_tools(jwt: str, x_client_id: str | None, language: str = "en") -> list
         body = {
             k: v
             for k, v in {
-                "occurred_on": occurred_on, "type": type, "amount": amount, "currency": currency,
-                "category": category, "description": description,
+                "occurred_on": occurred_on,
+                "type": type,
+                "amount": amount,
+                "currency": currency,
+                "category": category,
+                "description": description,
             }.items()
             if v is not None
         }
@@ -192,9 +199,7 @@ def build_tools(jwt: str, x_client_id: str | None, language: str = "en") -> list
         return {"ui_event": "table_changed", **resp.json()}
 
     @tool
-    async def delete_transaction(
-        transaction_id: str, tool_call_id: Annotated[str, InjectedToolCallId]
-    ) -> dict:
+    async def delete_transaction(transaction_id: str, tool_call_id: Annotated[str, InjectedToolCallId]) -> dict:
         """Delete ONE transaction by id. For deleting more than one — "delete all",
         "clear the table", "remove my Starbucks purchases" — use
         delete_transactions_matching instead; it deletes in a single server-side
@@ -238,8 +243,13 @@ def build_tools(jwt: str, x_client_id: str | None, language: str = "en") -> list
         params = {
             k: v
             for k, v in {
-                "currency": currency, "category": category, "type": type,
-                "from": from_date, "to": to_date, "min_amount": min_amount, "max_amount": max_amount,
+                "currency": currency,
+                "category": category,
+                "type": type,
+                "from": from_date,
+                "to": to_date,
+                "min_amount": min_amount,
+                "max_amount": max_amount,
                 "description": description,
             }.items()
             if v is not None
@@ -276,8 +286,13 @@ def build_tools(jwt: str, x_client_id: str | None, language: str = "en") -> list
         params = {
             k: v
             for k, v in {
-                "currency": currency, "category": category, "type": type,
-                "from": from_date, "to": to_date, "min_amount": min_amount, "max_amount": max_amount,
+                "currency": currency,
+                "category": category,
+                "type": type,
+                "from": from_date,
+                "to": to_date,
+                "min_amount": min_amount,
+                "max_amount": max_amount,
                 "description": description,
             }.items()
             if v is not None
@@ -325,7 +340,10 @@ def build_tools(jwt: str, x_client_id: str | None, language: str = "en") -> list
                 )
             }
         return {
-            "from": from_currency, "to": to_currency, "rate": rate, "date": data.get("date"),
+            "from": from_currency,
+            "to": to_currency,
+            "rate": rate,
+            "date": data.get("date"),
             "note": "Daily reference rate, not real-time.",
         }
 
@@ -352,8 +370,13 @@ def build_tools(jwt: str, x_client_id: str | None, language: str = "en") -> list
         filt = {
             k: v
             for k, v in {
-                "currency": currency, "category": category, "type": type,
-                "from": from_date, "to": to_date, "min_amount": min_amount, "max_amount": max_amount,
+                "currency": currency,
+                "category": category,
+                "type": type,
+                "from": from_date,
+                "to": to_date,
+                "min_amount": min_amount,
+                "max_amount": max_amount,
                 "description": description,
             }.items()
             if v is not None
@@ -425,7 +448,9 @@ def build_tools(jwt: str, x_client_id: str | None, language: str = "en") -> list
                         "/api/transactions/categorize",
                         json={
                             "description": description,
-                            "amount": item.get("amount", "0"), "currency": currency, "type": "expense",
+                            "amount": item.get("amount", "0"),
+                            "currency": currency,
+                            "type": "expense",
                         },
                     )
                     if cat_resp.status_code == 200:
@@ -434,15 +459,29 @@ def build_tools(jwt: str, x_client_id: str | None, language: str = "en") -> list
                     pass
                 proposed.append(
                     {
-                        "occurred_on": occurred_on, "type": "expense", "amount": item.get("amount"),
-                        "currency": currency, "category": category,
+                        "occurred_on": occurred_on,
+                        "type": "expense",
+                        "amount": item.get("amount"),
+                        "currency": currency,
+                        "category": category,
                         "description": description,
                         "receipt_uri": f"gs://{storage.BUCKET}/{object_name}",
                     }
                 )
-        return {"ui_event": "receipt_proposed", "items": proposed, "receipt_uri": f"gs://{storage.BUCKET}/{object_name}"}
+        return {
+            "ui_event": "receipt_proposed",
+            "items": proposed,
+            "receipt_uri": f"gs://{storage.BUCKET}/{object_name}",
+        }
 
     return [
-        add_transaction, edit_transaction, delete_transaction, delete_transactions_matching,
-        query_transactions, get_exchange_rate, set_filter, export_transactions, extract_receipt,
+        add_transaction,
+        edit_transaction,
+        delete_transaction,
+        delete_transactions_matching,
+        query_transactions,
+        get_exchange_rate,
+        set_filter,
+        export_transactions,
+        extract_receipt,
     ]

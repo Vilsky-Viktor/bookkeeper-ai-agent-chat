@@ -43,9 +43,15 @@ export function useResizable({ axis, initial, min, max, storageKey, reverse = fa
   // Re-clamp whenever the bounds themselves change (e.g. switching between the
   // mobile height-split and desktop width-split, which have different min/max), so a
   // size that was valid in one layout doesn't stay stuck out of range in the other.
-  useEffect(() => {
-    setSize((s) => clamp(s));
-  }, [clamp]);
+  // Adjusted during render (React's documented pattern for this) rather than in an
+  // effect, to avoid an extra render pass — see
+  // https://react.dev/learn/you-might-not-need-an-effect
+  const [prevBounds, setPrevBounds] = useState({ min, max });
+  if (prevBounds.min !== min || prevBounds.max !== max) {
+    setPrevBounds({ min, max });
+    const clamped = clamp(size);
+    if (clamped !== size) setSize(clamped);
+  }
 
   const onPointerDown = useCallback(
     (e: React.PointerEvent<HTMLElement>) => {

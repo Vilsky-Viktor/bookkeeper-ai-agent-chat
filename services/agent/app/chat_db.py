@@ -33,10 +33,9 @@ async def uid_conn(uid: str):
 
 # --- threads ---------------------------------------------------------------
 
+
 async def create_thread(conn: asyncpg.Connection, uid: str, title: str | None = None) -> dict:
-    row = await conn.fetchrow(
-        "INSERT INTO threads (uid, title) VALUES ($1, $2) RETURNING *", uid, title
-    )
+    row = await conn.fetchrow("INSERT INTO threads (uid, title) VALUES ($1, $2) RETURNING *", uid, title)
     return dict(row)
 
 
@@ -52,19 +51,20 @@ async def list_threads(conn: asyncpg.Connection, uid: str) -> list[asyncpg.Recor
 
 
 async def touch_thread(conn: asyncpg.Connection, uid: str, thread_id: str) -> None:
-    await conn.execute(
-        "UPDATE threads SET updated_at = now() WHERE uid=$1 AND id=$2", uid, thread_id
-    )
+    await conn.execute("UPDATE threads SET updated_at = now() WHERE uid=$1 AND id=$2", uid, thread_id)
 
 
 async def update_working_set(conn: asyncpg.Connection, uid: str, thread_id: str, working_set: dict) -> None:
     await conn.execute(
         "UPDATE threads SET working_set = $1, updated_at = now() WHERE uid=$2 AND id=$3",
-        json.dumps(working_set), uid, thread_id,
+        json.dumps(working_set),
+        uid,
+        thread_id,
     )
 
 
 # --- messages ----------------------------------------------------------------
+
 
 async def insert_message(
     conn: asyncpg.Connection,
@@ -84,23 +84,28 @@ async def insert_message(
         ON CONFLICT (thread_id, client_msg_id) WHERE client_msg_id IS NOT NULL DO NOTHING
         RETURNING *
         """,
-        thread_id, uid, role, json.dumps(content), json.dumps(compact) if compact is not None else None,
-        token_count, uuid.UUID(client_msg_id) if client_msg_id else None,
+        thread_id,
+        uid,
+        role,
+        json.dumps(content),
+        json.dumps(compact) if compact is not None else None,
+        token_count,
+        uuid.UUID(client_msg_id) if client_msg_id else None,
     )
 
 
 async def recent_messages(conn: asyncpg.Connection, uid: str, thread_id: str, limit: int) -> list[asyncpg.Record]:
     rows = await conn.fetch(
         "SELECT * FROM messages WHERE uid=$1 AND thread_id=$2 ORDER BY seq DESC LIMIT $3",
-        uid, thread_id, limit,
+        uid,
+        thread_id,
+        limit,
     )
     return list(reversed(rows))  # oldest-first for display / prompt assembly
 
 
 async def all_messages(conn: asyncpg.Connection, uid: str, thread_id: str) -> list[asyncpg.Record]:
-    return await conn.fetch(
-        "SELECT * FROM messages WHERE uid=$1 AND thread_id=$2 ORDER BY seq ASC", uid, thread_id
-    )
+    return await conn.fetch("SELECT * FROM messages WHERE uid=$1 AND thread_id=$2 ORDER BY seq ASC", uid, thread_id)
 
 
 async def messages_page(
@@ -114,12 +119,17 @@ async def messages_page(
     if before_seq is None:
         rows = await conn.fetch(
             "SELECT * FROM messages WHERE uid=$1 AND thread_id=$2 ORDER BY seq DESC LIMIT $3",
-            uid, thread_id, limit + 1,
+            uid,
+            thread_id,
+            limit + 1,
         )
     else:
         rows = await conn.fetch(
             "SELECT * FROM messages WHERE uid=$1 AND thread_id=$2 AND seq < $3 ORDER BY seq DESC LIMIT $4",
-            uid, thread_id, before_seq, limit + 1,
+            uid,
+            thread_id,
+            before_seq,
+            limit + 1,
         )
     has_more = len(rows) > limit
     return list(reversed(rows[:limit])), has_more
@@ -128,11 +138,14 @@ async def messages_page(
 async def messages_since(conn: asyncpg.Connection, uid: str, thread_id: str, after_seq: int) -> list[asyncpg.Record]:
     return await conn.fetch(
         "SELECT * FROM messages WHERE uid=$1 AND thread_id=$2 AND seq > $3 ORDER BY seq ASC",
-        uid, thread_id, after_seq,
+        uid,
+        thread_id,
+        after_seq,
     )
 
 
 # --- preferences ---------------------------------------------------------------
+
 
 async def get_preferences(conn: asyncpg.Connection, uid: str) -> asyncpg.Record | None:
     return await conn.fetchrow("SELECT * FROM user_preferences WHERE uid=$1", uid)
@@ -145,5 +158,6 @@ async def set_language(conn: asyncpg.Connection, uid: str, language: str) -> asy
         ON CONFLICT (uid) DO UPDATE SET language = EXCLUDED.language
         RETURNING *
         """,
-        uid, language,
+        uid,
+        language,
     )
