@@ -364,9 +364,9 @@ def build_tools(jwt: str, x_client_id: str | None, language: str = "en") -> list
         the UI re-queries with this filter itself. To clear the filter (e.g. "clear
         the filter", "reset"), call this with every argument left unset — you must
         still call it; replying that the filter is cleared without calling this tool
-        does nothing. Clearing resets the table to its default view, the current
-        calendar month — not to every transaction ever, so don't tell the user it now
-        shows "everything"/"all transactions"; say it's back to showing this month."""
+        does nothing. Clearing resets the table to its default view, the last 30 days
+        — not to every transaction ever, so don't tell the user it now shows
+        "everything"/"all transactions"; say it's back to showing the last 30 days."""
         filt = {
             k: v
             for k, v in {

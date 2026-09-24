@@ -1,17 +1,21 @@
 import type { TransactionFilter } from "./api";
 
-// The table's resting state — current calendar month — used both on first load and
-// whenever the chat clears the filter (an empty filter_set event means "back to
-// default", not "show everything").
+// The table's resting state — a rolling last-30-days window — used both on first load
+// and whenever the chat clears the filter (an empty filter_set event means "back to
+// default", not "show everything"). A rolling window instead of the current calendar
+// month avoids showing an empty table for everyone in the first few days of a new
+// month, before this month has any transactions yet.
 export function defaultFilter(): TransactionFilter {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = now.getMonth(); // 0-indexed
-  const pad = (n: number) => String(n).padStart(2, "0");
-  const lastDay = new Date(year, month + 1, 0).getDate();
+  const format = (d: Date) => {
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  };
+  const to = new Date();
+  const from = new Date();
+  from.setDate(from.getDate() - 29); // 29 days back + today = a 30-day window
   return {
-    from: `${year}-${pad(month + 1)}-01`,
-    to: `${year}-${pad(month + 1)}-${pad(lastDay)}`,
+    from: format(from),
+    to: format(to),
   };
 }
 

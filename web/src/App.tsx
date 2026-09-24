@@ -5,6 +5,7 @@ import { Coins, LogOut, Moon, Sun } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import ChatPanel from "./components/ChatPanel";
 import type { ChatPanelHandle } from "./components/ChatPanel";
+import GoogleIcon from "./components/GoogleIcon";
 import ReceiptModal from "./components/ReceiptModal";
 import TransactionsTable from "./components/TransactionsTable";
 import { listThreads } from "./lib/api";
@@ -105,6 +106,7 @@ function AppContent({ user }: { user: User | null }) {
             onClick={() => signIn()}
             className="inline-flex items-center gap-2 rounded-lg bg-sky-200 px-4 py-2 text-sm font-medium text-sky-900 transition-colors hover:bg-sky-300 dark:bg-sky-900/70 dark:text-sky-100 dark:hover:bg-sky-900/90"
           >
+            <GoogleIcon size={16} />
             {t("signInButton")}
           </button>
         </div>
@@ -116,7 +118,7 @@ function AppContent({ user }: { user: User | null }) {
 
   return (
     <div className="flex h-screen flex-col bg-zinc-100 dark:bg-[#141416]">
-      <header className="relative z-10 flex items-center justify-between px-5 py-3">
+      <header className="relative z-30 flex items-center justify-between px-5 py-3">
         <div className="flex items-center gap-1.5 text-zinc-900 dark:text-zinc-100">
           <Coins size={18} />
           <span className="text-sm font-semibold">SMAKER.ai</span>
@@ -130,7 +132,7 @@ function AppContent({ user }: { user: User | null }) {
             {avatarLetter}
           </button>
           {menuOpen && (
-            <div className="absolute end-0 top-full z-10 mt-2 w-56 rounded-lg border border-zinc-200 bg-white p-1.5 shadow-lg dark:border-zinc-800 dark:bg-zinc-900">
+            <div className="absolute end-0 top-full z-20 mt-2 w-56 rounded-lg border border-zinc-200 bg-white p-1.5 shadow-lg dark:border-zinc-800 dark:bg-zinc-900">
               <div className="truncate px-2.5 py-1.5 text-xs text-zinc-500 dark:text-zinc-400">
                 {user.email ?? user.uid}
               </div>

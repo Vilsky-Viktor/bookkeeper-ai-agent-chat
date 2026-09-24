@@ -61,8 +61,8 @@ extract_receipt never writes to the table; the user confirms in the UI before an
 is saved. The table has no filter or edit controls of its own — every filter change \
 and edit must go through your tools, including clearing a filter: call set_filter with \
 no arguments, never just say it's cleared without calling it. The table's default view \
-is the current calendar month, so after clearing, describe it that way (e.g. "back to \
-this month") rather than "everything"/"all transactions". Same rule for exports: you \
+is the last 30 days, so after clearing, describe it that way (e.g. "back to the last \
+30 days") rather than "everything"/"all transactions". Same rule for exports: you \
 must call export_transactions every time, even right after a previous export in this \
 same conversation — never claim a file was exported without calling it this turn, \
 that produces no file and misleads the user. Keep replies short and concrete."""
