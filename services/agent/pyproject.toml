@@ -1,38 +1,42 @@
-[tool.poetry]
+[project]
 name = "agent-service"
 version = "0.1.0"
 description = "Bookkeeping chat — agent service (LangGraph chat agent, owns the chat Postgres DB)"
-package-mode = false
+requires-python = ">=3.12,<4.0"
+dependencies = [
+    "fastapi==0.115.0",
+    "uvicorn[standard]==0.30.6",
+    "asyncpg==0.30.0",
+    "httpx==0.28.1",
+    "pydantic==2.12.5",
+    "firebase-admin==6.5.0",
+    "google-cloud-firestore==2.18.0",
+    "google-cloud-storage==2.18.2",
+    "openai==3.17.0",
+    "langgraph==1.2.12",
+    "langchain-core==1.6.4",
+    "langchain-openai==1.6.3",
+    "langchain==1.4.2",
+    "langfuse==4.15.4",
+    "tiktoken==0.14.0",
+    "pymupdf==1.28.2",
+    "python-multipart==0.0.9",
+    "langchain-anthropic==1.7.4",
+    "langchain-google-genai==4.4.0",
+]
 
-[tool.poetry.dependencies]
-python = "^3.12"
-fastapi = "==0.115.0"
-uvicorn = { version = "==0.30.6", extras = ["standard"] }
-asyncpg = "==0.30.0"
-httpx = "==0.28.1"
-pydantic = "==2.12.5"
-firebase-admin = "==6.5.0"
-google-cloud-firestore = "==2.18.0"
-google-cloud-storage = "==2.18.2"
-openai = "==3.17.0"
-langgraph = "==1.2.12"
-langchain-core = "==1.6.4"
-langchain-openai = "==1.6.3"
-langchain = "==1.4.2"
-langfuse = "==4.15.4"
-tiktoken = "==0.14.0"
-pymupdf = "==1.28.2"
-python-multipart = "==0.0.9"
-langchain-anthropic = "==1.7.4"
-langchain-google-genai = "==4.4.0"
+[dependency-groups]
+dev = [
+    "black==24.10.0",
+    "isort==5.13.2",
+    "mypy==1.13.0",
+    "poethepoet>=0.29,<1.0",
+    "pytest==8.3.3",
+    "pytest-asyncio==0.24.0",
+]
 
-[tool.poetry.group.dev.dependencies]
-black = "==24.10.0"
-isort = "==5.13.2"
-mypy = "==1.13.0"
-poethepoet = ">=0.29,<1.0"
-pytest = "==8.3.3"
-pytest-asyncio = "==0.24.0"
+[tool.uv]
+package = false
 
 [tool.poe.tasks]
 start = "uvicorn app.main:app --host 0.0.0.0 --port 8000"
@@ -72,7 +76,3 @@ python_version = "3.12"
 [[tool.mypy.overrides]]
 module = ["asyncpg", "asyncpg.*", "google.cloud", "google.cloud.*", "firebase_admin", "firebase_admin.*"]
 ignore_missing_imports = true
-
-[build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"

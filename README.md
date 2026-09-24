@@ -1,11 +1,11 @@
 # SMAKER.ai — bookkeeping chat
 
-A B2C bookkeeping app: a chat pane driven by a LangGraph agent (OpenAI) sits next to a
+A B2C bookkeeping app: a chat pane driven by a LangGraph agent sits next to a
 transactions table. Two independent FastAPI services front two Postgres databases; a
 local Docker Compose stack stands in for every GCP piece the design targets (Firebase
 Auth/Firestore, Cloud Storage, Cloud Tasks, Cloud Run, Hosting rewrites), so the only
-thing that talks to the real internet is the OpenAI API and a free public
-exchange-rate lookup.
+thing that talks to the real internet is the LLM provider's API (OpenAI by default —
+see "Swapping the LLM provider") and a free public exchange-rate lookup.
 
 ## Quickstart
 
@@ -17,7 +17,7 @@ exchange-rate lookup.
 5. Reset everything with `docker compose down -v` (also drops the Postgres volume).
 
 **First boot is slow to become responsive (15–30s):** the `agent` container imports the
-full LangGraph/LangChain/OpenAI/Langfuse stack at startup, and `firebase-tools`
+full LangGraph/LangChain/Langfuse stack at startup, and `firebase-tools`
 downloads the Firestore emulator JAR on first run. Watch `docker compose logs -f` for
 "Uvicorn running" (both FastAPI services) and "All emulators ready" (Firebase).
 
@@ -32,27 +32,27 @@ image at build time — editing their source requires `docker compose up -d --bu
 
 ## Code quality tooling
 
-Each Python service is its own independent Poetry project (own `pyproject.toml` +
-`poetry.lock`, no shared config across services) with `black`, `isort`, `mypy`, and
-`pytest` (+ `pytest-asyncio`) as dev dependencies, run via
-[`poethepoet`](https://github.com/nat-n/poethepoet) tasks — the Poetry equivalent of
-`web`'s npm scripts:
+Each Python service is its own independent [`uv`](https://docs.astral.sh/uv/) project
+(own `pyproject.toml` + `uv.lock`, no shared config across services) with `black`,
+`isort`, `mypy`, and `pytest` (+ `pytest-asyncio`) as dev dependencies (the
+`dependency-groups.dev` group, installed automatically by `uv sync`), run via
+[`poethepoet`](https://github.com/nat-n/poethepoet) tasks:
 
 ```bash
 cd services/agent   # or services/transactions
-poetry install --with dev   # only needed for local (non-Docker) use
-poetry run poe start         # run the service (what the Dockerfile's CMD uses)
-poetry run poe format        # black + isort, writes
-poetry run poe format:check  # same, check-only
-poetry run poe lint          # mypy
-poetry run poe test          # pytest
-poetry run poe check         # format:check + lint + test, in one go
+uv sync              # only needed for local (non-Docker) use
+uv run poe start         # run the service (what the Dockerfile's CMD uses)
+uv run poe format        # black + isort, writes
+uv run poe format:check  # same, check-only
+uv run poe lint          # mypy
+uv run poe test          # pytest
+uv run poe check         # format:check + lint + test, in one go
 ```
 
 `format`/`format:check`/`lint` also run inside the already-built containers (e.g.
-`docker compose exec agent poetry run poe lint`), since `app/` is baked into the
-image. `test`/`check` need the local (non-Docker) `poetry install --with dev` above
-instead — `tests/` is deliberately not copied into the runtime image.
+`docker compose exec agent uv run poe lint`), since `app/` is baked into the image.
+`test`/`check` need the local (non-Docker) `uv sync` above instead — `tests/` is
+deliberately not copied into the runtime image.
 
 Each service's `tests/` directory covers its business logic (money/idempotency/
 categorization, context assembly, tool HTTP calls, quotas, pagination, etc.) with
@@ -60,15 +60,21 @@ mocked DB connections and HTTP transports — no live Postgres or network access
 to run them — plus a handful of endpoint-level tests via FastAPI's `TestClient`,
 covering both success and error paths (400/401/404/409/429/501 as appropriate).
 
-The frontend uses ESLint (flat config, `typescript-eslint` + React Hooks/Refresh
-plugins) and Prettier instead:
+The frontend uses [`pnpm`](https://pnpm.io/) plus ESLint (flat config,
+`typescript-eslint` + React Hooks/Refresh plugins) and Prettier:
 
 ```bash
 cd web
-npm run lint           # eslint .
-npm run format          # prettier --write .
-npm run format:check    # prettier --check .
+pnpm install
+pnpm run lint           # eslint .
+pnpm run format          # prettier --write .
+pnpm run format:check    # prettier --check .
 ```
+
+`pnpm-workspace.yaml`'s `allowBuilds`/`onlyBuiltDependencies` approve the three
+packages here with native postinstall scripts (`esbuild`, `@firebase/util`,
+`protobufjs`) — pnpm blocks arbitrary install scripts by default as a supply-chain
+guard; everything else installs with no scripts run at all.
 
 ## What it does
 
@@ -89,9 +95,9 @@ npm run format:check    # prettier --check .
 - **Voice input.** Record a message with the mic button; it's transcribed
   (Whisper) server-side and dropped into the message box for you to review or edit
   before sending — same as typing it, nothing is sent automatically.
-- **Receipts.** Upload a photo or PDF; GPT-4o vision extracts line items and
-  categorizes each one, and the UI shows editable proposed rows — nothing is written
-  until you confirm. There's no separate merchant field: a merchant/place name, when
+- **Receipts.** Upload a photo or PDF; the configured vision model (`gpt-4o` by
+  default — see "Swapping the LLM provider") extracts line items and categorizes each
+  one, and the UI shows editable proposed rows — nothing is written until you confirm. There's no separate merchant field: a merchant/place name, when
   identifiable, is folded straight into the item's description. Category corrections
   (made via chat or by editing a proposed row) are learned per normalized description
   and reused on future similar purchases, with an LLM fallback that recognizes
@@ -131,7 +137,7 @@ Browser ── Caddy (:8080) ──┬── /api/chat/*         → agent (Fast
 
 agent ──HTTP, forwards caller's own JWT──► transactions ──► Postgres "bookkeeping" (RLS)
 agent ──asyncpg───────────────────────────────────────────► Postgres "chat" (RLS)
-agent ──OpenAI (chat + gpt-4o vision)──► primary model, with a fallback model on failure
+agent ──LLM provider (chat + vision)──► primary model, with a fallback model on failure
 agent ──Firebase Auth emulator──► verify_id_token (never skipped, even locally)
 agent ──Firestore emulator──► sync/{uid} live-update signal
 agent ──currency-api (jsdelivr CDN)──► exchange-rate lookups (no key, free)
@@ -273,12 +279,12 @@ db/init/                     Postgres schema + RLS policies (bookkeeping DB, cha
 firebase/                    Auth + Firestore emulator container
 gcs/receipts-local/          fake-gcs-server's on-disk backing store
 services/transactions/       FastAPI — owns Postgres, CRUD, categorization, idempotency
-  pyproject.toml / poetry.lock own Poetry project — deps, black/isort/mypy, poe tasks
+  pyproject.toml / uv.lock own uv project — deps, black/isort/mypy, poe tasks
   app/routers/                 transactions.py, aggregates.py, categorize.py
   app/categorize.py            corrections-first, LLM-fallback categorization
   app/money.py                 decimal string <-> integer minor-unit conversion
 services/agent/               FastAPI + LangGraph — owns chat DB, SSE chat, tools
-  pyproject.toml / poetry.lock own Poetry project — deps, black/isort/mypy, poe tasks
+  pyproject.toml / uv.lock own uv project — deps, black/isort/mypy, poe tasks
   app/tools.py                  add/edit/delete_transaction(s), query, set_filter,
                                  export, extract_receipt, get_exchange_rate
   app/context.py                system prompt + token-budgeted context assembly

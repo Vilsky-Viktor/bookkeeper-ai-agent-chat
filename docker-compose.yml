@@ -7,7 +7,7 @@ services:
 
   web:
     build: ./web
-    command: npm run dev -- --host 0.0.0.0 --port 5173
+    command: pnpm run dev -- --host 0.0.0.0 --port 5173
     volumes: ["./web:/app", "/app/node_modules"]
     environment:
       VITE_RECEIPTS_BUCKET: receipts-local # must match agent's RECEIPTS_BUCKET

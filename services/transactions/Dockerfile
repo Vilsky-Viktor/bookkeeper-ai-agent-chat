@@ -1,9 +1,9 @@
 FROM python:3.12-slim
 ENV PYTHONUNBUFFERED=1
-RUN pip install --no-cache-dir poetry==1.8.4
-ENV POETRY_VIRTUALENVS_IN_PROJECT=true
+RUN pip install --no-cache-dir uv==0.12.18
+ENV UV_PROJECT_ENVIRONMENT=/app/.venv UV_LINK_MODE=copy
 WORKDIR /app
-COPY pyproject.toml poetry.lock ./
-RUN poetry install --no-root --with dev
+COPY pyproject.toml uv.lock ./
+RUN uv sync --frozen
 COPY app ./app
-CMD ["poetry", "run", "poe", "start"]
+CMD ["uv", "run", "poe", "start"]
