@@ -37,10 +37,10 @@ export default function TransactionsTable({ filter, onViewImage, onReferenceTran
   const { t, tCategory } = useTranslation();
 
   return (
-    <div className="overflow-x-auto border border-zinc-200 dark:border-zinc-800">
-    <table className="w-full min-w-[640px] overflow-hidden text-sm bg-white dark:bg-zinc-900">
-      <thead>
-        <tr className="bg-zinc-50 dark:bg-zinc-800/60">
+    <div className="min-h-0 flex-1 overflow-auto border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
+    <table className="w-full min-w-[640px] border-spacing-0 text-sm bg-white dark:bg-zinc-900">
+      <thead className="sticky top-0 z-10 will-change-transform bg-zinc-50 dark:bg-zinc-800">
+        <tr>
           <th className="px-3 py-2 text-start font-medium text-zinc-600 dark:text-zinc-400">{t("colDate")}</th>
           <th className="px-3 py-2 text-start font-medium text-zinc-600 dark:text-zinc-400">{t("colAmount")}</th>
           <th className="px-3 py-2 text-start font-medium text-zinc-600 dark:text-zinc-400">{t("colCurrency")}</th>
