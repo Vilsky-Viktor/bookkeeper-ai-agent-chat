@@ -10,6 +10,7 @@ dependencies = [
     "pydantic==2.9.2",
     "firebase-admin==6.5.0",
     "google-cloud-firestore==2.18.0",
+    "google-auth==2.58.0",
     "openai==3.17.0",
     "python-multipart==0.0.9",
 ]

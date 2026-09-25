@@ -118,6 +118,12 @@ async def finalize_turn(uid: str, thread_id: str, thread: dict, state: TurnState
         summarized_through = thread.get("summarized_through") or 0
 
     # Off the hot path: fold anything that fell out of the recent-message window into
-    # the rolling summary (architecture doc, p. 9, technique 3).
+    # the rolling summary (architecture doc, p. 9, technique 3). Caught here, not left
+    # to propagate — a failure to enqueue a background summarization job (e.g. a
+    # misconfigured Cloud Tasks env var) must not surface as the whole turn erroring
+    # out to the user; the turn itself already succeeded by this point.
     if latest_seq - summarized_through > RECENT_MESSAGE_LIMIT:
-        await tasks.enqueue_summarize(uid, thread_id, latest_seq - RECENT_MESSAGE_LIMIT)
+        try:
+            await tasks.enqueue_summarize(uid, thread_id, latest_seq - RECENT_MESSAGE_LIMIT)
+        except Exception:
+            log.exception("failed to enqueue summarize task", extra={"thread_id": thread_id})

@@ -73,6 +73,20 @@ variable "transactions_image" {
   default = "us-docker.pkg.dev/cloudrun/container/hello"
 }
 
+# agent enqueues Cloud Tasks HTTP tasks that POST back to its own
+# /internal/summarize (see tasks.py) — Cloud Tasks needs a real, reachable URL for
+# that, but a Cloud Run service can't reference its own computed .uri from within
+# its own resource block (a genuine Terraform cycle, not just an inconvenience).
+# Same bootstrap as agent_image/transactions_image above: left empty on a first
+# apply (tasks.py's production path would fail with a KeyError until this is set —
+# harmless, since nothing enqueues a real summarize task in a deployment that's
+# otherwise still using the "hello" placeholder image anyway), then set from
+# `terraform output -raw agent_url` and applied again.
+variable "agent_url" {
+  type    = string
+  default = ""
+}
+
 # --- Cloud SQL sizing — small/cheap defaults appropriate for this app's scale; bump
 # via tfvars for real load rather than editing these.
 

@@ -58,6 +58,12 @@ resource "google_cloud_run_v2_service" "transactions" {
         name  = "LLM_MODEL"
         value = var.llm_model
       }
+      env {
+        # service_auth.py checks POST /categorize's caller's token email against
+        # this — only agent-sa is authorized to call that endpoint.
+        name  = "AGENT_SERVICE_ACCOUNT"
+        value = google_service_account.agent.email
+      }
 
       volume_mounts {
         name       = "cloudsql"
@@ -161,6 +167,28 @@ resource "google_cloud_run_v2_service" "agent" {
       env {
         name  = "LANGSMITH_TRACING"
         value = var.langsmith_tracing ? "true" : "false"
+      }
+      env {
+        # tasks.py's production enqueue path — where the queue lives and which
+        # identity Cloud Tasks mints its callback token as. TASKS_INVOKER_SERVICE_ACCOUNT
+        # doubles as service_auth.py's expected caller for POST /internal/summarize.
+        name  = "CLOUD_TASKS_LOCATION"
+        value = var.region
+      }
+      env {
+        name  = "CLOUD_TASKS_QUEUE"
+        value = google_cloud_tasks_queue.summarize.name
+      }
+      env {
+        name  = "TASKS_INVOKER_SERVICE_ACCOUNT"
+        value = google_service_account.tasks_invoker.email
+      }
+      env {
+        # See variables.tf's agent_url — empty on a first apply (a real value can
+        # only be known after this service already exists), set from `terraform
+        # output -raw agent_url` and applied again once it does.
+        name  = "AGENT_URL"
+        value = var.agent_url
       }
       env {
         name  = "LANGSMITH_PROJECT"

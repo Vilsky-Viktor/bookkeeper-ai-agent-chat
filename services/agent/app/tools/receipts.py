@@ -1,13 +1,17 @@
 """Receipt image/PDF extraction: PDF->PNG rendering, merchant-name folding, the
 vision-model call, and the extract_receipt tool itself."""
 
+import asyncio
 import base64
 import datetime
 import json
+import os
 from typing import Callable
 
 import httpx
 import pymupdf
+from google.auth.transport import requests as google_auth_requests
+from google.oauth2 import id_token as google_id_token
 from langchain_core.messages import HumanMessage
 from langchain_core.tools import BaseTool, tool
 
@@ -23,6 +27,24 @@ from ..models.tool_results import (
 from .prompts import RECEIPT_EXTRACTION_PROMPT
 
 SUPPORTED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
+
+# Must match transactions' service_auth.py's AUDIENCE for POST /categorize exactly
+# — not a real URL, just a fixed string both sides agree on.
+_CATEGORIZE_AUDIENCE = "internal://transactions/categorize"
+_auth_request = google_auth_requests.Request()
+
+
+async def _categorize_service_token() -> str | None:
+    """A signed OIDC token proving this call really came from the agent service —
+    verified by transactions' require_service_caller. None locally
+    (SKIP_SERVICE_AUTH): there's no real GCP identity to mint one with outside
+    Cloud Run/gcloud ADC, and the receiving side doesn't check it either in that
+    mode. Minting hits the metadata server, so it's pushed off the event loop."""
+    if os.getenv("SKIP_SERVICE_AUTH") == "true":
+        return None
+    return await asyncio.to_thread(google_id_token.fetch_id_token, _auth_request, _CATEGORIZE_AUDIENCE)
+
+
 PDF_RENDER_DPI = 200
 
 
@@ -123,6 +145,9 @@ def build_receipt_tools(http_client: Callable[[], httpx.AsyncClient], language: 
         currency = (extracted.currency or "USD").upper()
         receipt_uri = f"gs://{storage.BUCKET}/{object_name}"
 
+        service_token = await _categorize_service_token()
+        service_headers = {"X-Serverless-Authorization": f"Bearer {service_token}"} if service_token else {}
+
         proposed: list[ReceiptProposedItem] = []
         async with http_client() as c:
             for item in extracted.items:
@@ -137,6 +162,7 @@ def build_receipt_tools(http_client: Callable[[], httpx.AsyncClient], language: 
                             "currency": currency,
                             "type": "expense",
                         },
+                        headers=service_headers,
                     )
                     if cat_resp.status_code == 200:
                         category = cat_resp.json().get("category", "other")

@@ -378,11 +378,13 @@ project link + Firestore database + a Web App, and a Workload Identity Federatio
 setup for CI/CD (no long-lived GCP key stored anywhere). It does *not* cover:
 applying the DB schema (`db/init/*.sql` — still a manual/CI migration step against
 the instance it creates), Firestore rules content (still `firebase deploy`), or
-Firebase Auth's Google sign-in provider (enabled once by hand in the console). See
-`terraform/README.md` for the full walkthrough, including two known
-application-code gaps it surfaces (the service-to-service OIDC check in
-`service_auth.py` and the Cloud Tasks enqueue call in `tasks.py` are both still
-stubs — provisioning the infrastructure doesn't finish that code).
+Firebase Auth's Google sign-in provider (enabled once by hand in the console).
+Service-to-service calls (`transactions`'s `POST /categorize`, `agent`'s
+`POST /internal/summarize`) are authenticated with real Google-signed OIDC tokens,
+not a stub — `service_auth.py` verifies signature, a fixed audience, and the
+specific expected caller identity; `tasks.py` and `receipts.py` are the two
+minters. See `terraform/README.md` for the full walkthrough, including the one
+remaining manual bootstrap step (`agent_url`, see "Known gaps" below).
 
 `.github/workflows/{agent,transactions,web}.yml` — one independent pipeline per
 service: a pull request runs checks only (format/lint/test); a push to `main` also
@@ -397,10 +399,14 @@ Terraform outputs into GitHub repo variables) is in `terraform/README.md`'s
 
 - `get_exchange_rate` returns a *daily* reference rate, not live tick-by-tick market
   data.
-- Two application-code stubs that CI/CD and Terraform can't fix on their own (see
-  "Deploying to GCP" above for the full context): `service_auth.py`'s
-  service-to-service OIDC check returns 501, and `tasks.py`'s production Cloud Tasks
-  enqueue path raises `NotImplementedError`.
+- `AGENT_URL` (used by `tasks.py`'s production Cloud Tasks enqueue, so Cloud Tasks
+  knows where to POST back to) can't be set on a service's very first
+  `terraform apply` — a Cloud Run resource can't reference its own computed URL
+  from within its own resource block. See `terraform/README.md`'s
+  "Service-to-service auth" section for the one-time bootstrap step (apply once,
+  copy `terraform output -raw agent_url` into `terraform.tfvars`, apply again).
+  Until that's done, a thread's rolling summary just fails to enqueue in production
+  (logged, not fatal to the turn) — nothing else depends on it.
 - Production-only concerns not covered by `terraform/` or `.github/workflows/` —
   App Check, an external load balancer beyond Firebase Hosting, an eval gate, Cloud
   Run autoscaling tuning, a GCS backend for Terraform state (still local, see

@@ -38,19 +38,33 @@ reasoning behind that piece.
   directly via `gcloud`/`deploy-cloudrun` (not by changing these variables — see
   `cloud_run.tf`'s `lifecycle.ignore_changes` and "GitHub Actions setup" below).
 
-## Two known application-code gaps (not fixed by this module)
+## Service-to-service auth
 
-- `services/agent/app/service_auth.py` and
-  `services/transactions/app/service_auth.py`'s `require_service_caller` — meant to
-  verify a Google-signed OIDC token in `X-Serverless-Authorization` for
-  service-to-service calls — is currently a stub that returns 501 whenever
-  `SKIP_SERVICE_AUTH` isn't `"true"`. Deploying this infrastructure does not make
-  that check work; `POST /categorize` and `POST /internal/summarize` will 501 in
-  production until that's implemented.
-- `services/agent/app/tasks.py`'s `enqueue_summarize()` only has a `TASKS_MODE=local`
-  code path — the real Cloud Tasks enqueue call (`else` branch) raises
-  `NotImplementedError`. The `google_cloud_tasks_queue` this module creates is ready
-  for that code; nothing calls it yet.
+`services/agent/app/service_auth.py` and
+`services/transactions/app/service_auth.py`'s `require_service_caller` verify a
+Google-signed OIDC ID token in `X-Serverless-Authorization` — signature/expiry via
+Google's public certs, a fixed `AUDIENCE` string both the minting side and the
+verifying side agree on (not a real URL — see each file's docstring), and that the
+signer is the one specific service account expected to be calling
+(`AGENT_SERVICE_ACCOUNT` for `POST /categorize`, `TASKS_INVOKER_SERVICE_ACCOUNT` for
+`POST /internal/summarize`), both wired in as env vars by `cloud_run.tf`. Locally
+it's skipped entirely via `SKIP_SERVICE_AUTH=true`.
+
+`services/agent/app/tasks.py`'s `enqueue_summarize()` mints the Cloud Tasks side of
+that: it creates an explicitly-named HTTP task (so Cloud Tasks itself provides
+cross-instance dedup, not just the in-process set) targeting
+`<AGENT_URL>/internal/summarize` with an OIDC token minted as `tasks-invoker-sa`.
+`receipts.py`'s `extract_receipt` tool does the same on the `agent` → `transactions`
+side, minting as whatever identity `agent`'s own Cloud Run revision runs as
+(`agent-sa`, via Application Default Credentials — no explicit credential file).
+
+**`AGENT_URL` needs a bootstrap step** — see `variables.tf`'s comment: a Cloud Run
+service can't reference its own `.uri` from within its own resource block (a real
+Terraform cycle). `var.agent_url` defaults to `""`; set it from `terraform output -raw
+agent_url` and apply again once the `agent` service exists. Until then, a chat
+thread's rolling summary will fail to enqueue in production (logged, not fatal to
+the turn — same as any other `enqueue_summarize` failure) — everything else works
+without it.
 
 ## Usage
 

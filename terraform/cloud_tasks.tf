@@ -1,12 +1,9 @@
 # Backs the rolling-summary background job — see services/agent/app/tasks.py's
-# enqueue_summarize(). The queue itself is provisioned here; the actual enqueue call
-# (tasks.py's `if os.getenv("TASKS_MODE") == "local"` branch's `else`) is NOT
-# implemented in the application yet — it currently raises NotImplementedError for
-# any non-local TASKS_MODE. This queue is ready for when that code lands: its HTTP
-# target would point at the deployed agent service's POST /internal/summarize with
-# an OIDC token minted as tasks-invoker-sa (see service_accounts.tf), which
-# agent's require_service_caller dependency is meant to verify (also not yet
-# implemented — see terraform/README.md's "Known gaps carried over").
+# enqueue_summarize(), which creates an HTTP task here whose target is
+# POST <AGENT_URL>/internal/summarize, with an OIDC token minted as tasks-invoker-sa
+# (see service_accounts.tf) that agent's require_service_caller verifies on the way
+# back in. cloud_run.tf wires CLOUD_TASKS_LOCATION/CLOUD_TASKS_QUEUE/
+# TASKS_INVOKER_SERVICE_ACCOUNT/AGENT_URL into agent's env for this.
 
 resource "google_cloud_tasks_queue" "summarize" {
   project  = var.project_id
