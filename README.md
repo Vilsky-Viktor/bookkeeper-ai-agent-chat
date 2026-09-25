@@ -9,7 +9,7 @@ see "Swapping the LLM provider") and a free public exchange-rate lookup.
 
 ⭐ If you find this project useful, please consider giving it a star ⭐ — it helps a lot!
 
-![SMAKER.ai screenshot](smarker-screenshot.png)
+![SMAKER.ai screenshot](smaker-screenshot.png)
 
 ## Quickstart
 
