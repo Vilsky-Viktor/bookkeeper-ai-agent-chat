@@ -37,7 +37,9 @@ services:
     volumes: ["./gcs:/data"]
 
   transactions:
-    build: ./services/transactions
+    build:
+      context: ./services/transactions
+      dockerfile: Dockerfile.dev # Dockerfile itself is the Cloud Run production image
     env_file: .env
     environment:
       DATABASE_URL: postgresql://app_user:app_pw@postgres:5432/bookkeeping
@@ -50,7 +52,9 @@ services:
       firebase: { condition: service_started }
 
   agent:
-    build: ./services/agent
+    build:
+      context: ./services/agent
+      dockerfile: Dockerfile.dev # Dockerfile itself is the Cloud Run production image
     env_file: .env
     environment:
       CHAT_DATABASE_URL: postgresql://chat_user:chat_pw@postgres:5432/chat

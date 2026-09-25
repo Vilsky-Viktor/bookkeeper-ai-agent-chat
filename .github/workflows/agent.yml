@@ -1,0 +1,98 @@
+name: agent
+
+# PR -> checks only. Push to main -> checks + build/push an image (no deploy).
+# Push of a tag (agent-v*) -> checks + build/push + deploy. See terraform/README.md's
+# "GitHub Actions setup" for the required repo variables (all via Workload Identity
+# Federation — no long-lived GCP key is ever stored here).
+#
+# No `paths` filter on `push` (only on `pull_request`): GitHub's path-diff for a tag
+# push is unreliable when the tag points at an already-pushed commit — it can come
+# back empty and silently skip the job. Every push to main building all three
+# services' images is a minor, acceptable cost for a release tag never silently
+# no-opping.
+
+on:
+  pull_request:
+    paths:
+      - "services/agent/**"
+      - ".github/workflows/agent.yml"
+  push:
+    branches: [main]
+    tags: ["agent-v*"]
+
+permissions:
+  contents: read
+  id-token: write # Workload Identity Federation — no GCP key stored in this repo
+
+env:
+  IMAGE: ${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/prod-services/agent
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/agent
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+        with:
+          version: "0.12.18" # matches services/agent/Dockerfile's pin
+      - run: uv sync --frozen
+      - run: uv run poe check # format:check + lint + test
+
+  build-and-push:
+    if: github.event_name == 'push'
+    needs: checks
+    runs-on: ubuntu-latest
+    outputs:
+      image_tag: ${{ steps.tag.outputs.value }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: tag
+        run: |
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            echo "value=${GITHUB_REF_NAME#agent-}" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=sha-$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+          fi
+
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_CI_CD_SERVICE_ACCOUNT }}
+          token_format: access_token
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ vars.GCP_REGION }}-docker.pkg.dev
+          username: oauth2accesstoken
+          password: ${{ steps.auth.outputs.access_token }}
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: services/agent
+          push: true
+          tags: ${{ env.IMAGE }}:${{ steps.tag.outputs.value }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    if: github.ref_type == 'tag'
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    steps:
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_CI_CD_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          service: prod-agent # must match terraform's "${var.environment}-agent"
+          region: ${{ vars.GCP_REGION }}
+          image: ${{ env.IMAGE }}:${{ needs.build-and-push.outputs.image_tag }}

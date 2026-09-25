@@ -8,10 +8,13 @@ import {
 } from "firebase/auth";
 import { connectFirestoreEmulator, getFirestore } from "firebase/firestore";
 
+// VITE_FIREBASE_* are only set in a real production build (see
+// .github/workflows/web.yml) — local dev's .env never sets them, so this falls back
+// to the same fake local-emulator config it always used, unchanged.
 const app = initializeApp({
-  apiKey: "demo-key",
-  projectId: "demo-bookkeeping",
-  authDomain: "localhost",
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "demo-key",
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "demo-bookkeeping",
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "localhost",
 });
 
 export const auth = getAuth(app);

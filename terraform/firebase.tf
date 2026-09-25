@@ -33,3 +33,22 @@ resource "google_firebase_hosting_site" "default" {
 
   depends_on = [google_firebase_project.default]
 }
+
+# Registers a Firebase Web App so the deployed frontend has a real apiKey/authDomain
+# to build against (web/src/lib/firebase.ts reads these via VITE_FIREBASE_* — see
+# outputs.tf). A Firebase web API key is meant to be public/embedded in client-side
+# code by design (it identifies the project, it isn't a secret), so this doesn't go
+# through Secret Manager.
+resource "google_firebase_web_app" "default" {
+  provider     = google-beta
+  project      = var.project_id
+  display_name = "${var.environment}-web"
+
+  depends_on = [google_firebase_project.default]
+}
+
+data "google_firebase_web_app_config" "default" {
+  provider   = google-beta
+  project    = var.project_id
+  web_app_id = google_firebase_web_app.default.app_id
+}

@@ -18,6 +18,14 @@ resource "google_cloud_run_v2_service" "transactions" {
   name     = "${var.environment}-transactions"
   location = var.region
 
+  # Once .github/workflows/transactions.yml has deployed a real image, this stops
+  # Terraform from resetting it back to var.transactions_image's placeholder on the
+  # next `terraform apply` — CI owns the image from here, Terraform owns everything
+  # else about the service.
+  lifecycle {
+    ignore_changes = [template[0].containers[0].image]
+  }
+
   template {
     service_account = google_service_account.transactions.email
 
@@ -83,6 +91,11 @@ resource "google_cloud_run_v2_service" "agent" {
   project  = var.project_id
   name     = "${var.environment}-agent"
   location = var.region
+
+  # Same reasoning as transactions above — CI owns the image post-first-deploy.
+  lifecycle {
+    ignore_changes = [template[0].containers[0].image]
+  }
 
   template {
     service_account = google_service_account.agent.email

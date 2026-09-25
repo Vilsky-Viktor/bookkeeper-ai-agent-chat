@@ -1,0 +1,10 @@
+{
+  "hosting": {
+    "public": "web/dist",
+    "rewrites": [
+      { "source": "/api/chat/**", "run": { "serviceId": "prod-agent", "region": "us-central1" } },
+      { "source": "/api/transactions/**", "run": { "serviceId": "prod-transactions", "region": "us-central1" } },
+      { "source": "**", "destination": "/index.html" }
+    ]
+  }
+}

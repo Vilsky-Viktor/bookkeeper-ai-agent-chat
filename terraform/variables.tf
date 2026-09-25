@@ -55,10 +55,13 @@ variable "langsmith_tracing" {
   default = false
 }
 
-# --- Cloud Run images — Terraform doesn't build or push these (that's CI's job, not
-# covered by this module). Defaults point at Google's public "hello" placeholder so
-# `terraform apply` succeeds before a real image has ever been pushed to the
-# Artifact Registry repo this module creates; swap these after your first CI build.
+# --- Cloud Run images — Terraform doesn't build or push these itself; see
+# .github/workflows/{agent,transactions}.yml for that (CI pushes on every merge to
+# main, deploys on a version tag). Defaults point at Google's public "hello"
+# placeholder so `terraform apply` succeeds before CI has ever pushed a real image.
+# cloud_run.tf's `lifecycle { ignore_changes = [...] }` means once CI has deployed a
+# real image, re-running `terraform apply` won't reset it back to these defaults —
+# these variables only matter for the very first apply on a brand new project.
 
 variable "agent_image" {
   type    = string
@@ -77,4 +80,12 @@ variable "cloud_sql_tier" {
   description = "Cloud SQL machine tier. db-f1-micro is the cheapest shared-core tier — fine for low traffic, not for production load."
   type        = string
   default     = "db-f1-micro"
+}
+
+# --- CI/CD (GitHub Actions) — see ci_cd.tf.
+
+variable "github_repository" {
+  description = "GitHub \"owner/repo\" slug this Workload Identity Federation provider trusts — only workflows running in this exact repo can impersonate the CI/CD service account."
+  type        = string
+  default     = "Vilsky-Viktor/bookkeeper-ai-agent-chat"
 }

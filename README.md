@@ -34,6 +34,14 @@ image at build time — editing their source requires `docker compose up -d --bu
 <service>` to take effect, a plain `restart` won't pick it up. `web` bind-mounts
 `./web` and runs Vite's dev server, so frontend edits hot-reload immediately.
 
+Each of `services/agent`/`services/transactions` has two Dockerfiles:
+`Dockerfile.dev` is what `docker-compose.yml` builds (matches this section — full
+`uv sync` including dev tools, hardcoded port 8000 matching the `Caddyfile`'s
+internal routing); `Dockerfile` is the lean, multi-stage production image
+`.github/workflows/{agent,transactions}.yml` build and deploy to Cloud Run (no dev
+tools, non-root user, listens on Cloud Run's injected `$PORT` instead of a
+hardcoded one — see "Deploying to GCP" below).
+
 ## Code quality tooling
 
 Each Python service is its own independent [`uv`](https://docs.astral.sh/uv/) project
@@ -355,27 +363,45 @@ web/                          React + Vite + TypeScript — chat pane + transact
 Caddyfile                     Reverse proxy — same routing shape as Firebase Hosting rewrites
 docker-compose.yml
 terraform/                    GCP infrastructure as code — see "Deploying to GCP" below
+.github/workflows/             CI/CD, one workflow per service — see "Deploying to GCP" below
+firebase.json                  Firebase Hosting config (rewrites to the two Cloud Run
+                                services) — distinct from firebase/firebase.json, which
+                                is local-emulator-only
 ```
 
 ## Deploying to GCP
 
 `terraform/` provisions the real GCP resources this local stack stands in for: two
 Cloud Run services, Cloud SQL (the same `bookkeeping`/`chat` databases), the receipts
-bucket, a Cloud Tasks queue, Secret Manager secrets, Artifact Registry, and the
-Firebase project link + Firestore database. It does *not* cover: applying the DB
-schema (`db/init/*.sql` — still a manual/CI migration step against the instance it
-creates), Firestore rules / Hosting rewrite deployment (still `firebase deploy`),
-Firebase Auth's Google sign-in provider (enabled once by hand in the console), or
-building/pushing the container images (CI's job). See `terraform/README.md` for the
-full walkthrough, including two known application-code gaps it surfaces (the
-service-to-service OIDC check in `service_auth.py` and the Cloud Tasks enqueue call
-in `tasks.py` are both still stubs — provisioning the infrastructure doesn't finish
-that code).
+bucket, a Cloud Tasks queue, Secret Manager secrets, Artifact Registry, the Firebase
+project link + Firestore database + a Web App, and a Workload Identity Federation
+setup for CI/CD (no long-lived GCP key stored anywhere). It does *not* cover:
+applying the DB schema (`db/init/*.sql` — still a manual/CI migration step against
+the instance it creates), Firestore rules content (still `firebase deploy`), or
+Firebase Auth's Google sign-in provider (enabled once by hand in the console). See
+`terraform/README.md` for the full walkthrough, including two known
+application-code gaps it surfaces (the service-to-service OIDC check in
+`service_auth.py` and the Cloud Tasks enqueue call in `tasks.py` are both still
+stubs — provisioning the infrastructure doesn't finish that code).
+
+`.github/workflows/{agent,transactions,web}.yml` — one independent pipeline per
+service: a pull request runs checks only (format/lint/test); a push to `main` also
+builds and pushes an image to Artifact Registry (agent/transactions) or a
+production build artifact (web), but doesn't deploy; pushing a version tag
+(`agent-v1.2.3`, `transactions-v1.2.3`, `web-v1.2.3`) builds, pushes, and deploys
+that exact build to Cloud Run or Firebase Hosting. One-time setup (copying
+Terraform outputs into GitHub repo variables) is in `terraform/README.md`'s
+"GitHub Actions setup".
 
 ## Known gaps
 
 - `get_exchange_rate` returns a *daily* reference rate, not live tick-by-tick market
   data.
-- Production-only concerns not covered by `terraform/` — App Check, an external load
-  balancer beyond Firebase Hosting, a CI pipeline, an eval gate, Cloud Run
-  autoscaling tuning — are intentionally out of scope for now.
+- Two application-code stubs that CI/CD and Terraform can't fix on their own (see
+  "Deploying to GCP" above for the full context): `service_auth.py`'s
+  service-to-service OIDC check returns 501, and `tasks.py`'s production Cloud Tasks
+  enqueue path raises `NotImplementedError`.
+- Production-only concerns not covered by `terraform/` or `.github/workflows/` —
+  App Check, an external load balancer beyond Firebase Hosting, an eval gate, Cloud
+  Run autoscaling tuning, a GCS backend for Terraform state (still local, see
+  `terraform/README.md`) — are intentionally out of scope for now.

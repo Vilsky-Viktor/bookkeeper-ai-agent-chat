@@ -31,9 +31,12 @@ reasoning behind that piece.
 - **Firebase Auth's Google sign-in provider** — enable it once by hand in the
   Firebase console (Authentication > Sign-in method). No stable Terraform resource
   covers this as of this module's writing.
-- **Building/pushing container images.** `agent_image`/`transactions_image` default
-  to a public placeholder so `apply` succeeds before CI exists; point them at real
-  images in the Artifact Registry repo this module creates once you have a build.
+- **Building/pushing container images**, beyond providing the identity/permissions
+  for it. `agent_image`/`transactions_image` default to a public placeholder so
+  `apply` succeeds on a brand new project; `.github/workflows/{agent,transactions}.yml`
+  push real images to the Artifact Registry repo this module creates and deploy them
+  directly via `gcloud`/`deploy-cloudrun` (not by changing these variables — see
+  `cloud_run.tf`'s `lifecycle.ignore_changes` and "GitHub Actions setup" below).
 
 ## Two known application-code gaps (not fixed by this module)
 
@@ -64,12 +67,12 @@ terraform apply
 ```
 
 **First apply, in order:**
-1. `terraform apply` — everything applies successfully except possibly the two Cloud
-   Run services if you haven't set real `agent_image`/`transactions_image` values yet
-   (the public placeholder image should work fine for a first apply, though).
+1. `terraform apply`.
 2. Add real secret values (see below), then run the DB schema migration above.
-3. `terraform apply` again after CI has pushed real images and you've set
-   `agent_image`/`transactions_image` in `terraform.tfvars`.
+3. Copy the CI/CD outputs into GitHub repo variables (see "GitHub Actions setup"
+   below), then push a version tag (`git tag agent-v0.1.0 && git push --tags`, same
+   for `transactions`/`web`) to trigger a real first deploy — from here on, CI owns
+   the deployed image, not `terraform.tfvars`'s `agent_image`/`transactions_image`.
 
 ### Adding real secret values
 
@@ -86,6 +89,37 @@ every cold start — adding a new secret version doesn't retroactively update an
 already-running revision. Re-run `terraform apply` (or `gcloud run services update
 <service> --region <region>`) after adding a real value to roll a new revision that
 actually picks it up.
+
+### GitHub Actions setup
+
+`.github/workflows/{agent,transactions,web}.yml` authenticate to GCP via Workload
+Identity Federation — no long-lived key ever leaves GCP or sits in a GitHub secret.
+After `terraform apply`, copy six outputs into the repo's **Settings > Secrets and
+variables > Actions > Variables** tab (repository *variables*, not secrets — none of
+this is sensitive, that's the point of WIF):
+
+| Terraform output | GitHub repo variable |
+|---|---|
+| `ci_cd_service_account_email` | `GCP_CI_CD_SERVICE_ACCOUNT` |
+| `workload_identity_provider` | `GCP_WORKLOAD_IDENTITY_PROVIDER` |
+| `firebase_web_app_api_key` | `VITE_FIREBASE_API_KEY` |
+| `firebase_web_app_auth_domain` | `VITE_FIREBASE_AUTH_DOMAIN` |
+| `firebase_web_app_project_id` | `VITE_FIREBASE_PROJECT_ID` |
+| `receipts_bucket` | `VITE_RECEIPTS_BUCKET` |
+
+Plus `var.project_id` and `var.region` themselves as `GCP_PROJECT_ID` /
+`GCP_REGION`. `terraform output` prints all of these at once; `terraform output -raw
+<name>` for a single value without the surrounding quotes.
+
+The Workload Identity Pool provider's `attribute_condition` (see `ci_cd.tf`) trusts
+only `var.github_repository` — if you forked this repo or renamed it, update that
+variable and re-apply before CI will authenticate successfully.
+
+The root `firebase.json`'s Hosting rewrites hardcode `serviceId: "prod-agent"` /
+`"prod-transactions"` and `region: "us-central1"` (JSON has no variable
+interpolation) — these must match `var.environment`/`var.region`'s actual values.
+Since both default to `prod`/`us-central1` this only matters if you've changed
+either in `terraform.tfvars`.
 
 ### State
 
