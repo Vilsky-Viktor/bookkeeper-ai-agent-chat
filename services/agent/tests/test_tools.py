@@ -5,6 +5,7 @@ import httpx
 import pytest
 
 from app import tools as tools_module
+from app.models.tool_results import ReceiptExtraction, ReceiptLineItem
 from app.tools import receipts as receipts_module
 
 _RealAsyncClient = httpx.AsyncClient  # captured before any monkeypatching below
@@ -236,7 +237,7 @@ class TestGetTotalInCurrency:
         assert result == {
             "total": "12.50",
             "currency": "USD",
-            "breakdown": [{"currency": "USD", "amount": "12.50", "rate": None, "converted_to_usd": "12.50"}],
+            "breakdown": [{"currency": "USD", "amount": "12.50", "converted": "12.50"}],
             "note": "Daily reference rate, not real-time.",
         }
         assert len(calls) == 1  # only the aggregates call, no rate lookup needed
@@ -361,7 +362,9 @@ class TestExtractReceipt:
 
     async def test_not_a_receipt_returns_message_without_writing(self, build, monkeypatch):
         monkeypatch.setattr(receipts_module.storage, "read_bytes", lambda name: (b"imgdata", "image/jpeg"))
-        monkeypatch.setattr(receipts_module, "_extract_line_items", AsyncMock(return_value={"is_receipt": False}))
+        monkeypatch.setattr(
+            receipts_module, "_extract_line_items", AsyncMock(return_value=ReceiptExtraction(is_receipt=False))
+        )
 
         tool = _tool_by_name(build(lambda r: httpx.Response(200)), "extract_receipt")
         result = await tool.coroutine(object_name="receipts/u1/x.jpg")
@@ -374,13 +377,13 @@ class TestExtractReceipt:
             receipts_module,
             "_extract_line_items",
             AsyncMock(
-                return_value={
-                    "is_receipt": True,
-                    "merchant": "Alfamart",
-                    "occurred_on": "2026-01-01",
-                    "currency": "idr",
-                    "items": [{"description": "Rice 1kg", "amount": "10000"}],
-                }
+                return_value=ReceiptExtraction(
+                    is_receipt=True,
+                    merchant="Alfamart",
+                    occurred_on="2026-01-01",
+                    currency="idr",
+                    items=[ReceiptLineItem(description="Rice 1kg", amount="10000")],
+                )
             ),
         )
 
@@ -403,13 +406,13 @@ class TestExtractReceipt:
             receipts_module,
             "_extract_line_items",
             AsyncMock(
-                return_value={
-                    "is_receipt": True,
-                    "merchant": None,
-                    "occurred_on": "2026-01-01",
-                    "currency": "usd",
-                    "items": [{"description": "widget", "amount": "5.00"}],
-                }
+                return_value=ReceiptExtraction(
+                    is_receipt=True,
+                    merchant=None,
+                    occurred_on="2026-01-01",
+                    currency="usd",
+                    items=[ReceiptLineItem(description="widget", amount="5.00")],
+                )
             ),
         )
 

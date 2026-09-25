@@ -8,13 +8,13 @@ from ... import db, signal
 from ...auth import require_uid
 from ...categorize import save_correction
 from ...idempotency import run_idempotent
+from ...models.transactions import PatchIdempotencyPayload, TransactionOut, TransactionPatch
 from ...money import InvalidAmount, to_decimal_string, to_minor
-from ...schemas import TransactionPatch
 from . import router
 from .serializers import row_to_out
 
 
-@router.patch("/transactions/{transaction_id}")
+@router.patch("/transactions/{transaction_id}", response_model=TransactionOut)
 async def patch_transaction(
     transaction_id: str,
     body: TransactionPatch,
@@ -23,7 +23,7 @@ async def patch_transaction(
     uid: str = Depends(require_uid),
 ):
     fields = body.model_dump(exclude_unset=True)
-    payload = {"id": transaction_id, **fields}
+    payload = PatchIdempotencyPayload(id=transaction_id, **fields).model_dump(exclude_unset=True)
 
     async with db.uid_conn(uid) as conn:
 
@@ -80,10 +80,14 @@ async def patch_transaction(
             # near-duplicates that don't match exactly).
             if "category" in fields:
                 await save_correction(conn, uid, description, category)
-            return 200, row_to_out(row)
+            return 200, row_to_out(row).model_dump(mode="json")
 
         status, response, replayed = await run_idempotent(conn, uid, idempotency_key, payload, handler)
 
     if not replayed and status < 300:
         await signal.bump_async(uid, ["transactions_version"], x_client_id)
+    # Dynamic status code (200 fresh vs. replayed) means this returns a raw
+    # JSONResponse rather than relying on FastAPI's response_model machinery —
+    # response_model above is doc-only here; the .model_dump(mode="json") above is
+    # what actually guarantees the wire shape matches TransactionOut.
     return JSONResponse(status_code=status, content=response)

@@ -7,6 +7,8 @@ from typing import Callable, Optional
 import httpx
 from langchain_core.tools import BaseTool, tool
 
+from ..models.tool_results import CurrencyBreakdownEntry, ExchangeRateResult, ToolError, TotalInCurrencyResult
+
 # Free, no-key, daily-updated exchange rates covering 300+ currencies (vs. ~30 for the
 # ECB-only Frankfurter.app source this replaced, which didn't have UAH). Static JSON on
 # two independent CDN mirrors — jsdelivr first, the project's own Cloudflare Pages
@@ -34,27 +36,27 @@ async def _fetch_exchange_rate(from_currency: str, to_currency: str) -> dict:
         except httpx.HTTPError:
             continue
     if data is None:
-        return {
-            "error": (
+        return ToolError(
+            error=(
                 f"Couldn't reach the exchange rate service for {from_currency} to "
                 f"{to_currency} right now — this looks transient, worth trying again."
             )
-        }
+        ).model_dump()
     rate = data.get(from_currency.lower(), {}).get(to_currency.lower())
     if rate is None:
-        return {
-            "error": (
+        return ToolError(
+            error=(
                 f"{from_currency} or {to_currency} isn't a currency code this data "
                 "source recognizes — double-check it with the user."
             )
-        }
-    return {
-        "from": from_currency,
-        "to": to_currency,
-        "rate": rate,
-        "date": data.get("date"),
-        "note": "Daily reference rate, not real-time.",
-    }
+        ).model_dump()
+    return ExchangeRateResult(
+        **{"from": from_currency},
+        to=to_currency,
+        rate=rate,
+        date=data.get("date"),
+        note="Daily reference rate, not real-time.",
+    ).model_dump(by_alias=True)
 
 
 def build_currency_tools(http_client: Callable[[], httpx.AsyncClient]) -> list[BaseTool]:
@@ -111,9 +113,9 @@ def build_currency_tools(http_client: Callable[[], httpx.AsyncClient]) -> list[B
             totals_by_currency[src] = totals_by_currency.get(src, Decimal(0)) + Decimal(item["total"])
 
         if not totals_by_currency:
-            return {"total": "0.00", "currency": to_currency, "breakdown": []}
+            return TotalInCurrencyResult(total="0.00", currency=to_currency, breakdown=[]).model_dump(exclude_none=True)
 
-        breakdown = []
+        breakdown: list[CurrencyBreakdownEntry] = []
         grand_total = Decimal(0)
         for src_currency, amount in totals_by_currency.items():
             if src_currency == to_currency:
@@ -127,19 +129,19 @@ def build_currency_tools(http_client: Callable[[], httpx.AsyncClient]) -> list[B
                 converted = amount * rate
             grand_total += converted
             breakdown.append(
-                {
-                    "currency": src_currency,
-                    "amount": str(amount),
-                    "rate": str(rate) if rate is not None else None,
-                    "converted_to_" + to_currency.lower(): str(converted),
-                }
+                CurrencyBreakdownEntry(
+                    currency=src_currency,
+                    amount=str(amount),
+                    rate=str(rate) if rate is not None else None,
+                    converted=str(converted),
+                )
             )
 
-        return {
-            "total": str(grand_total.quantize(Decimal("0.01"))),
-            "currency": to_currency,
-            "breakdown": breakdown,
-            "note": "Daily reference rate, not real-time.",
-        }
+        return TotalInCurrencyResult(
+            total=str(grand_total.quantize(Decimal("0.01"))),
+            currency=to_currency,
+            breakdown=breakdown,
+            note="Daily reference rate, not real-time.",
+        ).model_dump(exclude_none=True)
 
     return [get_exchange_rate, get_total_in_currency]

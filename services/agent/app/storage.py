@@ -7,23 +7,25 @@ import os
 
 from google.cloud import storage  # honors STORAGE_EMULATOR_HOST
 
+from .models.api import UploadTargetOut
+
 BUCKET = os.environ["RECEIPTS_BUCKET"]
 
 
-def upload_target(uid: str, object_id: str) -> dict:
+def upload_target(uid: str, object_id: str) -> UploadTargetOut:
     name = f"receipts/{uid}/{object_id}.jpg"
     if os.getenv("STORAGE_MODE") == "local":
         base = os.environ["PUBLIC_UPLOAD_BASE"]
-        return {
-            "method": "POST",
-            "object": name,
-            "url": f"{base}/upload/storage/v1/b/{BUCKET}/o?uploadType=media&name={name}",
-        }
+        return UploadTargetOut(
+            method="POST",
+            object=name,
+            url=f"{base}/upload/storage/v1/b/{BUCKET}/o?uploadType=media&name={name}",
+        )
     blob = storage.Client().bucket(BUCKET).blob(name)
     url = blob.generate_signed_url(
         version="v4", method="PUT", expiration=datetime.timedelta(minutes=5), content_type="image/jpeg"
     )
-    return {"method": "PUT", "object": name, "url": url}
+    return UploadTargetOut(method="PUT", object=name, url=url)
 
 
 def read_bytes(object_name: str) -> tuple[bytes, str]:

@@ -6,6 +6,8 @@ from typing import Optional
 
 from langchain_core.tools import BaseTool, tool
 
+from ..models.tool_results import ExportReadyResult, FilterSetResult, TransactionFilter
+
 
 def build_utility_tools() -> list[BaseTool]:
     @tool
@@ -28,21 +30,17 @@ def build_utility_tools() -> list[BaseTool]:
         does nothing. Clearing resets the table to its default view, the last 30 days
         — not to every transaction ever, so don't tell the user it now shows
         "everything"/"all transactions"; say it's back to showing the last 30 days."""
-        filt = {
-            k: v
-            for k, v in {
-                "currency": currency,
-                "category": category,
-                "type": type,
-                "from": from_date,
-                "to": to_date,
-                "min_amount": min_amount,
-                "max_amount": max_amount,
-                "description": description,
-            }.items()
-            if v is not None
-        }
-        return {"ui_event": "filter_set", "filter": filt}
+        filt = TransactionFilter(
+            currency=currency,
+            category=category,
+            type=type,
+            to=to_date,
+            min_amount=min_amount,
+            max_amount=max_amount,
+            description=description,
+            **{"from": from_date},
+        )
+        return FilterSetResult(filter=filt).model_dump(by_alias=True, exclude_none=True)
 
     @tool
     def export_transactions() -> dict:
@@ -59,6 +57,6 @@ def build_utility_tools() -> list[BaseTool]:
         download it by clicking the file below." — use that exact wording, don't
         paraphrase it, and don't say it's been downloaded or saved anywhere, since
         nothing happens until they click it."""
-        return {"ui_event": "export_ready"}
+        return ExportReadyResult().model_dump()
 
     return [set_filter, export_transactions]

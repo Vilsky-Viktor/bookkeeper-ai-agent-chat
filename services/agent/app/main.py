@@ -5,7 +5,6 @@ from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, File, Header, HTTPException, Query, UploadFile
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
 
 from . import chat_db, context, llm, quotas, signal, storage
 from .auth import bearer_token, require_uid
@@ -13,6 +12,22 @@ from .chat import streaming, turns
 from .graph import build_graph
 from .langfuse_obs import traced_turn
 from .languages import SUPPORTED_LANGUAGES
+from .models.api import (
+    ChatRequest,
+    HealthzResponse,
+    MessageOut,
+    MessagesPageResponse,
+    PreferencesOut,
+    PreferencesUpdate,
+    SummarizeRequest,
+    ThreadOut,
+    ThreadsListResponse,
+    ThreadSummary,
+    TranscribeResponse,
+    UploadTargetOut,
+)
+from .models.message_content import UserMessageContent
+from .models.turns import TurnState
 from .service_auth import require_service_caller
 from .summarize import run_summarize
 from .tools import build_tools
@@ -36,22 +51,25 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="agent-service", lifespan=lifespan)
 
 
-@app.get("/healthz")
+@app.get("/healthz", response_model=HealthzResponse)
 async def healthz():
-    return {"ok": True}
+    return HealthzResponse(ok=True)
 
 
 # --- threads -----------------------------------------------------------------------
 
 
-@app.get("/api/chat/threads")
+@app.get("/api/chat/threads", response_model=ThreadsListResponse)
 async def list_threads(uid: str = Depends(require_uid)):
     async with chat_db.uid_conn(uid) as conn:
         rows = await chat_db.list_threads(conn, uid)
-    return {"items": [dict(r) for r in rows]}
+    # asyncpg decodes the uuid column as a real uuid.UUID, not str — ThreadSummary.id
+    # is str (matching what the wire format has always been), so this needs the same
+    # explicit str() conversion create_thread_endpoint below already does.
+    return ThreadsListResponse(items=[ThreadSummary(**{**dict(r), "id": str(r["id"])}) for r in rows])
 
 
-@app.post("/api/chat/threads", status_code=201)
+@app.post("/api/chat/threads", status_code=201, response_model=ThreadOut)
 async def create_thread_endpoint(
     uid: str = Depends(require_uid),
     x_client_id: str | None = Header(default=None, alias="X-Client-Id"),
@@ -59,21 +77,27 @@ async def create_thread_endpoint(
     async with chat_db.uid_conn(uid) as conn:
         thread = await chat_db.create_thread(conn, uid)
     await signal.bump_async(uid, ["threads_version"], x_client_id)
-    return {**thread, "id": str(thread["id"])}
+    # asyncpg doesn't decode jsonb columns on its own — working_set comes back as the
+    # raw JSON text, same as context/__init__.py's build_context() already has to
+    # handle defensively.
+    working_set = thread["working_set"]
+    if isinstance(working_set, str):
+        working_set = json.loads(working_set) if working_set else {}
+    return ThreadOut(**{**thread, "id": str(thread["id"]), "working_set": working_set})
 
 
-def _message_out(row) -> dict:
+def _message_out(row) -> MessageOut:
     content = row["content"]
     content = json.loads(content) if isinstance(content, str) else content
-    return {
-        "seq": row["seq"],
-        "role": row["role"],
-        "content": content,
-        "created_at": row["created_at"].isoformat(),
-    }
+    return MessageOut(
+        seq=row["seq"],
+        role=row["role"],
+        content=content,
+        created_at=row["created_at"].isoformat(),
+    )
 
 
-@app.get("/api/chat/threads/{thread_id}/messages")
+@app.get("/api/chat/threads/{thread_id}/messages", response_model=MessagesPageResponse)
 async def get_messages(
     thread_id: str,
     before_seq: int | None = None,
@@ -85,39 +109,35 @@ async def get_messages(
         if thread is None:
             raise HTTPException(status_code=404, detail="thread not found")
         rows, has_more = await chat_db.messages_page(conn, uid, thread_id, before_seq, limit)
-    return {"items": [_message_out(r) for r in rows], "has_more": has_more}
+    return MessagesPageResponse(items=[_message_out(r) for r in rows], has_more=has_more)
 
 
 # --- preferences ---------------------------------------------------------------------
 
 
-class PreferencesUpdate(BaseModel):
-    language: str
-
-
-@app.get("/api/chat/preferences")
+@app.get("/api/chat/preferences", response_model=PreferencesOut)
 async def get_preferences_endpoint(uid: str = Depends(require_uid)):
     async with chat_db.uid_conn(uid) as conn:
         row = await chat_db.get_preferences(conn, uid)
-    return {
-        "language": row["language"] if row else "en",
-        "default_currency": row["default_currency"] if row else None,
-    }
+    return PreferencesOut(
+        language=row["language"] if row else "en",
+        default_currency=row["default_currency"] if row else None,
+    )
 
 
-@app.put("/api/chat/preferences")
+@app.put("/api/chat/preferences", response_model=PreferencesOut)
 async def update_preferences_endpoint(body: PreferencesUpdate, uid: str = Depends(require_uid)):
     if body.language not in SUPPORTED_LANGUAGES:
         raise HTTPException(status_code=400, detail=f"unsupported language: {body.language}")
     async with chat_db.uid_conn(uid) as conn:
         row = await chat_db.set_language(conn, uid, body.language)
-    return {"language": row["language"], "default_currency": row["default_currency"]}
+    return PreferencesOut(language=row["language"], default_currency=row["default_currency"])
 
 
 # --- receipt uploads ------------------------------------------------------------------
 
 
-@app.post("/api/chat/uploads")
+@app.post("/api/chat/uploads", response_model=UploadTargetOut)
 async def create_upload_target(uid: str = Depends(require_uid)):
     """Returns a signed GCS URL in production, a direct fake-gcs URL locally. The
     frontend PUTs/POSTs the image there, then sends the returned `object` path back as
@@ -129,7 +149,7 @@ async def create_upload_target(uid: str = Depends(require_uid)):
 # --- voice input -----------------------------------------------------------------------
 
 
-@app.post("/api/chat/transcribe")
+@app.post("/api/chat/transcribe", response_model=TranscribeResponse)
 async def transcribe_audio(file: UploadFile = File(...), uid: str = Depends(require_uid)):
     """Transcribes a recorded voice message to text — the frontend then drops that
     text into the message box for the user to review/edit before sending, same as any
@@ -155,17 +175,10 @@ async def transcribe_audio(file: UploadFile = File(...), uid: str = Depends(requ
     except Exception as e:
         log.warning("transcription failed: %s", e)
         raise HTTPException(status_code=502, detail="Couldn't transcribe that — please try again.") from e
-    return {"text": resp.text}
+    return TranscribeResponse(text=resp.text)
 
 
 # --- chat (SSE) ----------------------------------------------------------------------
-
-
-class ChatRequest(BaseModel):
-    thread_id: str | None = None
-    message: str
-    client_msg_id: str | None = None
-    receipt_object: str | None = None  # gs object path from a just-completed upload
 
 
 @app.post("/api/chat/chat")
@@ -204,7 +217,7 @@ async def chat(
                     uid,
                     thread_id,
                     "user",
-                    {"text": user_text},
+                    UserMessageContent(text=user_text).model_dump(),
                     user_tokens,
                     client_msg_id=body.client_msg_id,
                 )
@@ -230,7 +243,7 @@ async def chat(
             compiled_graph = build_graph(tools)
 
             marker_ids = TRANSACTION_MARKER_RE.findall(user_text)
-            state: dict = {}
+            state = TurnState()
 
             if marker_ids:
                 # A "[transaction: <id>]" marker turn should always end in exactly
@@ -244,9 +257,9 @@ async def chat(
                 # there's nothing to undo) if this exact failure signature shows up.
                 with traced_turn(uid, thread_id, request_id, tags=["turn"]) as handler:
                     buffered = [c async for c in streaming._run_turn(compiled_graph, messages, handler, state)]
-                if turns._marker_call_missing(state["tool_calls_made"], marker_ids):
+                if turns._marker_call_missing(state.tool_calls_made, marker_ids):
                     log.warning("transaction-marker turn made no matching tool call, retrying once")
-                    state = {}
+                    state = TurnState()
                     with traced_turn(uid, thread_id, request_id, tags=["turn", "retry"]) as handler:
                         buffered = [c async for c in streaming._run_turn(compiled_graph, messages, handler, state)]
                 for chunk in buffered:
@@ -283,13 +296,7 @@ async def chat(
 # --- internal ------------------------------------------------------------------------
 
 
-class SummarizeRequest(BaseModel):
-    uid: str
-    thread_id: str
-    through_seq: int
-
-
-@app.post("/internal/summarize", dependencies=[Depends(require_service_caller)])
+@app.post("/internal/summarize", dependencies=[Depends(require_service_caller)], response_model=HealthzResponse)
 async def summarize_endpoint(body: SummarizeRequest):
     await run_summarize(body.uid, body.thread_id, body.through_seq)
-    return {"ok": True}
+    return HealthzResponse(ok=True)

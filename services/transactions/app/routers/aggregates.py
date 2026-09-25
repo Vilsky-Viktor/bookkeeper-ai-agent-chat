@@ -5,12 +5,13 @@ from fastapi import APIRouter, Depends, Query
 from .. import db
 from ..auth import require_uid
 from ..filters import build_filter_clauses
+from ..models.aggregates import AggregateItem, AggregatesResponse
 from ..money import to_decimal_string
 
 router = APIRouter()
 
 
-@router.get("/aggregates")
+@router.get("/aggregates", response_model=AggregatesResponse)
 async def aggregates(
     currency: str | None = None,
     category: str | None = None,
@@ -44,15 +45,15 @@ async def aggregates(
     async with db.uid_conn(uid) as conn:
         rows = await conn.fetch(sql, *params)
 
-    return {
-        "items": [
-            {
-                "currency": r["currency"],
-                "category": r["category"],
-                "month": r["month"],
-                "total": to_decimal_string(r["total_minor"], r["currency"]),
-                "count": r["count"],
-            }
+    return AggregatesResponse(
+        items=[
+            AggregateItem(
+                currency=r["currency"],
+                category=r["category"],
+                month=r["month"],
+                total=to_decimal_string(r["total_minor"], r["currency"]),
+                count=r["count"],
+            )
             for r in rows
         ]
-    }
+    )

@@ -5,6 +5,8 @@ import re
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage
 
+from ..models.message_content import AssistantMessageContent, ToolMessageContent, UserMessageContent
+
 # Matches the marker ChatPanel.tsx's insertReference() drops into the message box
 # (`[transaction: ${id}]`) when the user clicks a table row's # reference button.
 TRANSACTION_MARKER_RE = re.compile(r"\[transaction: ([^\]]+)\]")
@@ -43,22 +45,26 @@ def _row_to_message(row, full_detail: bool) -> BaseMessage:
     role = row["role"]
 
     if role == "user":
-        return HumanMessage(content=content.get("text", ""))
+        return HumanMessage(content=UserMessageContent.model_validate(content).text)
 
     if role == "assistant":
-        tool_calls = content.get("tool_calls") or []
-        return AIMessage(content=content.get("text", ""), tool_calls=tool_calls)
+        assistant_content = AssistantMessageContent.model_validate(content)
+        return AIMessage(
+            content=assistant_content.text,
+            tool_calls=[tc.model_dump() for tc in assistant_content.tool_calls],
+        )
 
     if role == "tool":
+        tool_content = ToolMessageContent.model_validate(content)
         compact = _compact_json(row)
         if not full_detail and compact:
             payload = compact
         else:
-            payload = content.get("result", content)
+            payload = tool_content.result
         return ToolMessage(
             content=json.dumps(payload, default=str),
-            tool_call_id=content.get("tool_call_id", ""),
-            name=content.get("name"),
+            tool_call_id=tool_content.tool_call_id,
+            name=tool_content.name,
         )
 
     raise ValueError(f"unknown message role: {role}")

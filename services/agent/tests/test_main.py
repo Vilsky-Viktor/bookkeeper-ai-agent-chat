@@ -9,6 +9,7 @@ from app import main
 from app import tools as tools_module
 from app.chat import streaming, turns
 from app.graph import build_graph
+from app.models.turns import ToolCallRecord, TurnState
 
 _RealAsyncClient = httpx.AsyncClient  # captured before any monkeypatching below
 
@@ -66,7 +67,7 @@ class TestRunTurnAgainstARealGraph:
 
         compiled_graph = build_graph(tools)
         messages = [SystemMessage(content="you are a test agent"), HumanMessage(content="show my transactions")]
-        state: dict = {}
+        state = TurnState()
 
         chunks = [c async for c in streaming._run_turn(compiled_graph, messages, BaseCallbackHandler(), state)]
 
@@ -76,7 +77,7 @@ class TestRunTurnAgainstARealGraph:
         # scripted model queued up actually landed in the recorded state. Text-token
         # streaming isn't asserted here since _ScriptedChatModel only implements
         # non-streaming _agenerate, not _astream — that's orthogonal to this bug.
-        assert state["tool_calls_made"] == [{"id": "call-1", "name": "query_transactions", "args": {}}]
+        assert state.tool_calls_made == [ToolCallRecord(id="call-1", name="query_transactions", args={})]
 
 
 class TestTransactionMarkerRe:
@@ -125,23 +126,23 @@ class TestMarkerCallMissing:
         assert turns._marker_call_missing([], ["abc-123"]) is True
 
     def test_false_when_edit_transaction_matches_the_marker_id(self):
-        tool_calls = [{"name": "edit_transaction", "args": {"transaction_id": "abc-123", "amount": "5"}}]
+        tool_calls = [ToolCallRecord(name="edit_transaction", args={"transaction_id": "abc-123", "amount": "5"})]
         assert turns._marker_call_missing(tool_calls, ["abc-123"]) is False
 
     def test_false_when_delete_transaction_matches_the_marker_id(self):
-        tool_calls = [{"name": "delete_transaction", "args": {"transaction_id": "abc-123"}}]
+        tool_calls = [ToolCallRecord(name="delete_transaction", args={"transaction_id": "abc-123"})]
         assert turns._marker_call_missing(tool_calls, ["abc-123"]) is False
 
     def test_true_when_tool_call_is_for_a_different_id(self):
-        tool_calls = [{"name": "edit_transaction", "args": {"transaction_id": "other-id", "amount": "5"}}]
+        tool_calls = [ToolCallRecord(name="edit_transaction", args={"transaction_id": "other-id", "amount": "5"})]
         assert turns._marker_call_missing(tool_calls, ["abc-123"]) is True
 
     def test_true_when_only_an_unrelated_tool_was_called(self):
         # e.g. the model called query_transactions instead of actually editing —
         # still counts as a miss, since nothing was actually changed.
-        tool_calls = [{"name": "query_transactions", "args": {"description": "coffee"}}]
+        tool_calls = [ToolCallRecord(name="query_transactions", args={"description": "coffee"})]
         assert turns._marker_call_missing(tool_calls, ["abc-123"]) is True
 
     def test_false_when_any_of_multiple_marker_ids_matches(self):
-        tool_calls = [{"name": "edit_transaction", "args": {"transaction_id": "id-2", "amount": "5"}}]
+        tool_calls = [ToolCallRecord(name="edit_transaction", args={"transaction_id": "id-2", "amount": "5"})]
         assert turns._marker_call_missing(tool_calls, ["id-1", "id-2"]) is False

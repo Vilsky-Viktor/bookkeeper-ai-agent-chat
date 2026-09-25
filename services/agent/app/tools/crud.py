@@ -6,6 +6,8 @@ from typing import Annotated, Callable, Optional
 import httpx
 from langchain_core.tools import BaseTool, InjectedToolCallId, tool
 
+from ..models.tool_results import TableChangedResult, ToolError
+
 
 def build_crud_tools(http_client: Callable[[], httpx.AsyncClient]) -> list[BaseTool]:
     @tool
@@ -51,7 +53,7 @@ def build_crud_tools(http_client: Callable[[], httpx.AsyncClient]) -> list[BaseT
                 headers={"Idempotency-Key": tool_call_id},
             )
         resp.raise_for_status()
-        return {"ui_event": "table_changed", **resp.json()["items"][0]}
+        return TableChangedResult(**resp.json()["items"][0]).model_dump()
 
     @tool
     async def edit_transaction(
@@ -94,9 +96,9 @@ def build_crud_tools(http_client: Callable[[], httpx.AsyncClient]) -> list[BaseT
                 headers={"Idempotency-Key": tool_call_id},
             )
         if resp.status_code == 404:
-            return {"error": "transaction not found"}
+            return ToolError(error="transaction not found").model_dump()
         resp.raise_for_status()
-        return {"ui_event": "table_changed", **resp.json()}
+        return TableChangedResult(**resp.json()).model_dump()
 
     @tool
     async def delete_transaction(transaction_id: str, tool_call_id: Annotated[str, InjectedToolCallId]) -> dict:
@@ -116,9 +118,9 @@ def build_crud_tools(http_client: Callable[[], httpx.AsyncClient]) -> list[BaseT
                 headers={"Idempotency-Key": tool_call_id},
             )
         if resp.status_code == 404:
-            return {"error": "transaction not found"}
+            return ToolError(error="transaction not found").model_dump()
         resp.raise_for_status()
-        return {"ui_event": "table_changed", **resp.json()}
+        return TableChangedResult(**resp.json()).model_dump()
 
     @tool
     async def delete_transactions_matching(
@@ -161,7 +163,7 @@ def build_crud_tools(http_client: Callable[[], httpx.AsyncClient]) -> list[BaseT
                 headers={"Idempotency-Key": tool_call_id},
             )
         resp.raise_for_status()
-        return {"ui_event": "table_changed", **resp.json()}
+        return TableChangedResult(**resp.json()).model_dump()
 
     @tool
     async def query_transactions(

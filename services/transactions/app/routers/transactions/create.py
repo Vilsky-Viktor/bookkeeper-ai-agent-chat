@@ -8,13 +8,13 @@ from ... import db, signal
 from ...auth import require_uid
 from ...categorize import categorize, save_correction
 from ...idempotency import run_idempotent
+from ...models.transactions import CreateBatchRequest, TransactionsListResponse
 from ...money import InvalidAmount, to_minor
-from ...schemas import CreateBatchRequest
 from . import router
 from .serializers import row_to_out
 
 
-@router.post("/transactions", status_code=201)
+@router.post("/transactions", status_code=201, response_model=TransactionsListResponse)
 async def create_transactions(
     body: CreateBatchRequest,
     idempotency_key: str = Header(..., alias="Idempotency-Key"),
@@ -54,7 +54,7 @@ async def create_transactions(
                     t.receipt_uri,
                     t.batch_id,
                 )
-                created.append(row_to_out(row))
+                created.append(row_to_out(row).model_dump(mode="json"))
 
                 # Receipt confirmation flow: the user may have edited a proposed row's
                 # category before confirming. That edit is a correction for future
@@ -68,4 +68,9 @@ async def create_transactions(
 
     if not replayed and status < 300:
         await signal.bump_async(uid, ["transactions_version"], x_client_id)
+    # This endpoint's status code is dynamic (200 on idempotency replay, 201 on a
+    # fresh create), so it returns a raw JSONResponse instead of relying on FastAPI's
+    # response_model machinery to serialize it — response_model above is doc-only
+    # here; `.model_dump(mode="json")` above is what actually guarantees the wire
+    # shape matches TransactionsListResponse.
     return JSONResponse(status_code=status, content=response)

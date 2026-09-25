@@ -13,6 +13,13 @@ from langchain_core.tools import BaseTool, tool
 
 from .. import llm, storage
 from ..languages import SUPPORTED_LANGUAGES
+from ..models.tool_results import (
+    NotAReceiptResult,
+    ReceiptExtraction,
+    ReceiptProposedItem,
+    ReceiptProposedResult,
+    ToolError,
+)
 from .prompts import RECEIPT_EXTRACTION_PROMPT
 
 SUPPORTED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
@@ -55,7 +62,7 @@ def _fold_merchant(description: str | None, merchant: str | None) -> str | None:
     return f"{description} - {merchant}"
 
 
-async def _extract_line_items(image_bytes: bytes, content_type: str, language: str) -> dict:
+async def _extract_line_items(image_bytes: bytes, content_type: str, language: str) -> ReceiptExtraction:
     b64 = base64.b64encode(image_bytes).decode()
     language_name = SUPPORTED_LANGUAGES.get(language, "English")
     prompt = RECEIPT_EXTRACTION_PROMPT.replace("{language}", language_name).replace(
@@ -69,7 +76,9 @@ async def _extract_line_items(image_bytes: bytes, content_type: str, language: s
     )
     response = await llm.vision_model().ainvoke([message])
     text = response.content if isinstance(response.content, str) else str(response.content)
-    return json.loads(text or "{}")
+    # Validated immediately after parsing so a malformed/off-spec vision response
+    # raises a clear error here instead of an AttributeError several lines later.
+    return ReceiptExtraction.model_validate(json.loads(text or "{}"))
 
 
 def build_receipt_tools(http_client: Callable[[], httpx.AsyncClient], language: str) -> list[BaseTool]:
@@ -91,40 +100,40 @@ def build_receipt_tools(http_client: Callable[[], httpx.AsyncClient], language: 
             image_bytes = _pdf_first_page_to_png(image_bytes)
             content_type = "image/png"
         elif content_type not in SUPPORTED_IMAGE_TYPES:
-            return {
-                "error": (
+            return ToolError(
+                error=(
                     f"That file is a {content_type}, which isn't supported. Please "
                     "upload the receipt as a photo/image (JPEG/PNG/WEBP/GIF) or a PDF."
                 )
-            }
+            ).model_dump()
 
         extracted = await _extract_line_items(image_bytes, content_type, language)
 
-        if not extracted.get("is_receipt", True) or not extracted.get("items"):
-            return {
-                "not_a_receipt": True,
-                "message": (
+        if not extracted.is_receipt or not extracted.items:
+            return NotAReceiptResult(
+                message=(
                     "That doesn't look like a receipt — I couldn't find any purchase "
                     "line items on it. Please upload a photo or PDF of an actual "
                     "receipt."
                 ),
-            }
+            ).model_dump()
 
-        merchant = extracted.get("merchant")
-        occurred_on = extracted.get("occurred_on")
-        currency = (extracted.get("currency") or "USD").upper()
+        merchant = extracted.merchant
+        occurred_on = extracted.occurred_on
+        currency = (extracted.currency or "USD").upper()
+        receipt_uri = f"gs://{storage.BUCKET}/{object_name}"
 
-        proposed = []
+        proposed: list[ReceiptProposedItem] = []
         async with http_client() as c:
-            for item in extracted.get("items", []):
-                description = _fold_merchant(item.get("description"), merchant)
+            for item in extracted.items:
+                description = _fold_merchant(item.description, merchant)
                 category = "other"
                 try:
                     cat_resp = await c.post(
                         "/api/transactions/categorize",
                         json={
                             "description": description,
-                            "amount": item.get("amount", "0"),
+                            "amount": item.amount,
                             "currency": currency,
                             "type": "expense",
                         },
@@ -134,20 +143,16 @@ def build_receipt_tools(http_client: Callable[[], httpx.AsyncClient], language: 
                 except httpx.HTTPError:
                     pass
                 proposed.append(
-                    {
-                        "occurred_on": occurred_on,
-                        "type": "expense",
-                        "amount": item.get("amount"),
-                        "currency": currency,
-                        "category": category,
-                        "description": description,
-                        "receipt_uri": f"gs://{storage.BUCKET}/{object_name}",
-                    }
+                    ReceiptProposedItem(
+                        occurred_on=occurred_on,
+                        type="expense",
+                        amount=item.amount,
+                        currency=currency,
+                        category=category,
+                        description=description,
+                        receipt_uri=receipt_uri,
+                    )
                 )
-        return {
-            "ui_event": "receipt_proposed",
-            "items": proposed,
-            "receipt_uri": f"gs://{storage.BUCKET}/{object_name}",
-        }
+        return ReceiptProposedResult(items=proposed, receipt_uri=receipt_uri).model_dump()
 
     return [extract_receipt]

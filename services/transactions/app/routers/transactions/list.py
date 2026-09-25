@@ -7,11 +7,12 @@ from fastapi import Depends, HTTPException, Query
 from ... import db
 from ...auth import require_uid
 from ...filters import build_filter_clauses
+from ...models.transactions import TransactionsListResponse
 from . import router
 from .serializers import row_to_out
 
 
-@router.get("/transactions")
+@router.get("/transactions", response_model=TransactionsListResponse)
 async def list_transactions(
     currency: str | None = None,
     category: str | None = None,

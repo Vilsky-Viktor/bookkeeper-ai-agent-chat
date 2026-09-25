@@ -8,10 +8,10 @@ class TestUploadTarget:
 
         target = storage.upload_target("uid-1", "obj-1")
 
-        assert target["method"] == "POST"
-        assert target["object"] == "receipts/uid-1/obj-1.jpg"
-        assert target["url"].startswith("http://localhost:8080/gcs/upload/storage/v1/b/")
-        assert "receipts/uid-1/obj-1.jpg" in target["url"]
+        assert target.method == "POST"
+        assert target.object == "receipts/uid-1/obj-1.jpg"
+        assert target.url.startswith("http://localhost:8080/gcs/upload/storage/v1/b/")
+        assert "receipts/uid-1/obj-1.jpg" in target.url
 
     def test_object_name_is_namespaced_per_user(self, monkeypatch):
         monkeypatch.setenv("STORAGE_MODE", "local")
@@ -20,4 +20,4 @@ class TestUploadTarget:
         target_a = storage.upload_target("uid-a", "obj-1")
         target_b = storage.upload_target("uid-b", "obj-1")
 
-        assert target_a["object"] != target_b["object"]
+        assert target_a.object != target_b.object
