@@ -1,5 +1,4 @@
 import httpx
-from langchain_core.callbacks import BaseCallbackHandler
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
@@ -69,7 +68,7 @@ class TestRunTurnAgainstARealGraph:
         messages = [SystemMessage(content="you are a test agent"), HumanMessage(content="show my transactions")]
         state = TurnState()
 
-        chunks = [c async for c in streaming._run_turn(compiled_graph, messages, BaseCallbackHandler(), state)]
+        chunks = [c async for c in streaming._run_turn(compiled_graph, messages, {}, state)]
 
         assert chunks  # some SSE bytes were actually produced
         # The real regression-guard: the graph ran end to end (through ToolNode and

@@ -10,7 +10,7 @@ from . import chat_db, context, llm, quotas, signal, storage
 from .auth import bearer_token, require_uid
 from .chat import streaming, turns
 from .graph import build_graph
-from .langfuse_obs import traced_turn
+from .langsmith_obs import traced_turn
 from .languages import SUPPORTED_LANGUAGES
 from .models.api import (
     ChatRequest,
@@ -255,18 +255,18 @@ async def chat(
                 # reply never reaches the client before it's checked, and retry once
                 # (silently, from scratch — the failed attempt made no tool calls, so
                 # there's nothing to undo) if this exact failure signature shows up.
-                with traced_turn(uid, thread_id, request_id, tags=["turn"]) as handler:
-                    buffered = [c async for c in streaming._run_turn(compiled_graph, messages, handler, state)]
+                with traced_turn(uid, thread_id, request_id, tags=["turn"]) as run_config:
+                    buffered = [c async for c in streaming._run_turn(compiled_graph, messages, run_config, state)]
                 if turns._marker_call_missing(state.tool_calls_made, marker_ids):
                     log.warning("transaction-marker turn made no matching tool call, retrying once")
                     state = TurnState()
-                    with traced_turn(uid, thread_id, request_id, tags=["turn", "retry"]) as handler:
-                        buffered = [c async for c in streaming._run_turn(compiled_graph, messages, handler, state)]
+                    with traced_turn(uid, thread_id, request_id, tags=["turn", "retry"]) as run_config:
+                        buffered = [c async for c in streaming._run_turn(compiled_graph, messages, run_config, state)]
                 for chunk in buffered:
                     yield chunk
             else:
-                with traced_turn(uid, thread_id, request_id, tags=["turn"]) as handler:
-                    async for chunk in streaming._run_turn(compiled_graph, messages, handler, state):
+                with traced_turn(uid, thread_id, request_id, tags=["turn"]) as run_config:
+                    async for chunk in streaming._run_turn(compiled_graph, messages, run_config, state):
                         yield chunk
 
             await turns.finalize_turn(uid, thread_id, thread, state, user_tokens)

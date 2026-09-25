@@ -17,7 +17,7 @@ see "Swapping the LLM provider") and a free public exchange-rate lookup.
 5. Reset everything with `docker compose down -v` (also drops the Postgres volume).
 
 **First boot is slow to become responsive (15–30s):** the `agent` container imports the
-full LangGraph/LangChain/Langfuse stack at startup, and `firebase-tools`
+full LangGraph/LangChain/LangSmith stack at startup, and `firebase-tools`
 downloads the Firestore emulator JAR on first run. Watch `docker compose logs -f` for
 "Uvicorn running" (both FastAPI services) and "All emulators ready" (Firebase).
 
@@ -123,9 +123,9 @@ guard; everything else installs with no scripts run at all.
   logical CSS properties (not just a `dir` attribute flip).
 - **Dark/light theme**, persisted locally, no flash of the wrong theme on reload.
 - Per-user daily quotas (chat turns, receipts, tokens — configurable via
-  `DAILY_TURN_LIMIT`/`DAILY_RECEIPT_LIMIT`) and optional Langfuse tracing; every
-  Langfuse call site checks its keys are set and no-ops otherwise, so an empty `.env`
-  still runs the full app.
+  `DAILY_TURN_LIMIT`/`DAILY_RECEIPT_LIMIT`) and optional LangSmith tracing; it
+  activates purely from environment variables, so an empty `.env` still runs the full
+  app with tracing simply never turning on.
 
 ## Architecture at a glance
 
@@ -250,7 +250,7 @@ the chat input), `src/components/TransactionsTable.tsx`.
 | `LLM_SUMMARY_MODEL` | no | default `gpt-4o-mini` — rolling chat summary |
 | `LLM_VISION_MODEL` | no | default: same as `LLM_MODEL` — receipt image extraction |
 | `TRANSCRIBE_MODEL` | no | default `whisper-1` — voice-input transcription |
-| `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` / `LANGFUSE_HOST` | no | tracing no-ops if unset |
+| `LANGSMITH_TRACING` / `LANGSMITH_API_KEY` / `LANGSMITH_PROJECT` / `LANGSMITH_ENDPOINT` | no | tracing no-ops if unset |
 
 `DAILY_TURN_LIMIT` (default 200) and `DAILY_RECEIPT_LIMIT` (default 50) are also
 overridable but aren't in `.env.example` since the defaults are fine for local dev.

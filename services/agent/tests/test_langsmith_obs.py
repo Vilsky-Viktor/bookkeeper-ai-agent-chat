@@ -1,4 +1,4 @@
-from app.langfuse_obs import mask_for_export
+from app.langsmith_obs import mask_for_export
 
 
 class TestMaskForExport:

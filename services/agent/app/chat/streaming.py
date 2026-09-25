@@ -13,7 +13,7 @@ def _sse(event: str | None, data: dict) -> bytes:
     return ("\n".join(lines) + "\n\n").encode()
 
 
-async def _run_turn(compiled_graph, messages: list, handler, state: TurnState):
+async def _run_turn(compiled_graph, messages: list, run_config: dict, state: TurnState):
     """Runs the graph once, yielding each SSE chunk as it's produced and writing the
     turn's outcome into `state` (assistant_text_parts/tool_calls_made/tool_results/
     total_tokens_used) as it goes. The caller either forwards each yielded chunk to
@@ -21,10 +21,13 @@ async def _run_turn(compiled_graph, messages: list, handler, state: TurnState):
     list first so it can inspect `state` and discard+retry before anything reaches
     the client — see chat()'s handling of a "[transaction: <id>]" marker turn below,
     where an empty tool_calls_made despite the marker means the model fabricated a
-    reply without ever calling the tool."""
-    async for event in compiled_graph.astream_events(
-        initial_state(messages), config={"callbacks": [handler]}, version="v2"
-    ):
+    reply without ever calling the tool.
+
+    run_config carries the LangSmith tags/metadata built by langsmith_obs.traced_turn
+    — LangSmith attaches its own tracer to this run automatically from environment
+    variables, so there's no callback handler to pass here (unlike the old Langfuse
+    setup)."""
+    async for event in compiled_graph.astream_events(initial_state(messages), config=run_config, version="v2"):
         kind = event["event"]
         # Some tools (extract_receipt's vision call) make their own, separate LLM
         # call from inside a tool function while the graph's ToolNode runs.
