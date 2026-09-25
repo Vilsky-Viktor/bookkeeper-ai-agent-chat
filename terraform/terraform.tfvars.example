@@ -1,0 +1,20 @@
+# Copy to terraform.tfvars (gitignored) and fill in.
+
+project_id = "your-gcp-project-id"
+region     = "us-central1"
+web_origin = "https://your-project-id.web.app"
+
+# Everything below has a sensible default (see variables.tf) — uncomment only what
+# you want to override.
+
+# environment         = "prod"
+# llm_provider        = "openai"
+# llm_model           = "gpt-4o"
+# llm_fallback_model  = "gpt-4o-mini"
+# llm_summary_model   = "gpt-4o-mini"
+# langsmith_tracing   = false
+# cloud_sql_tier      = "db-f1-micro"
+
+# Set these once CI has pushed real images (see terraform/README.md):
+# agent_image        = "us-central1-docker.pkg.dev/your-gcp-project-id/prod-services/agent:latest"
+# transactions_image = "us-central1-docker.pkg.dev/your-gcp-project-id/prod-services/transactions:latest"

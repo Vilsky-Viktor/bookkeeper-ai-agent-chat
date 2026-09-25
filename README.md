@@ -326,12 +326,28 @@ web/                          React + Vite + TypeScript — chat pane + transact
   src/components/                ChatPanel, TransactionsTable, ReceiptModal, Tooltip, …
 Caddyfile                     Reverse proxy — same routing shape as Firebase Hosting rewrites
 docker-compose.yml
+terraform/                    GCP infrastructure as code — see "Deploying to GCP" below
 ```
+
+## Deploying to GCP
+
+`terraform/` provisions the real GCP resources this local stack stands in for: two
+Cloud Run services, Cloud SQL (the same `bookkeeping`/`chat` databases), the receipts
+bucket, a Cloud Tasks queue, Secret Manager secrets, Artifact Registry, and the
+Firebase project link + Firestore database. It does *not* cover: applying the DB
+schema (`db/init/*.sql` — still a manual/CI migration step against the instance it
+creates), Firestore rules / Hosting rewrite deployment (still `firebase deploy`),
+Firebase Auth's Google sign-in provider (enabled once by hand in the console), or
+building/pushing the container images (CI's job). See `terraform/README.md` for the
+full walkthrough, including two known application-code gaps it surfaces (the
+service-to-service OIDC check in `service_auth.py` and the Cloud Tasks enqueue call
+in `tasks.py` are both still stubs — provisioning the infrastructure doesn't finish
+that code).
 
 ## Known gaps
 
 - `get_exchange_rate` returns a *daily* reference rate, not live tick-by-tick market
   data.
-- Production-only concerns (App Check, an external load balancer, real Cloud Tasks,
-  an eval gate, Terraform/CI, Cloud Run autoscaling) are intentionally out of scope —
-  this is a local dev stack, not a deployable one.
+- Production-only concerns not covered by `terraform/` — App Check, an external load
+  balancer beyond Firebase Hosting, a CI pipeline, an eval gate, Cloud Run
+  autoscaling tuning — are intentionally out of scope for now.

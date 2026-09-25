@@ -10,3 +10,7 @@ gcs/receipts-local/*
 **/.mypy_cache
 **/.pytest_cache
 **/.venv
+terraform/.terraform/
+terraform/*.tfstate*
+terraform/*.tfvars
+!terraform/terraform.tfvars.example
