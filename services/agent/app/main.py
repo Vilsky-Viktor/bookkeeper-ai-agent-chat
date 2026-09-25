@@ -21,6 +21,11 @@ log = logging.getLogger("agent")
 
 RECENT_MESSAGE_LIMIT = 40  # rows fetched before token-budget trimming (context.py)
 
+# Single source of truth lives in context.py (it also needs this to force a marker's
+# id into the working-set text — see build_context). Re-exported here since chat()
+# below also needs it, for the retry-on-no-matching-tool-call logic.
+TRANSACTION_MARKER_RE = context.TRANSACTION_MARKER_RE
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -170,6 +175,119 @@ def _sse(event: str | None, data: dict) -> bytes:
     return ("\n".join(lines) + "\n\n").encode()
 
 
+async def _run_turn(compiled_graph, messages: list, handler, state: dict):
+    """Runs the graph once, yielding each SSE chunk as it's produced and writing the
+    turn's outcome into `state` (assistant_text_parts/tool_calls_made/tool_results/
+    total_tokens_used) as it goes. The caller either forwards each yielded chunk to
+    the client immediately (true streaming, the normal case) or collects them into a
+    list first so it can inspect `state` and discard+retry before anything reaches
+    the client — see chat()'s handling of a "[transaction: <id>]" marker turn below,
+    where an empty tool_calls_made despite the marker means the model fabricated a
+    reply without ever calling the tool."""
+    state["assistant_text_parts"] = []
+    state["tool_calls_made"] = []
+    state["tool_results"] = []
+    state["total_tokens_used"] = 0
+
+    async for event in compiled_graph.astream_events(
+        initial_state(messages), config={"callbacks": [handler]}, version="v2"
+    ):
+        kind = event["event"]
+        # Some tools (extract_receipt's vision call) make their own, separate LLM
+        # call from inside a tool function while the graph's ToolNode runs.
+        # LangChain's ambient config propagation attaches this same tracer to that
+        # nested call too, so it shows up in this event stream indistinguishable
+        # from the graph's own model turn unless filtered out here — otherwise its
+        # raw output streams to the user as if it were the assistant talking. Only
+        # the graph's own "call_model" node's events count as assistant narration.
+        is_call_model_node = event.get("metadata", {}).get("langgraph_node") == "call_model"
+
+        if kind == "on_chat_model_stream" and is_call_model_node:
+            chunk = event["data"]["chunk"]
+            text = chunk.content if isinstance(chunk.content, str) else ""
+            if text:
+                state["assistant_text_parts"].append(text)
+                yield _sse(None, {"type": "token", "text": text})
+
+        elif kind == "on_chat_model_end":
+            output = event["data"].get("output")
+            usage = getattr(output, "usage_metadata", None)
+            if usage:
+                # Counted for every model call, including nested ones like vision
+                # extraction — it's real spend against the user's token quota
+                # either way.
+                state["total_tokens_used"] += usage.get("total_tokens", 0)
+            if not is_call_model_node:
+                continue
+            round_tool_calls = getattr(output, "tool_calls", None) or []
+            for c in round_tool_calls:
+                state["tool_calls_made"].append({"id": c.get("id"), "name": c.get("name"), "args": c.get("args")})
+            if round_tool_calls:
+                # This round's streamed text (if any) was narration before a tool
+                # call, not the final answer — e.g. "I'll export this now." Without
+                # discarding it, it gets concatenated with the real answer that
+                # follows the tool result, with no separator, reading as a garbled
+                # double answer.
+                state["assistant_text_parts"].clear()
+                yield _sse("reset_pending", {"type": "reset_pending"})
+
+        elif kind == "on_tool_end":
+            output = event["data"].get("output")
+            name = event.get("name", "")
+            tool_call_id = getattr(output, "tool_call_id", None)
+            raw = getattr(output, "content", "{}")
+            try:
+                parsed = json.loads(raw) if isinstance(raw, str) else raw
+            except (TypeError, ValueError):
+                parsed = {"result": raw}
+            if not isinstance(parsed, dict):
+                parsed = {"result": parsed}
+            ui_event = parsed.pop("ui_event", None)
+            state["tool_results"].append((name, tool_call_id, parsed))
+
+            if ui_event == "table_changed":
+                payload = {"type": "table_changed", "transaction": parsed}
+            elif ui_event == "filter_set":
+                payload = {"type": "filter_set", "filter": parsed.get("filter", {})}
+            elif ui_event == "receipt_proposed":
+                payload = {
+                    "type": "receipt_proposed",
+                    "items": parsed.get("items", []),
+                    "receipt_uri": parsed.get("receipt_uri"),
+                }
+            elif ui_event == "export_ready":
+                payload = {"type": "export_ready"}
+            else:
+                payload = None
+            if payload:
+                yield _sse(ui_event, payload)
+
+
+def _marker_call_missing(tool_calls_made: list[dict], marker_ids: list[str]) -> bool:
+    return not any(
+        tc["name"] in ("edit_transaction", "delete_transaction") and tc["args"].get("transaction_id") in marker_ids
+        for tc in tool_calls_made
+    )
+
+
+async def _record_turn_failure(uid: str, thread_id: str, note: str) -> None:
+    """Called when a turn fails after its user message was already saved (a crash, a
+    quota 429, anything reaching the except blocks below with thread_id set) —
+    without this, the thread's next turn sees two consecutive human messages with no
+    assistant reply between them, which is a much stronger source of confusion for
+    the model than ordinary response variance. Observed directly: an unhandled crash
+    left exactly this kind of orphaned message behind, and every retry of the same
+    edit in that thread afterward failed the same way, even though the same context
+    replayed outside that thread succeeded."""
+    try:
+        async with chat_db.uid_conn(uid) as conn:
+            await chat_db.insert_message(
+                conn, uid, thread_id, "assistant", {"text": note, "tool_calls": []}, context.count_tokens(note)
+            )
+    except Exception:
+        log.exception("failed to record fallback assistant message after a failed turn")
+
+
 def _working_set_entries(tool_name: str, result: dict) -> dict:
     if not isinstance(result, dict):
         return {}
@@ -202,6 +320,7 @@ async def chat(
 ):
     async def event_stream():
         request_id = str(uuid.uuid4())
+        thread_id: str | None = None
         try:
             async with chat_db.uid_conn(uid) as conn:
                 if not body.thread_id:
@@ -253,85 +372,37 @@ async def chat(
             tools = build_tools(jwt, x_client_id, language)
             compiled_graph = build_graph(tools)
 
-            assistant_text_parts: list[str] = []
-            tool_calls_made: list[dict] = []
-            tool_results: list[tuple] = []  # (name, tool_call_id, parsed_result)
-            total_tokens_used = 0
+            marker_ids = TRANSACTION_MARKER_RE.findall(user_text)
+            state: dict = {}
 
-            with traced_turn(uid, thread_id, request_id, tags=["turn"]) as handler:
-                async for event in compiled_graph.astream_events(
-                    initial_state(messages), config={"callbacks": [handler]}, version="v2"
-                ):
-                    kind = event["event"]
-                    # Some tools (extract_receipt's vision call) make their own,
-                    # separate LLM call from inside a tool function while the graph's
-                    # ToolNode runs. LangChain's ambient config propagation attaches
-                    # this same tracer to that nested call too, so it shows up in this
-                    # event stream indistinguishable from the graph's own model turn
-                    # unless filtered out here — otherwise its raw output streams to
-                    # the user as if it were the assistant talking. Only the graph's
-                    # own "call_model" node's events count as assistant narration.
-                    is_call_model_node = event.get("metadata", {}).get("langgraph_node") == "call_model"
+            if marker_ids:
+                # A "[transaction: <id>]" marker turn should always end in exactly
+                # one matching edit_transaction/delete_transaction call — the id
+                # comes straight from a table row the user clicked, so it's always
+                # valid. Observed failure mode: the model occasionally replies "not
+                # found"/"invalid id" without ever calling the tool at all (an empty
+                # tool_calls list). Buffer instead of streaming live, so a fabricated
+                # reply never reaches the client before it's checked, and retry once
+                # (silently, from scratch — the failed attempt made no tool calls, so
+                # there's nothing to undo) if this exact failure signature shows up.
+                with traced_turn(uid, thread_id, request_id, tags=["turn"]) as handler:
+                    buffered = [c async for c in _run_turn(compiled_graph, messages, handler, state)]
+                if _marker_call_missing(state["tool_calls_made"], marker_ids):
+                    log.warning("transaction-marker turn made no matching tool call, retrying once")
+                    state = {}
+                    with traced_turn(uid, thread_id, request_id, tags=["turn", "retry"]) as handler:
+                        buffered = [c async for c in _run_turn(compiled_graph, messages, handler, state)]
+                for chunk in buffered:
+                    yield chunk
+            else:
+                with traced_turn(uid, thread_id, request_id, tags=["turn"]) as handler:
+                    async for chunk in _run_turn(compiled_graph, messages, handler, state):
+                        yield chunk
 
-                    if kind == "on_chat_model_stream" and is_call_model_node:
-                        chunk = event["data"]["chunk"]
-                        text = chunk.content if isinstance(chunk.content, str) else ""
-                        if text:
-                            assistant_text_parts.append(text)
-                            yield _sse(None, {"type": "token", "text": text})
-
-                    elif kind == "on_chat_model_end":
-                        output = event["data"].get("output")
-                        usage = getattr(output, "usage_metadata", None)
-                        if usage:
-                            # Counted for every model call, including nested ones like
-                            # vision extraction — it's real spend against the user's
-                            # token quota either way.
-                            total_tokens_used += usage.get("total_tokens", 0)
-                        if not is_call_model_node:
-                            continue
-                        round_tool_calls = getattr(output, "tool_calls", None) or []
-                        for c in round_tool_calls:
-                            tool_calls_made.append({"id": c.get("id"), "name": c.get("name"), "args": c.get("args")})
-                        if round_tool_calls:
-                            # This round's streamed text (if any) was narration before
-                            # a tool call, not the final answer — e.g. "I'll export
-                            # this now." Without discarding it, it gets concatenated
-                            # with the real answer that follows the tool result, with
-                            # no separator, reading as a garbled double answer.
-                            assistant_text_parts.clear()
-                            yield _sse("reset_pending", {"type": "reset_pending"})
-
-                    elif kind == "on_tool_end":
-                        output = event["data"].get("output")
-                        name = event.get("name", "")
-                        tool_call_id = getattr(output, "tool_call_id", None)
-                        raw = getattr(output, "content", "{}")
-                        try:
-                            parsed = json.loads(raw) if isinstance(raw, str) else raw
-                        except (TypeError, ValueError):
-                            parsed = {"result": raw}
-                        if not isinstance(parsed, dict):
-                            parsed = {"result": parsed}
-                        ui_event = parsed.pop("ui_event", None)
-                        tool_results.append((name, tool_call_id, parsed))
-
-                        if ui_event == "table_changed":
-                            payload = {"type": "table_changed", "transaction": parsed}
-                        elif ui_event == "filter_set":
-                            payload = {"type": "filter_set", "filter": parsed.get("filter", {})}
-                        elif ui_event == "receipt_proposed":
-                            payload = {
-                                "type": "receipt_proposed",
-                                "items": parsed.get("items", []),
-                                "receipt_uri": parsed.get("receipt_uri"),
-                            }
-                        elif ui_event == "export_ready":
-                            payload = {"type": "export_ready"}
-                        else:
-                            payload = None
-                        if payload:
-                            yield _sse(ui_event, payload)
+            assistant_text_parts = state["assistant_text_parts"]
+            tool_calls_made = state["tool_calls_made"]
+            tool_results = state["tool_results"]
+            total_tokens_used = state["total_tokens_used"]
 
             assistant_text = "".join(assistant_text_parts)
 
@@ -385,13 +456,15 @@ async def chat(
             # quotas.py); everything else gets a plain, non-technical message instead
             # of surfacing the raw detail (e.g. "thread not found") in the chat.
             message = e.detail if e.status_code == 429 else "Sorry, I couldn't do that — please try again."
+            if thread_id is not None:
+                await _record_turn_failure(uid, thread_id, message)
             yield _sse("error", {"message": message, "status": e.status_code})
         except Exception:
             log.exception("chat turn failed")
-            yield _sse(
-                "error",
-                {"message": "Sorry, I ran into a problem and couldn't finish that. Please try again."},
-            )
+            message = "Sorry, I ran into a problem and couldn't finish that. Please try again."
+            if thread_id is not None:
+                await _record_turn_failure(uid, thread_id, message)
+            yield _sse("error", {"message": message})
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 

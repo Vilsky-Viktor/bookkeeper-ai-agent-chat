@@ -6,12 +6,17 @@ budget is spent (never splitting a tool call from its result), rolling summary."
 import datetime
 import json
 import os
+import re
 from typing import Any
 
 import tiktoken
 from langchain_core.messages import AIMessage, AnyMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
 
 from .languages import SUPPORTED_LANGUAGES
+
+# Matches the marker ChatPanel.tsx's insertReference() drops into the message box
+# (`[transaction: ${id}]`) when the user clicks a table row's # reference button.
+TRANSACTION_MARKER_RE = re.compile(r"\[transaction: ([^\]]+)\]")
 
 MODEL_FOR_TOKENS = os.environ.get("LLM_MODEL", "gpt-4o")
 CONTEXT_WINDOW = int(os.environ.get("LLM_CONTEXT_WINDOW", "128000"))
@@ -36,10 +41,21 @@ add_transaction has no category argument on purpose: categorization is applied b
 transactions service itself (past corrections first, then its own model), so every \
 row is categorized consistently regardless of whether it came from chat or a receipt. \
 A message may contain a "[transaction: <id>]" marker — the user clicked a reference \
-button on that row in the table. Use that exact id directly as transaction_id for \
+button on that row in the table, so this id is known-good, straight from the table \
+they're looking at right now. Use that exact id directly as transaction_id for \
 edit_transaction/delete_transaction; don't resolve it by description/category or ask \
 which transaction they mean, and don't repeat the raw marker back in your reply — refer \
-to the transaction naturally (e.g. by its description or amount). \
+to the transaction naturally (e.g. by its description or amount). You MUST actually \
+call edit_transaction/delete_transaction with that id THIS turn, every single time — \
+never reply that the id wasn't found, is invalid, or ask the user to check and resend \
+it unless you actually called the tool and it returned a real error; claiming "not \
+found" without ever calling the tool is a fabrication, not caution, especially since \
+the marker means the id is already confirmed to exist. This applies fresh every \
+single time, even if an earlier turn in this same conversation already replied "not \
+found"/"couldn't find" for the exact same id: that earlier reply is not evidence the \
+id is invalid — it was itself never backed by an actual tool call, so it proves \
+nothing and must not be repeated or treated as settled. Call the tool for real this \
+time instead of matching your own prior wording. \
 "The last transaction"/"the most recent one"/"my latest expense" is a TEMPORAL \
 reference to current table state, not a conversational one — always resolve it with a \
 fresh query_transactions call (its results are already newest-first, so the first item \
@@ -192,9 +208,27 @@ def build_context(
     working_set = thread.get("working_set")
     if isinstance(working_set, str):
         working_set = json.loads(working_set) if working_set else {}
+    working_set = dict(working_set) if working_set else {}
+    # A "[transaction: <id>]" marker's id must always appear in this list, even if it
+    # fell off the working set's cap — otherwise its absence reads to the model as
+    # evidence the id is invalid, which in practice overrode the marker-priority rule
+    # elsewhere even with an explicit caveat added below saying this list is
+    # incomplete (observed directly, repeatedly: a marker edit whose id was still in
+    # this list succeeded immediately every time; the one whose id had been evicted
+    # kept failing regardless of prompt wording). Injecting the id here — not just
+    # arguing the model out of the doubt — is what actually fixed it.
+    for marker_id in TRANSACTION_MARKER_RE.findall(current_user_text):
+        working_set.setdefault(marker_id, "referenced in this message")
     if working_set:
         labels = "; ".join(f"{k}: {v}" for k, v in working_set.items())
-        sys_text += f"\nRecently referenced transactions (id: label): {labels}."
+        sys_text += (
+            f"\nRecently referenced transactions (id: label): {labels}. This list is a "
+            "capped, most-recent-first convenience cache (older entries silently drop off "
+            "as new ones are added) — it is NOT the full set of valid transactions, and an "
+            "id's absence from it is not evidence that id is wrong or doesn't exist. In "
+            'particular, a "[transaction: <id>]" marker\'s id is valid whether or not it '
+            "happens to appear here."
+        )
     if thread.get("summary"):
         sys_text += f"\nSummary of earlier conversation: {thread['summary']}"
 

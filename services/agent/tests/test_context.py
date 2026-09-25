@@ -48,6 +48,25 @@ class TestSystemPrompt:
         assert "Do NOT add a numbered or bulleted list" in context.SYSTEM_PROMPT
         assert "in the UI" not in context.SYSTEM_PROMPT
 
+    def test_requires_calling_edit_delete_for_a_transaction_marker(self):
+        # Observed: given a "[transaction: <id>]" marker (from the table's # reference
+        # button, so the id is known to exist), the model replied "couldn't find the
+        # transaction" three times in a row with an empty tool_calls list each time —
+        # it never actually called edit_transaction at all, just fabricated a
+        # plausible-looking failure instead of trying.
+        assert "You MUST actually" in context.SYSTEM_PROMPT
+        assert 'claiming "not found" without ever calling the tool is a fabrication' in context.SYSTEM_PROMPT
+
+    def test_forbids_anchoring_on_a_prior_unfounded_not_found_reply(self):
+        # This one is subtle and was only caught with a live model call: the softer
+        # instruction above worked in a fresh conversation but NOT in the real failing
+        # thread, which already had several rounds of the exact same user message
+        # met with a fabricated "couldn't find" reply — the model kept repeating its
+        # own prior (never tool-backed) answer instead of trying again. Verified with
+        # a live call reproducing that exact poisoned history: without this
+        # instruction the model repeats the fabrication; with it, it calls the tool.
+        assert "even if an earlier turn in this same conversation already replied" in context.SYSTEM_PROMPT
+
 
 class TestCountTokens:
     def test_empty_string_is_zero_tokens(self):
@@ -119,6 +138,46 @@ class TestBuildContext:
         thread = {"working_set": json.dumps({"txn-1": "coffee"})}
         messages = context.build_context(thread, None, [], "hi")
         assert "txn-1" in messages[0].content
+
+    def test_working_set_framed_as_incomplete_not_authoritative(self):
+        # First attempt at the root cause below: the working set is capped at 20
+        # entries, so an older transaction id silently falls off it while still being
+        # perfectly valid, and the model was treating a marker id's absence from
+        # this list as evidence it didn't exist. This text-only caveat measurably
+        # helped but did NOT reliably fix it on its own (still failed most of the
+        # time on a real, repeatedly-reproduced case) — see
+        # test_marker_id_always_injected_into_working_set below for the fix that
+        # actually did.
+        thread = {"working_set": {"txn-1": "coffee, 5.00 USD, 2026-01-01"}}
+        messages = context.build_context(thread, None, [], "hi")
+        assert "NOT the full set of valid transactions" in messages[0].content
+        assert "is not evidence that id is wrong or doesn't exist" in messages[0].content
+
+    def test_marker_id_always_injected_into_working_set(self):
+        # The actual fix: don't just tell the model an absent id is still valid —
+        # make sure it's never absent in the first place. Every marker edit whose id
+        # happened to still be in the working set succeeded immediately, every time;
+        # the one whose id had been evicted kept failing regardless of the caveat
+        # above. So a "[transaction: <id>]" marker's id is now force-included in the
+        # rendered list even when it fell off the real working set.
+        thread = {"working_set": {"txn-1": "coffee, 5.00 USD, 2026-01-01"}}
+        user_text = "Change amount [transaction: evicted-id] to 5"
+        messages = context.build_context(thread, None, [], user_text)
+        assert "evicted-id" in messages[0].content
+
+    def test_marker_injection_does_not_override_a_real_cached_label(self):
+        thread = {"working_set": {"txn-1": "coffee, 5.00 USD, 2026-01-01"}}
+        user_text = "Change amount [transaction: txn-1] to 5"
+        messages = context.build_context(thread, None, [], user_text)
+        assert "txn-1: coffee, 5.00 USD, 2026-01-01" in messages[0].content
+
+    def test_marker_injection_does_not_mutate_the_thread_dict(self):
+        # build_context must not leak a per-turn placeholder label back into the
+        # caller's thread object — it's not real cached data, just a stopgap for
+        # this one prompt render.
+        thread = {"working_set": {"txn-1": "coffee, 5.00 USD, 2026-01-01"}}
+        context.build_context(thread, None, [], "Change amount [transaction: evicted-id] to 5")
+        assert "evicted-id" not in thread["working_set"]
 
     def test_summary_included_in_system_prompt(self):
         thread = {"summary": "user reviewing September dining expenses"}

@@ -184,12 +184,25 @@ async def patch_transaction(
                 raise HTTPException(status_code=404, detail="transaction not found")
 
             currency = fields.get("currency", existing["currency"])
-            amount_minor = existing["amount_minor"]
             if "amount" in fields:
                 try:
                     amount_minor = to_minor(fields["amount"], currency)
                 except InvalidAmount as e:
                     raise HTTPException(status_code=400, detail=str(e)) from e
+            elif currency != existing["currency"]:
+                # Currency changed but amount didn't: reinterpret the existing
+                # numeric value under the new currency's precision. Reusing
+                # amount_minor as-is here would read the old currency's minor units
+                # back under the new currency's exponent — e.g. a 2-decimal amount's
+                # stored integer, read back as a 0-decimal currency, silently
+                # inflates the displayed amount by 100x.
+                existing_amount = to_decimal_string(existing["amount_minor"], existing["currency"])
+                try:
+                    amount_minor = to_minor(existing_amount, currency)
+                except InvalidAmount as e:
+                    raise HTTPException(status_code=400, detail=str(e)) from e
+            else:
+                amount_minor = existing["amount_minor"]
 
             category = fields.get("category", existing["category"])
             description = fields.get("description", existing["description"])
