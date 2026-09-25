@@ -1,6 +1,8 @@
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
-import { defineConfig } from "vite";
+// vitest/config re-exports vite's defineConfig with the `test` field typed in, so
+// this same config doubles as the Vitest config without a second config file.
+import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
@@ -15,5 +17,9 @@ export default defineConfig({
       usePolling: true,
       interval: 300,
     },
+  },
+  test: {
+    environment: "jsdom",
+    setupFiles: ["./src/test/setup.ts"],
   },
 });
