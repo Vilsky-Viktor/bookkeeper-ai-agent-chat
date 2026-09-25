@@ -7,6 +7,8 @@ Auth/Firestore, Cloud Storage, Cloud Tasks, Cloud Run, Hosting rewrites), so the
 thing that talks to the real internet is the LLM provider's API (OpenAI by default —
 see "Swapping the LLM provider") and a free public exchange-rate lookup.
 
+![SMAKER.ai screenshot](smarker-screenshot.png)
+
 ## Quickstart
 
 1. `cp .env.example .env` and set `LLM_API_KEY` (an OpenAI key).
