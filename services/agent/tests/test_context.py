@@ -36,6 +36,18 @@ class TestSystemPrompt:
     def test_forbids_describing_a_proposal_without_a_real_tool_call(self):
         assert "without having actually called extract_receipt" in context.SYSTEM_PROMPT
 
+    def test_requires_short_reply_after_receipt_extraction(self):
+        # Observed twice: after a successful extraction, the model fully re-narrated
+        # every item/amount/category in prose immediately above the proposed-items
+        # card, which already shows all of that — pure duplication. A first, softer
+        # instruction ("keep your reply to one short sentence") didn't stop it; this
+        # guards the stronger, example-anchored version instead. Also guards against
+        # "in the UI" wording, since the card renders inline in the same chat, not in
+        # some other UI surface.
+        assert "reply with ONLY one short" in context.SYSTEM_PROMPT
+        assert "Do NOT add a numbered or bulleted list" in context.SYSTEM_PROMPT
+        assert "in the UI" not in context.SYSTEM_PROMPT
+
 
 class TestCountTokens:
     def test_empty_string_is_zero_tokens(self):

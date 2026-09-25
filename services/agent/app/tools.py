@@ -88,7 +88,18 @@ split across or folded into the product(s) it was charged alongside. Such a char
 is sometimes printed only as a percentage (e.g. "+15% service") without its own \
 computed amount — when that's the case, calculate the actual amount yourself (that \
 percentage of the subtotal it applies to, as shown by the receipt's own total math) \
-rather than skipping it for lacking a printed number. Never report only the product \
+rather than skipping it for lacking a printed number. The opposite also happens, \
+mostly on e-commerce/marketplace checkout receipts: a discount, voucher, or promo \
+deduction printed as its own negative-amount line (e.g. "Shipping Discount", \
+"Voucher Applied", "Promo"). Never report one of these as its own item — it isn't a \
+purchase, it's a reduction of what something else cost. Net it against the specific \
+charge it reduces instead: if a fee and a same-amount discount for that fee cancel \
+out (e.g. a "Shipping Fee" fully offset by a "Shipping Discount"), the net cost of \
+that fee is zero, so omit it entirely rather than reporting a fee that ultimately \
+cost nothing; if a voucher reduces the merchandise total instead, subtract it from \
+the product item(s)' amount. Every item you report must have a real positive cost \
+(or, rarely, be a genuine refund) — never a bare negative adjustment line sitting on \
+its own. Never report only the product \
 subtotal when the receipt shows a higher amount was actually paid, and never report \
 only the total-including-fees as if it were a single product's price. Write "merchant" \
 and every item's "description" \
@@ -469,10 +480,13 @@ def build_tools(jwt: str, x_client_id: str | None, language: str = "en") -> list
         """Extract line items from an uploaded receipt, image or PDF. object_name looks
         like receipts/<uid>/<id>.jpg and is given to you in the user's message as
         '[uploaded receipt: <path>]' — use that exact path. Categorizes each item but
-        NEVER writes to the table; the UI shows proposed rows for the user to edit and
-        confirm before anything is saved. If the result says not_a_receipt, tell the
-        user plainly that the file doesn't look like a receipt and ask them to upload
-        an actual receipt (photo or PDF) — don't imply anything was saved or proposed."""
+        NEVER writes to the table; a card below your reply shows the proposed rows for
+        the user to edit and confirm before anything is saved, so keep your own reply
+        to one short sentence (the date, plus something like "edit or confirm below")
+        instead of re-listing the items yourself. If the result says not_a_receipt,
+        tell the user plainly that the file doesn't look like a receipt and ask them
+        to upload an actual receipt (photo or PDF) — don't imply anything was saved or
+        proposed."""
         image_bytes, content_type = storage.read_bytes(object_name)
 
         if content_type == "application/pdf":

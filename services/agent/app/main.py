@@ -263,8 +263,17 @@ async def chat(
                     initial_state(messages), config={"callbacks": [handler]}, version="v2"
                 ):
                     kind = event["event"]
+                    # Some tools (extract_receipt's vision call) make their own,
+                    # separate LLM call from inside a tool function while the graph's
+                    # ToolNode runs. LangChain's ambient config propagation attaches
+                    # this same tracer to that nested call too, so it shows up in this
+                    # event stream indistinguishable from the graph's own model turn
+                    # unless filtered out here — otherwise its raw output streams to
+                    # the user as if it were the assistant talking. Only the graph's
+                    # own "call_model" node's events count as assistant narration.
+                    is_call_model_node = event.get("metadata", {}).get("langgraph_node") == "call_model"
 
-                    if kind == "on_chat_model_stream":
+                    if kind == "on_chat_model_stream" and is_call_model_node:
                         chunk = event["data"]["chunk"]
                         text = chunk.content if isinstance(chunk.content, str) else ""
                         if text:
@@ -275,7 +284,12 @@ async def chat(
                         output = event["data"].get("output")
                         usage = getattr(output, "usage_metadata", None)
                         if usage:
+                            # Counted for every model call, including nested ones like
+                            # vision extraction — it's real spend against the user's
+                            # token quota either way.
                             total_tokens_used += usage.get("total_tokens", 0)
+                        if not is_call_model_node:
+                            continue
                         round_tool_calls = getattr(output, "tool_calls", None) or []
                         for c in round_tool_calls:
                             tool_calls_made.append({"id": c.get("id"), "name": c.get("name"), "args": c.get("args")})

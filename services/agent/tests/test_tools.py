@@ -351,6 +351,14 @@ class TestExtractLineItems:
         # placeholder "Unknown" instead of null, which then folds into the
         # description as if it were a real merchant.
         assert 'set "merchant" to null' in captured["prompt"]
+        # Guards a fifth failure mode, the mirror image of the fee-separation one:
+        # e-commerce checkout receipts print discounts/vouchers as their own
+        # negative-amount lines (observed: a Shopee order produced a "Shipping
+        # Discount Subtotal: -14000" and "Shopee Voucher Applied: -10000" as if they
+        # were their own transactions). A discount isn't a purchase — it must be
+        # netted into the charge it reduces, not reported as a standalone item.
+        assert "Never report one of these as its own item" in captured["prompt"]
+        assert "omit it entirely" in captured["prompt"]
 
 
 class TestFoldMerchant:
