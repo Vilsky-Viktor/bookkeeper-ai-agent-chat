@@ -65,7 +65,8 @@ to run them — plus a handful of endpoint-level tests via FastAPI's `TestClient
 covering both success and error paths (400/401/404/409/429/501 as appropriate).
 
 The frontend uses [`pnpm`](https://pnpm.io/) plus ESLint (flat config,
-`typescript-eslint` + React Hooks/Refresh plugins) and Prettier:
+`typescript-eslint` + React Hooks/Refresh plugins), Prettier, and
+[Vitest](https://vitest.dev/) + React Testing Library:
 
 ```bash
 cd web
@@ -73,12 +74,22 @@ pnpm install
 pnpm run lint           # eslint .
 pnpm run format          # prettier --write .
 pnpm run format:check    # prettier --check .
+pnpm run test            # vitest run
+pnpm run test:watch      # vitest, watch mode
 ```
 
 `pnpm-workspace.yaml`'s `allowBuilds`/`onlyBuiltDependencies` approve the three
 packages here with native postinstall scripts (`esbuild`, `@firebase/util`,
 `protobufjs`) — pnpm blocks arbitrary install scripts by default as a supply-chain
 guard; everything else installs with no scripts run at all.
+
+Tests run in `jsdom` with no real network/DOM: pure logic (`src/lib/*.test.ts` — CSV
+building, the default filter's rolling date window, translation lookups, the
+Firestore cross-tab dedup logic) plus component tests (`src/components/*.test.tsx` —
+`@testing-library/react`, mocking `lib/api.ts`/Firebase/`fetch` at the module
+boundary rather than hitting a network). `ChatPanel.tsx` and `App.tsx` aren't
+covered yet — they'd need SSE/fetch-stream mocking infrastructure that doesn't exist
+yet.
 
 ## What it does
 
@@ -101,7 +112,11 @@ guard; everything else installs with no scripts run at all.
   before sending — same as typing it, nothing is sent automatically.
 - **Receipts.** Upload a photo or PDF; the configured vision model (`gpt-4o` by
   default — see "Swapping the LLM provider") extracts line items and categorizes each
-  one, and the UI shows editable proposed rows — nothing is written until you confirm. There's no separate merchant field: a merchant/place name, when
+  one, and the UI shows editable proposed rows — nothing is written until you
+  confirm. Rows can be edited, removed, or added before confirming (Confirm & save
+  is disabled once the list is empty), and each row's category is a dropdown built
+  from the same built-in category list the backend categorizer uses, so it can't
+  drift out of sync. There's no separate merchant field: a merchant/place name, when
   identifiable, is folded straight into the item's description. Category corrections
   (made via chat or by editing a proposed row) are learned per normalized description
   and reused on future similar purchases, with an LLM fallback that recognizes
@@ -175,6 +190,10 @@ the agent has no elevated identity of its own.
   - `idempotency.py` — every mutating endpoint requires an `Idempotency-Key` header;
     the same key with the same request body replays the stored response, a different
     body gets a 409.
+  - `models/` — Pydantic request/response models, organized by domain
+    (`transactions.py`, `aggregates.py`, `categorize.py`, `api.py`) — every FastAPI
+    endpoint validates through one of these via `response_model=` rather than
+    returning a plain dict.
 - **`services/agent`** — a LangGraph `StateGraph` (not `langgraph.prebuilt`'s agent,
   so the emitted SSE event shape is fully controlled): a `call_model` node bound to
   the tools below, conditionally routed to a `ToolNode`, looping back until the model
@@ -200,6 +219,12 @@ the agent has no elevated identity of its own.
     them per-request.
   - `quotas.py` / `summarize.py` / `tasks.py` — daily usage limits, the rolling
     summary job, and the in-process stand-in for Cloud Tasks (`TASKS_MODE=local`).
+  - `models/` — Pydantic models by domain (`turns.py` — per-turn state shared
+    between `chat/streaming.py` and `chat/turns.py`; `message_content.py` — the
+    `messages.content` DB column's shape, by role; `api.py` — FastAPI request/
+    response bodies; `tool_results.py` — every tool's return shape). Every LangChain
+    tool constructs one of these and calls `.model_dump()` right before returning,
+    rather than building a raw dict inline.
 
 ### Agent tools
 
@@ -305,6 +330,7 @@ services/transactions/       FastAPI — owns Postgres, CRUD, categorization, id
   app/filters.py                shared filter-clause builder (list/delete/aggregates)
   app/categorize.py             corrections-first, LLM-fallback categorization
   app/money.py                  decimal string <-> integer minor-unit conversion
+  app/models/                   Pydantic request/response models, by domain
   app/routers/aggregates.py     sums by currency/category/month
   app/routers/transactions/     list.py, create.py, patch.py, delete.py, serializers.py
 services/agent/               FastAPI + LangGraph — owns chat DB, SSE chat, tools
@@ -317,6 +343,8 @@ services/agent/               FastAPI + LangGraph — owns chat DB, SSE chat, to
   app/chat/                     streaming.py (runs one graph turn -> SSE), turns.py
                                  (marker-retry decision, failure recording, persisting
                                  a completed turn)
+  app/models/                   Pydantic models, by domain (turns, message_content,
+                                 api, tool_results)
   app/languages.py              supported chat/receipt-translation languages
   app/graph.py                  the LangGraph StateGraph (model ⇄ tools loop)
 web/                          React + Vite + TypeScript — chat pane + transactions table
