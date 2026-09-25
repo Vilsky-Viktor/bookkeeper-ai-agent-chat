@@ -31,6 +31,8 @@ const translations = {
     micError: "Couldn't access your microphone. Please check your browser's permissions.",
     confirmAndSave: "Confirm & save",
     cancel: "Cancel",
+    addItem: "Add item",
+    removeItem: "Remove item",
     thinking: "thinking…",
     loadEarlierMessages: "Load earlier messages",
     loadingEarlier: "Loading…",
@@ -65,6 +67,8 @@ const translations = {
     micError: "No se pudo acceder al micrófono. Comprueba los permisos de tu navegador.",
     confirmAndSave: "Confirmar y guardar",
     cancel: "Cancelar",
+    addItem: "Añadir artículo",
+    removeItem: "Eliminar artículo",
     thinking: "pensando…",
     loadEarlierMessages: "Cargar mensajes anteriores",
     loadingEarlier: "Cargando…",
@@ -99,6 +103,8 @@ const translations = {
     micError: "Tidak dapat mengakses mikrofon. Periksa izin browser Anda.",
     confirmAndSave: "Konfirmasi & simpan",
     cancel: "Batal",
+    addItem: "Tambah item",
+    removeItem: "Hapus item",
     thinking: "sedang berpikir…",
     loadEarlierMessages: "Muat pesan sebelumnya",
     loadingEarlier: "Memuat…",
@@ -133,6 +139,8 @@ const translations = {
     micError: "Impossible d'accéder au microphone. Vérifiez les autorisations de votre navigateur.",
     confirmAndSave: "Confirmer et enregistrer",
     cancel: "Annuler",
+    addItem: "Ajouter un article",
+    removeItem: "Supprimer l'article",
     thinking: "réflexion…",
     loadEarlierMessages: "Charger les messages précédents",
     loadingEarlier: "Chargement…",
@@ -167,6 +175,8 @@ const translations = {
     micError: "Zugriff auf das Mikrofon nicht möglich. Bitte überprüfe die Berechtigungen deines Browsers.",
     confirmAndSave: "Bestätigen & speichern",
     cancel: "Abbrechen",
+    addItem: "Artikel hinzufügen",
+    removeItem: "Artikel entfernen",
     thinking: "denke nach…",
     loadEarlierMessages: "Frühere Nachrichten laden",
     loadingEarlier: "Lade…",
@@ -201,6 +211,8 @@ const translations = {
     micError: "Não foi possível acessar o microfone. Verifique as permissões do seu navegador.",
     confirmAndSave: "Confirmar e salvar",
     cancel: "Cancelar",
+    addItem: "Adicionar item",
+    removeItem: "Remover item",
     thinking: "pensando…",
     loadEarlierMessages: "Carregar mensagens anteriores",
     loadingEarlier: "Carregando…",
@@ -235,6 +247,8 @@ const translations = {
     micError: "לא ניתן לגשת למיקרופון. בדוק את הרשאות הדפדפן שלך.",
     confirmAndSave: "אשר ושמור",
     cancel: "ביטול",
+    addItem: "הוסף פריט",
+    removeItem: "הסר פריט",
     thinking: "חושב…",
     loadEarlierMessages: "טען הודעות קודמות",
     loadingEarlier: "טוען…",
@@ -269,6 +283,8 @@ const translations = {
     micError: "Не удалось получить доступ к микрофону. Проверьте разрешения браузера.",
     confirmAndSave: "Подтвердить и сохранить",
     cancel: "Отмена",
+    addItem: "Добавить позицию",
+    removeItem: "Удалить позицию",
     thinking: "думаю…",
     loadEarlierMessages: "Загрузить более ранние сообщения",
     loadingEarlier: "Загрузка…",
@@ -303,6 +319,8 @@ const translations = {
     micError: "Не вдалося отримати доступ до мікрофона. Перевірте дозволи браузера.",
     confirmAndSave: "Підтвердити і зберегти",
     cancel: "Скасувати",
+    addItem: "Додати позицію",
+    removeItem: "Видалити позицію",
     thinking: "думаю…",
     loadEarlierMessages: "Завантажити попередні повідомлення",
     loadingEarlier: "Завантаження…",
@@ -337,6 +355,8 @@ const translations = {
     micError: "تعذر الوصول إلى الميكروفون. يرجى التحقق من أذونات المتصفح.",
     confirmAndSave: "تأكيد وحفظ",
     cancel: "إلغاء",
+    addItem: "إضافة عنصر",
+    removeItem: "إزالة عنصر",
     thinking: "أفكر…",
     loadEarlierMessages: "تحميل الرسائل السابقة",
     loadingEarlier: "جارٍ التحميل…",
@@ -516,6 +536,14 @@ const CATEGORY_LABELS: Record<Language, Record<string, string>> = {
     other: "أخرى",
   },
 };
+
+// The canonical, stored category values (always English — see CATEGORIES in
+// services/transactions/app/categorize.py, kept in sync with that list) for building
+// a category <select>. A transaction's category can still be a user-typed custom
+// string via a correction (see custom_category_map) — that's not in this list, so a
+// dropdown built from it needs to keep whatever value is already selected as an extra
+// option instead of silently discarding it.
+export const BUILT_IN_CATEGORIES: string[] = Object.keys(CATEGORY_LABELS.en);
 
 interface Ctx {
   language: Language;

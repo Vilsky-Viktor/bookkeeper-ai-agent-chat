@@ -1,6 +1,6 @@
 import { fetchEventSource } from "@microsoft/fetch-event-source";
 import { useQueryClient } from "@tanstack/react-query";
-import { Mic, Paperclip, Sparkles, Square } from "lucide-react";
+import { Mic, Paperclip, Plus, Sparkles, Square, Trash2 } from "lucide-react";
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import {
   authHeaders,
@@ -14,7 +14,7 @@ import {
 import type { StoredMessage, TransactionFilter } from "../lib/api";
 import { createCsvObjectUrl } from "../lib/csv";
 import { defaultFilter, exportFilename } from "../lib/filters";
-import { useTranslation } from "../lib/i18n";
+import { BUILT_IN_CATEGORIES, useTranslation } from "../lib/i18n";
 import { receiptViewUrlFromObject, splitReceiptMarker } from "../lib/receipts";
 import FileAttachment from "./FileAttachment";
 import ReceiptThumb from "./ReceiptThumb";
@@ -112,7 +112,7 @@ const ChatPanel = forwardRef<ChatPanelHandle, Props>(function ChatPanel(
   const filterRef = useRef(filter);
   filterRef.current = filter;
   const queryClient = useQueryClient();
-  const { t } = useTranslation();
+  const { t, tCategory } = useTranslation();
 
   useEffect(() => {
     // Thread history is loaded fresh on mount; new turns append to local state as
@@ -412,6 +412,27 @@ const ChatPanel = forwardRef<ChatPanelHandle, Props>(function ChatPanel(
     });
   }
 
+  function removeProposedItem(idx: number) {
+    setProposed((p) => (p ? { ...p, items: p.items.filter((_, i) => i !== idx) } : p));
+  }
+
+  function addProposedItem() {
+    setProposed((p) => {
+      if (!p) return p;
+      const last = p.items[p.items.length - 1];
+      const blank: ProposedItem = {
+        occurred_on: last?.occurred_on ?? new Date().toISOString().slice(0, 10),
+        type: "expense",
+        amount: "",
+        currency: last?.currency ?? "USD",
+        category: "other",
+        description: "",
+        receipt_uri: p.receipt_uri,
+      };
+      return { ...p, items: [...p.items, blank] };
+    });
+  }
+
   useImperativeHandle(ref, () => ({
     insertReference(id: string) {
       const marker = `[transaction: ${id}]`;
@@ -502,17 +523,41 @@ const ChatPanel = forwardRef<ChatPanelHandle, Props>(function ChatPanel(
                   onChange={(e) => updateProposedItem(i, "currency", e.target.value.toUpperCase())}
                   className={`${proposedInputClass} w-[45px]`}
                 />
-                <input
+                <select
                   value={item.category}
                   onChange={(e) => updateProposedItem(i, "category", e.target.value)}
-                  className={`${proposedInputClass} w-[80px]`}
-                />
+                  className={`${proposedInputClass} w-[90px]`}
+                >
+                  {!BUILT_IN_CATEGORIES.includes(item.category.toLowerCase()) && (
+                    <option value={item.category}>{tCategory(item.category)}</option>
+                  )}
+                  {BUILT_IN_CATEGORIES.map((c) => (
+                    <option key={c} value={c}>
+                      {tCategory(c)}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  onClick={() => removeProposedItem(i)}
+                  aria-label={t("removeItem")}
+                  className="inline-flex h-6 w-6 flex-none items-center justify-center rounded-md text-zinc-400 transition-colors hover:bg-red-50 hover:text-red-600 dark:text-zinc-600 dark:hover:bg-red-950/40 dark:hover:text-red-400"
+                >
+                  <Trash2 size={14} />
+                </button>
               </div>
             ))}
+            <button
+              onClick={addProposedItem}
+              className="mt-1 inline-flex items-center gap-1 rounded-lg px-1.5 py-1 text-xs font-medium text-sky-700 transition-colors hover:bg-sky-50 dark:text-sky-300 dark:hover:bg-sky-950/40"
+            >
+              <Plus size={14} />
+              {t("addItem")}
+            </button>
             <div className="mt-2 flex gap-2">
               <button
                 onClick={confirmReceipt}
-                className="rounded-lg bg-sky-200 px-3 py-1.5 text-xs font-medium text-sky-900 transition-colors hover:bg-sky-300 dark:bg-sky-900/70 dark:text-sky-100 dark:hover:bg-sky-900/90"
+                disabled={proposed.items.length === 0}
+                className="rounded-lg bg-sky-200 px-3 py-1.5 text-xs font-medium text-sky-900 transition-colors hover:bg-sky-300 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-sky-200 dark:bg-sky-900/70 dark:text-sky-100 dark:hover:bg-sky-900/90 dark:disabled:hover:bg-sky-900/70"
               >
                 {t("confirmAndSave")}
               </button>
