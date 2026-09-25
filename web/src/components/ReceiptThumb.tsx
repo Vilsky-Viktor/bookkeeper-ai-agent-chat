@@ -1,3 +1,4 @@
+import { ZoomIn } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "../lib/i18n";
 
@@ -29,13 +30,20 @@ export default function ReceiptThumb({ url, onView, onLoad }: Props) {
   }
 
   return (
-    <img
-      src={url}
-      alt="Receipt"
+    <div
       onClick={() => onView(url)}
-      onError={() => setFailed(true)}
-      onLoad={onLoad}
-      className="block max-h-[140px] max-w-[140px] cursor-pointer rounded-lg border border-zinc-200 object-cover dark:border-zinc-700"
-    />
+      className="group relative h-[88px] w-[88px] cursor-pointer overflow-hidden rounded-lg border border-zinc-200 dark:border-zinc-700"
+    >
+      <img
+        src={url}
+        alt="Receipt"
+        onError={() => setFailed(true)}
+        onLoad={onLoad}
+        className="block h-full w-full object-cover object-top"
+      />
+      <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition-opacity duration-150 group-hover:opacity-100">
+        <ZoomIn size={20} className="text-white" />
+      </div>
+    </div>
   );
 }
