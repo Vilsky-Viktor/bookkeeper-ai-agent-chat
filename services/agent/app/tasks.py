@@ -3,7 +3,11 @@ asyncio.create_task (no Cloud Run CPU throttling to worry about locally); in
 production this enqueues an HTTP task to the real Cloud Tasks queue instead, which
 Cloud Tasks then POSTs back to this same service's /internal/summarize with a
 signed OIDC token — service_auth.py's require_service_caller is what verifies that
-token on the way back in, so its AUDIENCE must match what's minted here."""
+token on the way back in, so its AUDIENCE must match what's minted here.
+agent_base_url (this service's own origin, for the callback URL) comes from the
+triggering request's Host header — see main.py's chat() — not an env var, since a
+Cloud Run service can't reference its own computed URL from within its own
+Terraform resource block."""
 
 import asyncio
 import json
@@ -28,7 +32,7 @@ def _get_tasks_client() -> tasks_v2.CloudTasksClient:
     return _tasks_client
 
 
-async def enqueue_summarize(uid: str, thread_id: str, through_seq: int) -> None:
+async def enqueue_summarize(uid: str, thread_id: str, through_seq: int, agent_base_url: str) -> None:
     # Cloud Tasks would carry {thread_id, through_seq}; we also pass uid so the local
     # handler can open an RLS-scoped connection without a caller JWT to derive it from.
     task_name = f"summarize-{thread_id}-{through_seq}"
@@ -64,7 +68,7 @@ async def enqueue_summarize(uid: str, thread_id: str, through_seq: int) -> None:
             name=f"{parent}/tasks/{task_name}",
             http_request=tasks_v2.HttpRequest(
                 http_method=tasks_v2.HttpMethod.POST,
-                url=f"{os.environ['AGENT_URL']}/internal/summarize",
+                url=f"{agent_base_url}/internal/summarize",
                 headers={"Content-Type": "application/json"},
                 body=json.dumps({"uid": uid, "thread_id": thread_id, "through_seq": through_seq}).encode(),
                 oidc_token=tasks_v2.OidcToken(

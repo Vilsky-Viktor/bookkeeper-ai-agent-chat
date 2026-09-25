@@ -8,6 +8,7 @@ from google.api_core.exceptions import AlreadyExists
 from app import tasks as tasks_module
 
 _QUEUE_PATH = "projects/demo-project/locations/us-central1/queues/prod-summarize"
+_AGENT_BASE_URL = "https://agent.example.com"
 
 
 @pytest.fixture(autouse=True)
@@ -23,7 +24,6 @@ def cloud_tasks_env(monkeypatch):
     monkeypatch.setenv("GOOGLE_CLOUD_PROJECT", "demo-project")
     monkeypatch.setenv("CLOUD_TASKS_LOCATION", "us-central1")
     monkeypatch.setenv("CLOUD_TASKS_QUEUE", "prod-summarize")
-    monkeypatch.setenv("AGENT_URL", "https://agent.example.com")
     monkeypatch.setenv("TASKS_INVOKER_SERVICE_ACCOUNT", "tasks-invoker@demo-project.iam.gserviceaccount.com")
 
 
@@ -41,7 +41,7 @@ class TestEnqueueSummarizeLocal:
         mock_run = AsyncMock()
         monkeypatch.setattr("app.summarize.run_summarize", mock_run)
 
-        await tasks_module.enqueue_summarize("uid-1", "thread-1", 10)
+        await tasks_module.enqueue_summarize("uid-1", "thread-1", 10, _AGENT_BASE_URL)
         await asyncio.sleep(0)  # let the scheduled background task run
 
         mock_run.assert_awaited_once_with("uid-1", "thread-1", 10)
@@ -51,8 +51,10 @@ class TestEnqueueSummarizeLocal:
         mock_run = AsyncMock()
         monkeypatch.setattr("app.summarize.run_summarize", mock_run)
 
-        await tasks_module.enqueue_summarize("uid-1", "thread-1", 10)
-        await tasks_module.enqueue_summarize("uid-1", "thread-1", 10)  # same task_name, skipped synchronously
+        await tasks_module.enqueue_summarize("uid-1", "thread-1", 10, _AGENT_BASE_URL)
+        await tasks_module.enqueue_summarize(
+            "uid-1", "thread-1", 10, _AGENT_BASE_URL
+        )  # same task_name, skipped synchronously
         await asyncio.sleep(0)
 
         mock_run.assert_awaited_once()
@@ -62,8 +64,8 @@ class TestEnqueueSummarizeLocal:
         mock_run = AsyncMock()
         monkeypatch.setattr("app.summarize.run_summarize", mock_run)
 
-        await tasks_module.enqueue_summarize("uid-1", "thread-1", 10)
-        await tasks_module.enqueue_summarize("uid-1", "thread-1", 20)
+        await tasks_module.enqueue_summarize("uid-1", "thread-1", 10, _AGENT_BASE_URL)
+        await tasks_module.enqueue_summarize("uid-1", "thread-1", 20, _AGENT_BASE_URL)
         await asyncio.sleep(0)
 
         assert mock_run.await_count == 2
@@ -71,7 +73,7 @@ class TestEnqueueSummarizeLocal:
 
 class TestEnqueueSummarizeCloudTasks:
     async def test_creates_a_task_targeting_internal_summarize(self, cloud_tasks_env, mock_tasks_client):
-        await tasks_module.enqueue_summarize("uid-1", "thread-1", 10)
+        await tasks_module.enqueue_summarize("uid-1", "thread-1", 10, _AGENT_BASE_URL)
 
         mock_tasks_client.create_task.assert_called_once()
         kwargs = mock_tasks_client.create_task.call_args.kwargs
@@ -85,7 +87,7 @@ class TestEnqueueSummarizeCloudTasks:
     async def test_oidc_token_matches_service_auths_expectations(self, cloud_tasks_env, mock_tasks_client):
         # The whole point: service_auth.py's require_service_caller must accept
         # exactly what gets minted here, or the callback 403s.
-        await tasks_module.enqueue_summarize("uid-1", "thread-1", 10)
+        await tasks_module.enqueue_summarize("uid-1", "thread-1", 10, _AGENT_BASE_URL)
 
         oidc = mock_tasks_client.create_task.call_args.kwargs["task"].http_request.oidc_token
         assert oidc.service_account_email == "tasks-invoker@demo-project.iam.gserviceaccount.com"
@@ -94,7 +96,7 @@ class TestEnqueueSummarizeCloudTasks:
     async def test_duplicate_task_name_from_cloud_tasks_itself_is_swallowed(self, cloud_tasks_env, mock_tasks_client):
         mock_tasks_client.create_task.side_effect = AlreadyExists("task already exists")
 
-        await tasks_module.enqueue_summarize("uid-1", "thread-1", 10)  # must not raise
+        await tasks_module.enqueue_summarize("uid-1", "thread-1", 10, _AGENT_BASE_URL)  # must not raise
 
     async def test_truly_concurrent_duplicate_calls_only_reach_cloud_tasks_once(
         self, cloud_tasks_env, mock_tasks_client
@@ -106,8 +108,8 @@ class TestEnqueueSummarizeCloudTasks:
         # test_duplicate_task_name_from_cloud_tasks_itself_is_swallowed above) —
         # this only protects the narrower "still in flight" case.
         await asyncio.gather(
-            tasks_module.enqueue_summarize("uid-1", "thread-1", 10),
-            tasks_module.enqueue_summarize("uid-1", "thread-1", 10),
+            tasks_module.enqueue_summarize("uid-1", "thread-1", 10, _AGENT_BASE_URL),
+            tasks_module.enqueue_summarize("uid-1", "thread-1", 10, _AGENT_BASE_URL),
         )
 
         mock_tasks_client.create_task.assert_called_once()
@@ -116,7 +118,7 @@ class TestEnqueueSummarizeCloudTasks:
         # Once the first call has fully resolved, its name is no longer tracked as
         # "in flight" — a second, later call for the same range legitimately hits
         # Cloud Tasks again, which is where the real (server-side) dedup lives.
-        await tasks_module.enqueue_summarize("uid-1", "thread-1", 10)
-        await tasks_module.enqueue_summarize("uid-1", "thread-1", 10)
+        await tasks_module.enqueue_summarize("uid-1", "thread-1", 10, _AGENT_BASE_URL)
+        await tasks_module.enqueue_summarize("uid-1", "thread-1", 10, _AGENT_BASE_URL)
 
         assert mock_tasks_client.create_task.call_count == 2

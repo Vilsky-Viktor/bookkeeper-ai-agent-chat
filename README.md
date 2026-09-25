@@ -383,8 +383,10 @@ Service-to-service calls (`transactions`'s `POST /categorize`, `agent`'s
 `POST /internal/summarize`) are authenticated with real Google-signed OIDC tokens,
 not a stub — `service_auth.py` verifies signature, a fixed audience, and the
 specific expected caller identity; `tasks.py` and `receipts.py` are the two
-minters. See `terraform/README.md` for the full walkthrough, including the one
-remaining manual bootstrap step (`agent_url`, see "Known gaps" below).
+minters. `agent`'s own callback URL (where Cloud Tasks POSTs back to) is derived
+per-request from the triggering request's `Host` header rather than an env var —
+no manual bootstrap step needed, see `terraform/README.md`'s "Service-to-service
+auth" for why. See `terraform/README.md` for the full walkthrough.
 
 `.github/workflows/{agent,transactions,web}.yml` — one independent pipeline per
 service: a pull request runs checks only (format/lint/test); a push to `main` also
@@ -399,14 +401,6 @@ Terraform outputs into GitHub repo variables) is in `terraform/README.md`'s
 
 - `get_exchange_rate` returns a *daily* reference rate, not live tick-by-tick market
   data.
-- `AGENT_URL` (used by `tasks.py`'s production Cloud Tasks enqueue, so Cloud Tasks
-  knows where to POST back to) can't be set on a service's very first
-  `terraform apply` — a Cloud Run resource can't reference its own computed URL
-  from within its own resource block. See `terraform/README.md`'s
-  "Service-to-service auth" section for the one-time bootstrap step (apply once,
-  copy `terraform output -raw agent_url` into `terraform.tfvars`, apply again).
-  Until that's done, a thread's rolling summary just fails to enqueue in production
-  (logged, not fatal to the turn) — nothing else depends on it.
 - Production-only concerns not covered by `terraform/` or `.github/workflows/` —
   App Check, an external load balancer beyond Firebase Hosting, an eval gate, Cloud
   Run autoscaling tuning, a GCS backend for Terraform state (still local, see

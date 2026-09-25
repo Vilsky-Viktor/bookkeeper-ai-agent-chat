@@ -1,9 +1,10 @@
 # Backs the rolling-summary background job — see services/agent/app/tasks.py's
 # enqueue_summarize(), which creates an HTTP task here whose target is
-# POST <AGENT_URL>/internal/summarize, with an OIDC token minted as tasks-invoker-sa
-# (see service_accounts.tf) that agent's require_service_caller verifies on the way
-# back in. cloud_run.tf wires CLOUD_TASKS_LOCATION/CLOUD_TASKS_QUEUE/
-# TASKS_INVOKER_SERVICE_ACCOUNT/AGENT_URL into agent's env for this.
+# POST <agent's own origin, derived per-request from the Host header, not an env
+# var>/internal/summarize, with an OIDC token minted as tasks-invoker-sa (see
+# service_accounts.tf) that agent's require_service_caller verifies on the way back
+# in. cloud_run.tf wires CLOUD_TASKS_LOCATION/CLOUD_TASKS_QUEUE/
+# TASKS_INVOKER_SERVICE_ACCOUNT into agent's env for this.
 
 resource "google_cloud_tasks_queue" "summarize" {
   project  = var.project_id

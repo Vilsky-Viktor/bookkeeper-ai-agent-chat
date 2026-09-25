@@ -68,7 +68,9 @@ def _cap_working_set(ws: dict, limit: int = 20) -> dict:
     return ws
 
 
-async def finalize_turn(uid: str, thread_id: str, thread: dict, state: TurnState, user_tokens: int) -> None:
+async def finalize_turn(
+    uid: str, thread_id: str, thread: dict, state: TurnState, user_tokens: int, agent_base_url: str
+) -> None:
     """Persists a completed turn: assistant message + tool result messages, updates
     the working set, touches the thread, advances the token quota, and enqueues
     rolling-summary work if the unsummarized tail has grown past
@@ -124,6 +126,6 @@ async def finalize_turn(uid: str, thread_id: str, thread: dict, state: TurnState
     # out to the user; the turn itself already succeeded by this point.
     if latest_seq - summarized_through > RECENT_MESSAGE_LIMIT:
         try:
-            await tasks.enqueue_summarize(uid, thread_id, latest_seq - RECENT_MESSAGE_LIMIT)
+            await tasks.enqueue_summarize(uid, thread_id, latest_seq - RECENT_MESSAGE_LIMIT, agent_base_url)
         except Exception:
             log.exception("failed to enqueue summarize task", extra={"thread_id": thread_id})

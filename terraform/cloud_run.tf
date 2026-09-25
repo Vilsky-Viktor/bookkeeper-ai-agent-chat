@@ -183,13 +183,13 @@ resource "google_cloud_run_v2_service" "agent" {
         name  = "TASKS_INVOKER_SERVICE_ACCOUNT"
         value = google_service_account.tasks_invoker.email
       }
-      env {
-        # See variables.tf's agent_url — empty on a first apply (a real value can
-        # only be known after this service already exists), set from `terraform
-        # output -raw agent_url` and applied again once it does.
-        name  = "AGENT_URL"
-        value = var.agent_url
-      }
+      # No AGENT_URL env var: a Cloud Run service can't reference its own computed
+      # .uri from within its own resource block (a genuine Terraform cycle), and
+      # patching it in after the fact (CI, or a local-exec provisioner here) would
+      # conflict with Terraform's own authoritative ownership of this env list —
+      # the next `terraform apply` would just reset it back out again. Instead,
+      # main.py's chat() derives it per-request from the Host header (see tasks.py's
+      # docstring) — always correct, no bootstrap step needed.
       env {
         name  = "LANGSMITH_PROJECT"
         value = var.environment

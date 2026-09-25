@@ -53,18 +53,18 @@ it's skipped entirely via `SKIP_SERVICE_AUTH=true`.
 `services/agent/app/tasks.py`'s `enqueue_summarize()` mints the Cloud Tasks side of
 that: it creates an explicitly-named HTTP task (so Cloud Tasks itself provides
 cross-instance dedup, not just the in-process set) targeting
-`<AGENT_URL>/internal/summarize` with an OIDC token minted as `tasks-invoker-sa`.
-`receipts.py`'s `extract_receipt` tool does the same on the `agent` → `transactions`
-side, minting as whatever identity `agent`'s own Cloud Run revision runs as
-(`agent-sa`, via Application Default Credentials — no explicit credential file).
-
-**`AGENT_URL` needs a bootstrap step** — see `variables.tf`'s comment: a Cloud Run
-service can't reference its own `.uri` from within its own resource block (a real
-Terraform cycle). `var.agent_url` defaults to `""`; set it from `terraform output -raw
-agent_url` and apply again once the `agent` service exists. Until then, a chat
-thread's rolling summary will fail to enqueue in production (logged, not fatal to
-the turn — same as any other `enqueue_summarize` failure) — everything else works
-without it.
+`<this service's own origin>/internal/summarize` with an OIDC token minted as
+`tasks-invoker-sa`. That origin isn't an env var — a Cloud Run service can't
+reference its own computed `.uri` from within its own resource block (a real
+Terraform cycle), and patching it in after deploy would just get overwritten by the
+next unrelated `terraform apply` (the `env` block is a list Terraform treats as
+authoritative; `lifecycle.ignore_changes` can't target one entry within it).
+Instead, `main.py`'s `chat()` derives it per-request from the triggering request's
+`Host` header — always correct, no bootstrap step, no env var to keep in sync.
+`receipts.py`'s `extract_receipt` tool mints its own token the same way on the
+`agent` → `transactions` side, as whatever identity `agent`'s own Cloud Run
+revision runs as (`agent-sa`, via Application Default Credentials — no explicit
+credential file).
 
 ## Usage
 

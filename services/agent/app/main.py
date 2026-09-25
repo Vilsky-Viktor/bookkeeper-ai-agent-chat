@@ -3,7 +3,7 @@ import logging
 import uuid
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI, File, Header, HTTPException, Query, UploadFile
+from fastapi import Depends, FastAPI, File, Header, HTTPException, Query, Request, UploadFile
 from fastapi.responses import StreamingResponse
 
 from . import chat_db, context, llm, quotas, signal, storage
@@ -184,10 +184,22 @@ async def transcribe_audio(file: UploadFile = File(...), uid: str = Depends(requ
 @app.post("/api/chat/chat")
 async def chat(
     body: ChatRequest,
+    request: Request,
     uid: str = Depends(require_uid),
     jwt: str = Depends(bearer_token),
     x_client_id: str | None = Header(default=None, alias="X-Client-Id"),
 ):
+    # Cloud Run always terminates TLS at its own edge and forwards over plain HTTP
+    # internally with the original external Host header preserved as-is — so this is
+    # reliably this service's own real public origin, no proxy-header trust config
+    # needed (unlike scheme, which uvicorn would need --forwarded-allow-ips to trust
+    # from X-Forwarded-Proto; hardcoding https sidesteps that entirely, and is always
+    # correct for a *.run.app URL). Used by finalize_turn -> tasks.enqueue_summarize
+    # so Cloud Tasks knows where to POST back to — avoids a Terraform self-reference
+    # (a Cloud Run service can't read its own .uri from within its own resource
+    # block) that an AGENT_URL env var would otherwise require.
+    agent_base_url = f"https://{request.headers.get('host', '')}"
+
     async def event_stream():
         request_id = str(uuid.uuid4())
         thread_id: str | None = None
@@ -269,7 +281,7 @@ async def chat(
                     async for chunk in streaming._run_turn(compiled_graph, messages, run_config, state):
                         yield chunk
 
-            await turns.finalize_turn(uid, thread_id, thread, state, user_tokens)
+            await turns.finalize_turn(uid, thread_id, thread, state, user_tokens, agent_base_url)
 
             await signal.bump_async(uid, [f"thread_versions.{thread_id}"], x_client_id)
             yield streaming._sse("done", {"thread_id": thread_id})
