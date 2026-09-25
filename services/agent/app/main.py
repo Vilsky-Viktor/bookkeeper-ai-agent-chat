@@ -7,9 +7,10 @@ from fastapi import Depends, FastAPI, File, Header, HTTPException, Query, Upload
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from . import chat_db, context, llm, quotas, signal, storage, tasks
+from . import chat_db, context, llm, quotas, signal, storage
 from .auth import bearer_token, require_uid
-from .graph import build_graph, initial_state
+from .chat import streaming, turns
+from .graph import build_graph
 from .langfuse_obs import traced_turn
 from .languages import SUPPORTED_LANGUAGES
 from .service_auth import require_service_caller
@@ -19,10 +20,8 @@ from .tools import build_tools
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("agent")
 
-RECENT_MESSAGE_LIMIT = 40  # rows fetched before token-budget trimming (context.py)
-
-# Single source of truth lives in context.py (it also needs this to force a marker's
-# id into the working-set text — see build_context). Re-exported here since chat()
+# Single source of truth lives in context/messages.py (build_context() also needs it
+# to force a marker's id into the working-set text). Re-exported here since chat()
 # below also needs it, for the retry-on-no-matching-tool-call logic.
 TRANSACTION_MARKER_RE = context.TRANSACTION_MARKER_RE
 
@@ -169,148 +168,6 @@ class ChatRequest(BaseModel):
     receipt_object: str | None = None  # gs object path from a just-completed upload
 
 
-def _sse(event: str | None, data: dict) -> bytes:
-    lines = [f"event: {event}"] if event else []
-    lines.append(f"data: {json.dumps(data, default=str)}")
-    return ("\n".join(lines) + "\n\n").encode()
-
-
-async def _run_turn(compiled_graph, messages: list, handler, state: dict):
-    """Runs the graph once, yielding each SSE chunk as it's produced and writing the
-    turn's outcome into `state` (assistant_text_parts/tool_calls_made/tool_results/
-    total_tokens_used) as it goes. The caller either forwards each yielded chunk to
-    the client immediately (true streaming, the normal case) or collects them into a
-    list first so it can inspect `state` and discard+retry before anything reaches
-    the client — see chat()'s handling of a "[transaction: <id>]" marker turn below,
-    where an empty tool_calls_made despite the marker means the model fabricated a
-    reply without ever calling the tool."""
-    state["assistant_text_parts"] = []
-    state["tool_calls_made"] = []
-    state["tool_results"] = []
-    state["total_tokens_used"] = 0
-
-    async for event in compiled_graph.astream_events(
-        initial_state(messages), config={"callbacks": [handler]}, version="v2"
-    ):
-        kind = event["event"]
-        # Some tools (extract_receipt's vision call) make their own, separate LLM
-        # call from inside a tool function while the graph's ToolNode runs.
-        # LangChain's ambient config propagation attaches this same tracer to that
-        # nested call too, so it shows up in this event stream indistinguishable
-        # from the graph's own model turn unless filtered out here — otherwise its
-        # raw output streams to the user as if it were the assistant talking. Only
-        # the graph's own "call_model" node's events count as assistant narration.
-        is_call_model_node = event.get("metadata", {}).get("langgraph_node") == "call_model"
-
-        if kind == "on_chat_model_stream" and is_call_model_node:
-            chunk = event["data"]["chunk"]
-            text = chunk.content if isinstance(chunk.content, str) else ""
-            if text:
-                state["assistant_text_parts"].append(text)
-                yield _sse(None, {"type": "token", "text": text})
-
-        elif kind == "on_chat_model_end":
-            output = event["data"].get("output")
-            usage = getattr(output, "usage_metadata", None)
-            if usage:
-                # Counted for every model call, including nested ones like vision
-                # extraction — it's real spend against the user's token quota
-                # either way.
-                state["total_tokens_used"] += usage.get("total_tokens", 0)
-            if not is_call_model_node:
-                continue
-            round_tool_calls = getattr(output, "tool_calls", None) or []
-            for c in round_tool_calls:
-                state["tool_calls_made"].append({"id": c.get("id"), "name": c.get("name"), "args": c.get("args")})
-            if round_tool_calls:
-                # This round's streamed text (if any) was narration before a tool
-                # call, not the final answer — e.g. "I'll export this now." Without
-                # discarding it, it gets concatenated with the real answer that
-                # follows the tool result, with no separator, reading as a garbled
-                # double answer.
-                state["assistant_text_parts"].clear()
-                yield _sse("reset_pending", {"type": "reset_pending"})
-
-        elif kind == "on_tool_end":
-            output = event["data"].get("output")
-            name = event.get("name", "")
-            tool_call_id = getattr(output, "tool_call_id", None)
-            raw = getattr(output, "content", "{}")
-            try:
-                parsed = json.loads(raw) if isinstance(raw, str) else raw
-            except (TypeError, ValueError):
-                parsed = {"result": raw}
-            if not isinstance(parsed, dict):
-                parsed = {"result": parsed}
-            ui_event = parsed.pop("ui_event", None)
-            state["tool_results"].append((name, tool_call_id, parsed))
-
-            if ui_event == "table_changed":
-                payload = {"type": "table_changed", "transaction": parsed}
-            elif ui_event == "filter_set":
-                payload = {"type": "filter_set", "filter": parsed.get("filter", {})}
-            elif ui_event == "receipt_proposed":
-                payload = {
-                    "type": "receipt_proposed",
-                    "items": parsed.get("items", []),
-                    "receipt_uri": parsed.get("receipt_uri"),
-                }
-            elif ui_event == "export_ready":
-                payload = {"type": "export_ready"}
-            else:
-                payload = None
-            if payload:
-                yield _sse(ui_event, payload)
-
-
-def _marker_call_missing(tool_calls_made: list[dict], marker_ids: list[str]) -> bool:
-    return not any(
-        tc["name"] in ("edit_transaction", "delete_transaction") and tc["args"].get("transaction_id") in marker_ids
-        for tc in tool_calls_made
-    )
-
-
-async def _record_turn_failure(uid: str, thread_id: str, note: str) -> None:
-    """Called when a turn fails after its user message was already saved (a crash, a
-    quota 429, anything reaching the except blocks below with thread_id set) —
-    without this, the thread's next turn sees two consecutive human messages with no
-    assistant reply between them, which is a much stronger source of confusion for
-    the model than ordinary response variance. Observed directly: an unhandled crash
-    left exactly this kind of orphaned message behind, and every retry of the same
-    edit in that thread afterward failed the same way, even though the same context
-    replayed outside that thread succeeded."""
-    try:
-        async with chat_db.uid_conn(uid) as conn:
-            await chat_db.insert_message(
-                conn, uid, thread_id, "assistant", {"text": note, "tool_calls": []}, context.count_tokens(note)
-            )
-    except Exception:
-        log.exception("failed to record fallback assistant message after a failed turn")
-
-
-def _working_set_entries(tool_name: str, result: dict) -> dict:
-    if not isinstance(result, dict):
-        return {}
-
-    def label(row: dict) -> str:
-        what = row.get("description") or row.get("category") or "transaction"
-        return f"{what}, {row.get('amount')} {row.get('currency')}, {row.get('occurred_on')}"
-
-    if tool_name in ("add_transaction", "edit_transaction") and "id" in result:
-        return {result["id"]: label(result)}
-    if tool_name == "query_transactions" and isinstance(result.get("items"), list):
-        return {i["id"]: label(i) for i in result["items"][:20] if "id" in i}
-    return {}
-
-
-def _cap_working_set(ws: dict, limit: int = 20) -> dict:
-    if len(ws) <= limit:
-        return ws
-    for k in list(ws.keys())[: len(ws) - limit]:
-        ws.pop(k, None)
-    return ws
-
-
 @app.post("/api/chat/chat")
 async def chat(
     body: ChatRequest,
@@ -352,7 +209,7 @@ async def chat(
                     client_msg_id=body.client_msg_id,
                 )
                 if inserted is None:
-                    yield _sse("error", {"message": "That message was already sent — no need to resend it."})
+                    yield streaming._sse("error", {"message": "That message was already sent — no need to resend it."})
                     return
 
                 # Quota and receipt counters only advance once we know this is a new
@@ -364,7 +221,7 @@ async def chat(
                 preferences_row = await chat_db.get_preferences(conn, uid)
                 preferences = dict(preferences_row) if preferences_row else None
 
-                recent_rows = await chat_db.recent_messages(conn, uid, thread_id, RECENT_MESSAGE_LIMIT)
+                recent_rows = await chat_db.recent_messages(conn, uid, thread_id, turns.RECENT_MESSAGE_LIMIT)
                 recent_rows = [r for r in recent_rows if r["seq"] != inserted["seq"]]
                 messages = context.build_context(thread, preferences, recent_rows, user_text)
 
@@ -386,69 +243,23 @@ async def chat(
                 # (silently, from scratch — the failed attempt made no tool calls, so
                 # there's nothing to undo) if this exact failure signature shows up.
                 with traced_turn(uid, thread_id, request_id, tags=["turn"]) as handler:
-                    buffered = [c async for c in _run_turn(compiled_graph, messages, handler, state)]
-                if _marker_call_missing(state["tool_calls_made"], marker_ids):
+                    buffered = [c async for c in streaming._run_turn(compiled_graph, messages, handler, state)]
+                if turns._marker_call_missing(state["tool_calls_made"], marker_ids):
                     log.warning("transaction-marker turn made no matching tool call, retrying once")
                     state = {}
                     with traced_turn(uid, thread_id, request_id, tags=["turn", "retry"]) as handler:
-                        buffered = [c async for c in _run_turn(compiled_graph, messages, handler, state)]
+                        buffered = [c async for c in streaming._run_turn(compiled_graph, messages, handler, state)]
                 for chunk in buffered:
                     yield chunk
             else:
                 with traced_turn(uid, thread_id, request_id, tags=["turn"]) as handler:
-                    async for chunk in _run_turn(compiled_graph, messages, handler, state):
+                    async for chunk in streaming._run_turn(compiled_graph, messages, handler, state):
                         yield chunk
 
-            assistant_text_parts = state["assistant_text_parts"]
-            tool_calls_made = state["tool_calls_made"]
-            tool_results = state["tool_results"]
-            total_tokens_used = state["total_tokens_used"]
-
-            assistant_text = "".join(assistant_text_parts)
-
-            async with chat_db.uid_conn(uid) as conn:
-                assistant_content = {"text": assistant_text, "tool_calls": tool_calls_made}
-                await chat_db.insert_message(
-                    conn, uid, thread_id, "assistant", assistant_content, context.count_tokens(assistant_text)
-                )
-
-                working_set = thread.get("working_set")
-                working_set = json.loads(working_set) if isinstance(working_set, str) else (working_set or {})
-
-                for name, tool_call_id, result in tool_results:
-                    tool_content = {"tool_call_id": tool_call_id, "name": name, "result": result}
-                    compact = context.compact_tool_result(name, result)
-                    await chat_db.insert_message(
-                        conn,
-                        uid,
-                        thread_id,
-                        "tool",
-                        tool_content,
-                        context.count_tokens(json.dumps(result, default=str)),
-                        compact=compact,
-                    )
-                    working_set.update(_working_set_entries(name, result))
-
-                working_set = _cap_working_set(working_set)
-                await chat_db.update_working_set(conn, uid, thread_id, working_set)
-                await chat_db.touch_thread(conn, uid, thread_id)
-                await quotas.add_tokens(
-                    conn, uid, total_tokens_used or (user_tokens + context.count_tokens(assistant_text))
-                )
-
-                latest = await conn.fetchrow(
-                    "SELECT max(seq) AS max_seq FROM messages WHERE uid=$1 AND thread_id=$2", uid, thread_id
-                )
-                latest_seq = latest["max_seq"] or 0
-                summarized_through = thread.get("summarized_through") or 0
-
-            # Off the hot path: fold anything that fell out of the recent-message
-            # window into the rolling summary (architecture doc, p. 9, technique 3).
-            if latest_seq - summarized_through > RECENT_MESSAGE_LIMIT:
-                await tasks.enqueue_summarize(uid, thread_id, latest_seq - RECENT_MESSAGE_LIMIT)
+            await turns.finalize_turn(uid, thread_id, thread, state, user_tokens)
 
             await signal.bump_async(uid, [f"thread_versions.{thread_id}"], x_client_id)
-            yield _sse("done", {"thread_id": thread_id})
+            yield streaming._sse("done", {"thread_id": thread_id})
 
         except HTTPException as e:
             log.warning("chat turn returned %s: %s", e.status_code, e.detail)
@@ -457,14 +268,14 @@ async def chat(
             # of surfacing the raw detail (e.g. "thread not found") in the chat.
             message = e.detail if e.status_code == 429 else "Sorry, I couldn't do that — please try again."
             if thread_id is not None:
-                await _record_turn_failure(uid, thread_id, message)
-            yield _sse("error", {"message": message, "status": e.status_code})
+                await turns._record_turn_failure(uid, thread_id, message)
+            yield streaming._sse("error", {"message": message, "status": e.status_code})
         except Exception:
             log.exception("chat turn failed")
             message = "Sorry, I ran into a problem and couldn't finish that. Please try again."
             if thread_id is not None:
-                await _record_turn_failure(uid, thread_id, message)
-            yield _sse("error", {"message": message})
+                await turns._record_turn_failure(uid, thread_id, message)
+            yield streaming._sse("error", {"message": message})
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 

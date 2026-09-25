@@ -9,3 +9,4 @@ gcs/receipts-local/*
 .claude
 **/.mypy_cache
 **/.pytest_cache
+**/.venv

@@ -7,6 +7,7 @@ from langchain_core.outputs import ChatGeneration, ChatResult
 from app import llm as llm_module
 from app import main
 from app import tools as tools_module
+from app.chat import streaming, turns
 from app.graph import build_graph
 
 _RealAsyncClient = httpx.AsyncClient  # captured before any monkeypatching below
@@ -67,7 +68,7 @@ class TestRunTurnAgainstARealGraph:
         messages = [SystemMessage(content="you are a test agent"), HumanMessage(content="show my transactions")]
         state: dict = {}
 
-        chunks = [c async for c in main._run_turn(compiled_graph, messages, BaseCallbackHandler(), state)]
+        chunks = [c async for c in streaming._run_turn(compiled_graph, messages, BaseCallbackHandler(), state)]
 
         assert chunks  # some SSE bytes were actually produced
         # The real regression-guard: the graph ran end to end (through ToolNode and
@@ -98,7 +99,7 @@ class TestRecordTurnFailure:
     # (traced to a real incident: repeated, otherwise-inexplicable failures retrying
     # the same edit, all in one thread that had this exact orphaned message).
     async def test_inserts_an_assistant_message_with_the_given_note(self, patch_chat_uid_conn):
-        await main._record_turn_failure("uid-1", "thread-1", "Sorry, something went wrong.")
+        await turns._record_turn_failure("uid-1", "thread-1", "Sorry, something went wrong.")
 
         patch_chat_uid_conn.fetchrow.assert_awaited_once()
         args = patch_chat_uid_conn.fetchrow.await_args.args
@@ -113,7 +114,7 @@ class TestRecordTurnFailure:
         # Must not raise — this runs from inside an except block handling a turn
         # that already failed; a second exception here would replace the real error
         # response the client is waiting for.
-        await main._record_turn_failure("uid-1", "thread-1", "Sorry, something went wrong.")
+        await turns._record_turn_failure("uid-1", "thread-1", "Sorry, something went wrong.")
 
 
 class TestMarkerCallMissing:
@@ -121,26 +122,26 @@ class TestMarkerCallMissing:
     # marker turn is only trusted if a real edit_transaction/delete_transaction call
     # was made against that specific id — never inferred from the assistant's text.
     def test_true_when_no_tool_calls_at_all(self):
-        assert main._marker_call_missing([], ["abc-123"]) is True
+        assert turns._marker_call_missing([], ["abc-123"]) is True
 
     def test_false_when_edit_transaction_matches_the_marker_id(self):
         tool_calls = [{"name": "edit_transaction", "args": {"transaction_id": "abc-123", "amount": "5"}}]
-        assert main._marker_call_missing(tool_calls, ["abc-123"]) is False
+        assert turns._marker_call_missing(tool_calls, ["abc-123"]) is False
 
     def test_false_when_delete_transaction_matches_the_marker_id(self):
         tool_calls = [{"name": "delete_transaction", "args": {"transaction_id": "abc-123"}}]
-        assert main._marker_call_missing(tool_calls, ["abc-123"]) is False
+        assert turns._marker_call_missing(tool_calls, ["abc-123"]) is False
 
     def test_true_when_tool_call_is_for_a_different_id(self):
         tool_calls = [{"name": "edit_transaction", "args": {"transaction_id": "other-id", "amount": "5"}}]
-        assert main._marker_call_missing(tool_calls, ["abc-123"]) is True
+        assert turns._marker_call_missing(tool_calls, ["abc-123"]) is True
 
     def test_true_when_only_an_unrelated_tool_was_called(self):
         # e.g. the model called query_transactions instead of actually editing —
         # still counts as a miss, since nothing was actually changed.
         tool_calls = [{"name": "query_transactions", "args": {"description": "coffee"}}]
-        assert main._marker_call_missing(tool_calls, ["abc-123"]) is True
+        assert turns._marker_call_missing(tool_calls, ["abc-123"]) is True
 
     def test_false_when_any_of_multiple_marker_ids_matches(self):
         tool_calls = [{"name": "edit_transaction", "args": {"transaction_id": "id-2", "amount": "5"}}]
-        assert main._marker_call_missing(tool_calls, ["id-1", "id-2"]) is False
+        assert turns._marker_call_missing(tool_calls, ["id-1", "id-2"]) is False

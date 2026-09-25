@@ -5,6 +5,7 @@ import httpx
 import pytest
 
 from app import tools as tools_module
+from app.tools import receipts as receipts_module
 
 _RealAsyncClient = httpx.AsyncClient  # captured before any monkeypatching below
 
@@ -16,8 +17,10 @@ def _tool_by_name(built, name):
 @pytest.fixture
 def build(monkeypatch):
     """Builds the tool set with a given httpx handler mocked in for every
-    httpx.AsyncClient constructed inside tools.py (both build_tools' http_client()
-    closure and get_exchange_rate's own bare client)."""
+    httpx.AsyncClient constructed anywhere under app/tools/ (build_tools' own
+    http_client() closure, plus currency.py's bare client for exchange-rate lookups)
+    — patching httpx.AsyncClient here works across every submodule since `import
+    httpx` everywhere binds the same cached module object, not a per-file copy."""
 
     def _build(handler, language="en"):
         def factory(*args, **kwargs):
@@ -348,7 +351,7 @@ class TestExportTransactions:
 
 class TestExtractReceipt:
     async def test_unsupported_content_type_returns_error(self, build, monkeypatch):
-        monkeypatch.setattr(tools_module.storage, "read_bytes", lambda name: (b"data", "text/plain"))
+        monkeypatch.setattr(receipts_module.storage, "read_bytes", lambda name: (b"data", "text/plain"))
         tool = _tool_by_name(build(lambda r: httpx.Response(200)), "extract_receipt")
 
         result = await tool.coroutine(object_name="receipts/u1/x.jpg")
@@ -357,8 +360,8 @@ class TestExtractReceipt:
         assert "text/plain" in result["error"]
 
     async def test_not_a_receipt_returns_message_without_writing(self, build, monkeypatch):
-        monkeypatch.setattr(tools_module.storage, "read_bytes", lambda name: (b"imgdata", "image/jpeg"))
-        monkeypatch.setattr(tools_module, "_extract_line_items", AsyncMock(return_value={"is_receipt": False}))
+        monkeypatch.setattr(receipts_module.storage, "read_bytes", lambda name: (b"imgdata", "image/jpeg"))
+        monkeypatch.setattr(receipts_module, "_extract_line_items", AsyncMock(return_value={"is_receipt": False}))
 
         tool = _tool_by_name(build(lambda r: httpx.Response(200)), "extract_receipt")
         result = await tool.coroutine(object_name="receipts/u1/x.jpg")
@@ -366,9 +369,9 @@ class TestExtractReceipt:
         assert result["not_a_receipt"] is True
 
     async def test_success_folds_merchant_and_categorizes_each_item(self, build, monkeypatch):
-        monkeypatch.setattr(tools_module.storage, "read_bytes", lambda name: (b"imgdata", "image/jpeg"))
+        monkeypatch.setattr(receipts_module.storage, "read_bytes", lambda name: (b"imgdata", "image/jpeg"))
         monkeypatch.setattr(
-            tools_module,
+            receipts_module,
             "_extract_line_items",
             AsyncMock(
                 return_value={
@@ -395,9 +398,9 @@ class TestExtractReceipt:
         assert "Alfamart" in item["description"]
 
     async def test_categorize_call_failure_defaults_to_other(self, build, monkeypatch):
-        monkeypatch.setattr(tools_module.storage, "read_bytes", lambda name: (b"imgdata", "image/jpeg"))
+        monkeypatch.setattr(receipts_module.storage, "read_bytes", lambda name: (b"imgdata", "image/jpeg"))
         monkeypatch.setattr(
-            tools_module,
+            receipts_module,
             "_extract_line_items",
             AsyncMock(
                 return_value={
@@ -432,11 +435,11 @@ class TestExtractLineItems:
                 captured["prompt"] = messages[0].content[0]["text"]
                 return MagicMock(content='{"is_receipt": false}')
 
-        monkeypatch.setattr(tools_module.llm, "vision_model", lambda: _FakeVisionModel())
+        monkeypatch.setattr(receipts_module.llm, "vision_model", lambda: _FakeVisionModel())
 
-        await tools_module._extract_line_items(b"imgdata", "image/jpeg", "en")
+        await receipts_module._extract_line_items(b"imgdata", "image/jpeg", "en")
 
-        today = tools_module.datetime.date.today().isoformat()
+        today = receipts_module.datetime.date.today().isoformat()
         assert today in captured["prompt"]
         assert "{today}" not in captured["prompt"]
         assert "{language}" not in captured["prompt"]
@@ -483,29 +486,29 @@ class TestExtractLineItems:
 
 class TestFoldMerchant:
     def test_merchant_appended_when_not_already_in_description(self):
-        assert tools_module._fold_merchant("rice", "Alfamart") == "rice - Alfamart"
+        assert receipts_module._fold_merchant("rice", "Alfamart") == "rice - Alfamart"
 
     def test_merchant_omitted_when_already_present(self):
-        assert tools_module._fold_merchant("rice from Alfamart", "Alfamart") == "rice from Alfamart"
+        assert receipts_module._fold_merchant("rice from Alfamart", "Alfamart") == "rice from Alfamart"
 
     def test_no_merchant_returns_description_unchanged(self):
-        assert tools_module._fold_merchant("rice", None) == "rice"
+        assert receipts_module._fold_merchant("rice", None) == "rice"
 
     def test_no_description_returns_merchant(self):
-        assert tools_module._fold_merchant(None, "Alfamart") == "Alfamart"
+        assert receipts_module._fold_merchant(None, "Alfamart") == "Alfamart"
 
     def test_neither_returns_none(self):
-        assert tools_module._fold_merchant(None, None) is None
+        assert receipts_module._fold_merchant(None, None) is None
 
     def test_literal_unknown_merchant_is_treated_as_no_merchant(self):
         # Observed: the model wrote "Unknown" as the merchant when it genuinely
         # couldn't read one, which folded in as "3x Camel White 20 - Unknown" — a
         # placeholder that looks like a real (wrong) merchant name.
-        assert tools_module._fold_merchant("3x Camel White 20", "Unknown") == "3x Camel White 20"
+        assert receipts_module._fold_merchant("3x Camel White 20", "Unknown") == "3x Camel White 20"
 
     def test_placeholder_merchant_case_insensitive(self):
-        assert tools_module._fold_merchant("rice", "UNKNOWN") == "rice"
-        assert tools_module._fold_merchant("rice", "N/A") == "rice"
+        assert receipts_module._fold_merchant("rice", "UNKNOWN") == "rice"
+        assert receipts_module._fold_merchant("rice", "N/A") == "rice"
 
     def test_unknown_merchant_with_no_description_returns_none(self):
-        assert tools_module._fold_merchant(None, "Unknown") is None
+        assert receipts_module._fold_merchant(None, "Unknown") is None

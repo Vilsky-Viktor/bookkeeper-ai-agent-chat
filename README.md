@@ -151,12 +151,18 @@ the agent has no elevated identity of its own.
 ### Backend — two independent FastAPI services, each owning its own Postgres database
 
 - **`services/transactions`** — the system of record.
-  - `routers/transactions.py` — keyset-paginated `GET/POST /transactions`, batch
-    create, `PATCH`/single `DELETE`, and a filtered bulk `DELETE` (added because the
-    agent's per-id delete loop only ever saw one page of results — "delete all my
-    transactions" was silently deleting just the first 50). Filters include a
-    case-insensitive description substring match.
-  - `routers/aggregates.py` — sums by currency/category/month.
+  - `routers/transactions/` — keyset-paginated `GET /transactions` (`list.py`), batch
+    `POST /transactions` (`create.py`), `PATCH /transactions/{id}` (`patch.py`,
+    includes rescaling `amount_minor` if just the currency changes), single and
+    filtered-bulk `DELETE` (`delete.py` — the bulk one exists because the agent's
+    per-id delete loop only ever saw one page of results, so "delete all my
+    transactions" was silently deleting just the first 50), and `serializers.py`
+    (row → API JSON shape).
+  - `routers/aggregates.py` — sums by currency/category/month, same filter set as the
+    list endpoint.
+  - `filters.py` — the filter-clause builder shared by `list.py`, `delete.py`, and
+    `aggregates.py` (currency/category/type/date range/amount range/description →
+    SQL `WHERE` clause), so the three don't drift out of sync with each other.
   - `categorize.py` — corrections-first, LLM-fallback categorization, keyed on the
     normalized transaction description (no merchant field).
   - `money.py` — amounts are stored as integer minor units (`amount_minor`), scaled
@@ -172,11 +178,22 @@ the agent has no elevated identity of its own.
   history lives in the chat DB, not graph state.
   - `llm.py` — a primary model with a one-shot fallback to a secondary model on
     failure/timeout, a 60s overall call timeout, and an in-process concurrency cap.
-  - `context.py` — token-budgeted prompt assembly: system prompt, preferences,
-    working set (recently-touched transactions), the rolling summary if present, then
-    as many recent turns as fit the budget, newest-first, never splitting a tool call
-    from its result.
-  - `tools.py` — see the table below.
+  - `context/` — token-budgeted prompt assembly: `prompts.py` (the system prompt),
+    `tokens.py` (token counting/budget constants), `messages.py` (turn grouping +
+    per-row rendering), and `__init__.py`'s `build_context()` (preferences, working
+    set, rolling summary, then as many recent turns as fit the budget, newest-first,
+    never splitting a tool call from its result).
+  - `chat/` — `streaming.py` runs one graph turn via `astream_events` and translates
+    it into the SSE wire format; `turns.py` decides whether a `[transaction: <id>]`
+    marker turn actually called the tool it claimed to, records a fallback assistant
+    message when a turn fails outright (so the thread never ends up with an
+    unanswered user message poisoning the next turn's context), and persists a
+    completed turn (assistant message, tool results, working set, quota,
+    summarization trigger).
+  - `tools/` — see the table below; `crud.py`/`currency.py`/`utility.py`/
+    `receipts.py` each build one group of tools, `prompts.py` holds the
+    receipt-extraction vision prompt, `__init__.py`'s `build_tools()` composes all of
+    them per-request.
   - `quotas.py` / `summarize.py` / `tasks.py` — daily usage limits, the rolling
     summary job, and the in-process stand-in for Cloud Tasks (`TASKS_MODE=local`).
 
@@ -190,6 +207,7 @@ the agent has no elevated identity of its own.
 | `delete_transactions_matching` | Delete every transaction matching a filter (or all of them) in one server-side operation. |
 | `query_transactions` | List or (`aggregate=true`) sum transactions matching a filter, including a description substring search. |
 | `get_exchange_rate` | Daily reference rate between two currencies, for the user's reference only. |
+| `get_total_in_currency` | Sum transactions (optionally filtered) and convert the result into one target currency — the multiply-and-sum happens in code, never left to the model to compute in its reply. |
 | `set_filter` | Drive the transactions table's filter from chat. |
 | `export_transactions` | Signal the UI to build and attach a CSV of the table's current view. |
 | `extract_receipt` | Vision-extract line items from an uploaded receipt image/PDF, categorize each, and propose (never write) rows. |
@@ -251,8 +269,8 @@ OpenAI client); it goes through the same factory as everything else, just with
 Supported today: `openai` (default), `anthropic`, `google`. Switching is `LLM_PROVIDER`
 + matching `LLM_API_KEY` + a model name that provider recognizes (e.g. `LLM_MODEL=
 claude-haiku-4-5` or `LLM_MODEL=gemini-2.5-flash`) — no code change. The receipt-vision
-call's multimodal message (`tools.py`'s `HumanMessage` with an `image_url` content
-block) works unchanged across all three; `langchain-anthropic` and
+call's multimodal message (`tools/receipts.py`'s `HumanMessage` with an `image_url`
+content block) works unchanged across all three; `langchain-anthropic` and
 `langchain-google-genai` both translate that OpenAI-shaped block internally. The one
 real difference between providers is JSON-only output: OpenAI's `response_format`
 json_object mode has no Anthropic equivalent (Claude relies on the prompt asking for
@@ -280,14 +298,21 @@ firebase/                    Auth + Firestore emulator container
 gcs/receipts-local/          fake-gcs-server's on-disk backing store
 services/transactions/       FastAPI — owns Postgres, CRUD, categorization, idempotency
   pyproject.toml / uv.lock own uv project — deps, black/isort/mypy, poe tasks
-  app/routers/                 transactions.py, aggregates.py, categorize.py
-  app/categorize.py            corrections-first, LLM-fallback categorization
-  app/money.py                 decimal string <-> integer minor-unit conversion
+  app/filters.py                shared filter-clause builder (list/delete/aggregates)
+  app/categorize.py             corrections-first, LLM-fallback categorization
+  app/money.py                  decimal string <-> integer minor-unit conversion
+  app/routers/aggregates.py     sums by currency/category/month
+  app/routers/transactions/     list.py, create.py, patch.py, delete.py, serializers.py
 services/agent/               FastAPI + LangGraph — owns chat DB, SSE chat, tools
   pyproject.toml / uv.lock own uv project — deps, black/isort/mypy, poe tasks
-  app/tools.py                  add/edit/delete_transaction(s), query, set_filter,
-                                 export, extract_receipt, get_exchange_rate
-  app/context.py                system prompt + token-budgeted context assembly
+  app/tools/                    crud.py, currency.py, utility.py, receipts.py,
+                                 prompts.py (receipt-extraction prompt), __init__.py's
+                                 build_tools()
+  app/context/                  prompts.py (system prompt), tokens.py, messages.py,
+                                 __init__.py's build_context()
+  app/chat/                     streaming.py (runs one graph turn -> SSE), turns.py
+                                 (marker-retry decision, failure recording, persisting
+                                 a completed turn)
   app/languages.py              supported chat/receipt-translation languages
   app/graph.py                  the LangGraph StateGraph (model ⇄ tools loop)
 web/                          React + Vite + TypeScript — chat pane + transactions table

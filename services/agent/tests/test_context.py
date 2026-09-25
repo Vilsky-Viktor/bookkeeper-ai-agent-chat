@@ -3,6 +3,7 @@ import json
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from app import context
+from app.context import tokens as tokens_module
 
 
 def _user_row(text: str) -> dict:
@@ -212,8 +213,8 @@ class TestBuildContext:
 
     def test_turns_beyond_budget_are_dropped_oldest_first(self, monkeypatch):
         # Force a tiny budget so only the newest turn fits.
-        monkeypatch.setattr(context, "CONTEXT_WINDOW", 200)
-        monkeypatch.setattr(context, "OUTPUT_RESERVE_FRACTION", 0.0)
+        monkeypatch.setattr(tokens_module, "CONTEXT_WINDOW", 200)
+        monkeypatch.setattr(tokens_module, "OUTPUT_RESERVE_FRACTION", 0.0)
         rows = []
         for i in range(20):
             rows.append(_user_row(f"message number {i} " + "padding " * 20))
