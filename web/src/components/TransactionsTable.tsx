@@ -34,6 +34,22 @@ function formatAmount(amount: string): string {
 const editableCellClass =
   "w-full min-w-0 rounded-md border border-transparent bg-transparent px-1.5 py-1 text-inherit focus:border-zinc-300 focus:bg-white focus:outline-none focus:ring-1 focus:ring-sky-500/40 dark:focus:border-zinc-600 dark:focus:bg-zinc-800";
 
+// A native <input>'s value can't have mixed font sizes, so showing the decimal part
+// smaller than the integer part (to make the currency's actual precision visually
+// obvious — see money.py's per-currency exponent, e.g. IDR has none at all) means the
+// amount cell isn't a plain always-visible input like every other column: it shows
+// this styled, click-to-edit button instead, swapping to a real input only while
+// actively being edited.
+function AmountText({ amount }: { amount: string }) {
+  const [intPart, decPart] = formatAmount(amount).split(".");
+  return (
+    <>
+      {intPart}
+      {decPart !== undefined && <span className="text-[0.75em] opacity-70">.{decPart}</span>}
+    </>
+  );
+}
+
 // Every field is directly editable in place (a plain uncontrolled input per cell,
 // keyed on the row's current value so it remounts — and picks up the fresh
 // server value — after a successful edit elsewhere invalidates the query, or
@@ -54,6 +70,7 @@ export default function TransactionsTable({ filter, onViewImage, onReferenceTran
   const { t, tCategory } = useTranslation();
   const queryClient = useQueryClient();
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [editingAmountId, setEditingAmountId] = useState<string | null>(null);
 
   function handleScroll(e: React.UIEvent<HTMLDivElement>) {
     const el = e.currentTarget;
@@ -162,12 +179,26 @@ export default function TransactionsTable({ filter, onViewImage, onReferenceTran
                 <td className={`px-1 py-1 ${amountColor}`}>
                   <div className="flex items-center gap-0.5">
                     <span aria-hidden="true">{tx.type === "expense" ? "-" : ""}</span>
-                    <input
-                      key={`amount-${tx.id}-${tx.amount}`}
-                      defaultValue={formatAmount(tx.amount)}
-                      onBlur={(e) => handlePatch(tx, "amount", e.target.value.replaceAll(",", "").trim())}
-                      className={editableCellClass}
-                    />
+                    {editingAmountId === tx.id ? (
+                      <input
+                        key={`amount-${tx.id}-${tx.amount}`}
+                        autoFocus
+                        defaultValue={formatAmount(tx.amount)}
+                        onBlur={(e) => {
+                          handlePatch(tx, "amount", e.target.value.replaceAll(",", "").trim());
+                          setEditingAmountId(null);
+                        }}
+                        className={editableCellClass}
+                      />
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setEditingAmountId(tx.id)}
+                        className={`${editableCellClass} text-start`}
+                      >
+                        <AmountText amount={tx.amount} />
+                      </button>
+                    )}
                   </div>
                 </td>
                 <td className="px-1 py-1 text-zinc-700 dark:text-zinc-300">

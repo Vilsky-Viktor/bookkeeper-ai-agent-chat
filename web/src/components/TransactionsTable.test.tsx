@@ -77,7 +77,10 @@ describe("TransactionsTable", () => {
     renderTable();
     await screen.findByDisplayValue("coffee");
     expect(screen.getByDisplayValue("2026-01-15")).toBeInTheDocument();
-    expect(screen.getByDisplayValue("1,234.50")).toBeInTheDocument(); // grouped, per formatAmount
+    // The amount shows as a click-to-edit button (not a plain input) so its decimal
+    // part can be styled smaller — see AmountText — but its accessible name still
+    // concatenates to the full grouped amount, per formatAmount.
+    expect(screen.getByRole("button", { name: "1,234.50" })).toBeInTheDocument();
     expect(screen.getByDisplayValue("USD")).toBeInTheDocument();
     expect(screen.getByText("Dining")).toBeInTheDocument(); // tCategory("dining") <option>
   });
@@ -152,12 +155,24 @@ describe("TransactionsTable", () => {
     it("strips thousands-separator commas before patching the amount", async () => {
       listTransactionsMock.mockResolvedValue({ items: [tx()], next_cursor: null });
       renderTable();
+      (await screen.findByRole("button", { name: "1,234.50" })).click(); // enters edit mode
       const input = await screen.findByDisplayValue("1,234.50");
       fireEvent.change(input, { target: { value: "2,000.00" } });
       fireEvent.blur(input);
       await waitFor(() =>
         expect(patchTransactionMock).toHaveBeenCalledWith("t1", { amount: "2000.00" }, expect.any(String)),
       );
+    });
+
+    it("returns to the click-to-edit display after blurring the amount input", async () => {
+      listTransactionsMock.mockResolvedValue({ items: [tx()], next_cursor: null });
+      renderTable();
+      (await screen.findByRole("button", { name: "1,234.50" })).click();
+      const input = await screen.findByDisplayValue("1,234.50");
+      fireEvent.blur(input);
+
+      expect(await screen.findByRole("button", { name: "1,234.50" })).toBeInTheDocument();
+      expect(screen.queryByDisplayValue("1,234.50")).not.toBeInTheDocument();
     });
 
     it("uppercases the currency before patching", async () => {
