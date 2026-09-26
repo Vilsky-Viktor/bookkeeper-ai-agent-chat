@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Transaction } from "./api";
-import { createCsvObjectUrl, transactionsToCsv } from "./csv";
+import { createCsvObjectUrl, parseCsvPreviewRows, transactionsToCsv } from "./csv";
 
 function tx(overrides: Partial<Transaction> = {}): Transaction {
   return {
@@ -76,5 +76,42 @@ describe("createCsvObjectUrl", () => {
     expect(await blob.text()).toBe(transactionsToCsv([tx()]));
 
     vi.unstubAllGlobals();
+  });
+});
+
+describe("parseCsvPreviewRows", () => {
+  it("splits lines into cells", () => {
+    const csv = transactionsToCsv([tx()]);
+    expect(parseCsvPreviewRows(csv, 6, 4)).toEqual([
+      ["Date", "Type", "Amount", "Currency"],
+      ["2026-01-15", "expense", "-12.50", "USD"],
+    ]);
+  });
+
+  it("caps the number of rows", () => {
+    const csv = transactionsToCsv([tx({ id: "t1" }), tx({ id: "t2" }), tx({ id: "t3" })]);
+    expect(parseCsvPreviewRows(csv, 2, 6)).toHaveLength(2); // header + 1 data row
+  });
+
+  it("caps the number of columns", () => {
+    const csv = transactionsToCsv([tx()]);
+    expect(parseCsvPreviewRows(csv, 6, 2)[0]).toEqual(["Date", "Type"]);
+  });
+
+  it("strips quote characters from a quoted field", () => {
+    const csv = transactionsToCsv([tx({ description: "coffee, milk" })]);
+    const rows = parseCsvPreviewRows(csv, 6, 6);
+    expect(rows[1].at(-1)).not.toContain('"');
+  });
+
+  it("skips blank lines", () => {
+    expect(parseCsvPreviewRows("a,b\n\nc,d", 6, 6)).toEqual([
+      ["a", "b"],
+      ["c", "d"],
+    ]);
+  });
+
+  it("returns an empty array for empty input", () => {
+    expect(parseCsvPreviewRows("", 6, 6)).toEqual([]);
   });
 });

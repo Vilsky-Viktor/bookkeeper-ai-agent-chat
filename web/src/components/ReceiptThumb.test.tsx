@@ -3,7 +3,10 @@ import userEvent from "@testing-library/user-event";
 import type { ComponentProps } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { LanguageProvider } from "../lib/i18n";
+import { renderPdfFirstPageToDataUrl } from "../lib/pdfThumbnail";
 import ReceiptThumb from "./ReceiptThumb";
+
+vi.mock("../lib/pdfThumbnail", () => ({ renderPdfFirstPageToDataUrl: vi.fn() }));
 
 // userId=null so LanguageProvider skips its preferences fetch and just uses the
 // default ("en") — none of these tests touch the network.
@@ -36,13 +39,37 @@ describe("ReceiptThumb", () => {
     expect(onLoad).toHaveBeenCalledTimes(1);
   });
 
-  it("falls back to a plain link when the image fails to load (e.g. a PDF receipt)", () => {
+  it("renders a PDF's first page as the thumbnail when the image fails to load", async () => {
+    vi.mocked(renderPdfFirstPageToDataUrl).mockResolvedValue("data:image/png;base64,fake-thumbnail");
     renderThumb();
+
     fireEvent.error(screen.getByAltText("Receipt"));
 
-    expect(screen.queryByAltText("Receipt")).not.toBeInTheDocument();
-    const link = screen.getByRole("link", { name: "View attachment" });
+    expect(renderPdfFirstPageToDataUrl).toHaveBeenCalledWith("https://example.com/receipt.jpg");
+    await screen.findByRole("img", { name: "Receipt" }); // waits out the pending promise
+    expect(screen.getByAltText("Receipt")).toHaveAttribute("src", "data:image/png;base64,fake-thumbnail");
+  });
+
+  it("falls back to a plain link when it's not an image and PDF rendering also fails", async () => {
+    vi.mocked(renderPdfFirstPageToDataUrl).mockRejectedValue(new Error("not a PDF either"));
+    renderThumb();
+
+    fireEvent.error(screen.getByAltText("Receipt"));
+
+    const link = await screen.findByRole("link", { name: "View attachment" });
     expect(link).toHaveAttribute("href", "https://example.com/receipt.jpg");
     expect(link).toHaveAttribute("target", "_blank");
+  });
+
+  it("falls back to a plain link if the rendered PDF thumbnail itself fails to display", async () => {
+    vi.mocked(renderPdfFirstPageToDataUrl).mockResolvedValue("data:image/png;base64,fake-thumbnail");
+    renderThumb();
+    fireEvent.error(screen.getByAltText("Receipt"));
+    await screen.findByRole("img", { name: "Receipt" });
+
+    fireEvent.error(screen.getByAltText("Receipt")); // the rendered thumbnail <img> itself errors
+
+    const link = await screen.findByRole("link", { name: "View attachment" });
+    expect(link).toHaveAttribute("href", "https://example.com/receipt.jpg");
   });
 });
