@@ -14,12 +14,16 @@ see "Swapping the LLM provider") and a free public exchange-rate lookup.
 ## Quickstart
 
 1. `cp .env.example .env` and set `LLM_API_KEY` (an OpenAI key).
-2. `mkdir -p gcs/receipts-local`
-3. `docker compose up --build` (or `docker-compose up --build` on the standalone CLI).
-4. Open `http://localhost:8080` and sign in — the Auth emulator shows a fake Google
+2. `make up` (or `docker compose up --build`).
+3. Open `http://localhost:8080` and sign in — the Auth emulator shows a fake Google
    account picker; add any test account, no real Google account needed.
-5. Reset everything with `docker compose down -v` (drops the Postgres volume) plus
-   `rm -rf firebase/emulator-data` (the emulator's saved accounts and Firestore data).
+4. `make reset` deletes all local data (database, emulator accounts, receipts) after
+   asking for confirmation.
+
+`make` lists every task: `check` (format check, lint and tests for all three
+projects), `logs`, `rebuild s=<service>`, `migrate`, `migration db=… name=…`,
+`format`, `eval-chat`, `eval-categorize`. Data survives restarts: Postgres in a named
+volume, emulator accounts in `firebase/emulator-data/`, receipts in `gcs/`.
 
 **First boot is slow to become responsive (15–30s):** the `agent` container imports the
 full LangGraph/LangChain/LangSmith stack at startup, and `firebase-tools`
@@ -454,7 +458,8 @@ db/Dockerfile, migrate.sh    the migration runner (Compose `migrate`, Cloud Run 
 docs/improvement-plan.md     process improvement plan and its status
 firebase/                    Auth + Firestore emulator container; emulator-data/
                                holds its persisted state (gitignored)
-gcs/receipts-local/          fake-gcs-server's on-disk backing store
+gcs/                         local receipt storage (fake-gcs, one folder per bucket; gitignored)
+Makefile                     common tasks — `make` lists them
 services/transactions/       FastAPI — owns Postgres, CRUD, categorization, idempotency
   pyproject.toml / uv.lock own uv project — deps, black/isort/mypy, poe tasks
   app/filters.py                shared filter-clause builder (list/delete/aggregates)

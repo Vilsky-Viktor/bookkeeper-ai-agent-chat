@@ -50,8 +50,14 @@ services:
 
   fake-gcs:
     image: fsouza/fake-gcs-server
-    command: ["-scheme", "http", "-port", "4443", "-backend", "memory"]
-    volumes: ["./gcs:/data"]
+    # On disk (./gcs, one folder per bucket), so receipts survive restarts like the
+    # database rows that point at them. The bucket folder is created here: the
+    # emulator doesn't create buckets on upload, and a placeholder file inside it
+    # would break object listing.
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - mkdir -p /storage/receipts-local && exec /bin/fake-gcs-server -scheme http -port 4443 -backend filesystem -filesystem-root /storage
+    volumes: ["./gcs:/storage"]
 
   transactions:
     build:

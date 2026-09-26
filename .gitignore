@@ -4,8 +4,8 @@ web/dist/
 web/tsconfig.tsbuildinfo
 __pycache__/
 *.pyc
-gcs/receipts-local/*
-!gcs/receipts-local/.gitkeep
+# Local receipt storage (fake-gcs), kept across restarts.
+gcs/
 .claude
 **/.mypy_cache
 **/.pytest_cache
@@ -17,3 +17,4 @@ terraform/*.tfvars
 # Firebase emulator state (accounts, Firestore), kept across container restarts.
 firebase/emulator-data/
 docs
+.DS_Store
