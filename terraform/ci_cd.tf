@@ -82,3 +82,11 @@ resource "google_project_iam_member" "ci_cd_hosting_admin" {
   role    = "roles/firebasehosting.admin"
   member  = "serviceAccount:${google_service_account.ci_cd.email}"
 }
+
+# Deploying a new migration image and executing the job runs it as the migrate
+# identity, which requires actAs on it (the job permissions come with run.developer).
+resource "google_service_account_iam_member" "ci_cd_actas_migrate" {
+  service_account_id = google_service_account.migrate.name
+  role               = "roles/iam.serviceAccountUser"
+  member             = "serviceAccount:${google_service_account.ci_cd.email}"
+}

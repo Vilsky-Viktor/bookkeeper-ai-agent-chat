@@ -1,15 +1,11 @@
--- Chat DB: threads, messages, user_preferences, usage_counters + RLS.
--- Lives on the same Cloud SQL instance / postgres container, separate database,
--- separate role. app_user (bookkeeping DB) cannot read this database and vice versa.
-
-CREATE DATABASE chat;
-CREATE ROLE chat_user LOGIN PASSWORD 'chat_pw';
-
-\connect chat
+-- migrate:up
+-- The schema as of the move to migrations. Idempotent, so a database created by the
+-- old db/init scripts adopts it without changes. The chat_user role itself is created
+-- outside migrations (Terraform in production, db/init locally).
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
-CREATE TABLE threads (
+CREATE TABLE IF NOT EXISTS threads (
     id                  uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     uid                 text NOT NULL,
     title               text,
@@ -20,7 +16,7 @@ CREATE TABLE threads (
     updated_at          timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE TABLE messages (
+CREATE TABLE IF NOT EXISTS messages (
     seq             bigserial PRIMARY KEY,
     client_msg_id   uuid,
     thread_id       uuid NOT NULL REFERENCES threads(id) ON DELETE CASCADE,
@@ -31,17 +27,18 @@ CREATE TABLE messages (
     token_count     int NOT NULL,
     created_at      timestamptz NOT NULL DEFAULT now()
 );
-CREATE INDEX ON messages (thread_id, seq);
-CREATE UNIQUE INDEX ON messages (thread_id, client_msg_id) WHERE client_msg_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS messages_thread_id_seq_idx ON messages (thread_id, seq);
+CREATE UNIQUE INDEX IF NOT EXISTS messages_thread_id_client_msg_id_idx
+    ON messages (thread_id, client_msg_id) WHERE client_msg_id IS NOT NULL;
 
-CREATE TABLE user_preferences (
+CREATE TABLE IF NOT EXISTS user_preferences (
     uid               text PRIMARY KEY,
     default_currency  char(3),
     language          text NOT NULL DEFAULT 'en',
     notes             jsonb NOT NULL DEFAULT '{}'
 );
 
-CREATE TABLE usage_counters (
+CREATE TABLE IF NOT EXISTS usage_counters (
     uid       text NOT NULL,
     day       date NOT NULL,
     turns     int NOT NULL DEFAULT 0,
@@ -51,19 +48,30 @@ CREATE TABLE usage_counters (
 );
 
 ALTER TABLE threads ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS own_rows ON threads;
 CREATE POLICY own_rows ON threads USING (uid = current_setting('app.uid'));
 
 ALTER TABLE messages ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS own_rows ON messages;
 CREATE POLICY own_rows ON messages USING (uid = current_setting('app.uid'));
 
 ALTER TABLE user_preferences ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS own_rows ON user_preferences;
 CREATE POLICY own_rows ON user_preferences USING (uid = current_setting('app.uid'));
 
 ALTER TABLE usage_counters ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS own_rows ON usage_counters;
 CREATE POLICY own_rows ON usage_counters USING (uid = current_setting('app.uid'));
 
 GRANT SELECT, INSERT, UPDATE, DELETE ON threads, messages, user_preferences, usage_counters TO chat_user;
 GRANT USAGE ON SEQUENCE messages_seq_seq TO chat_user;
 
-REVOKE CONNECT ON DATABASE chat FROM PUBLIC;
-GRANT CONNECT ON DATABASE chat TO chat_user;
+-- Only chat_user may connect (app_user can't read this database).
+DO $$
+BEGIN
+    EXECUTE format('REVOKE CONNECT ON DATABASE %I FROM PUBLIC', current_database());
+    EXECUTE format('GRANT CONNECT ON DATABASE %I TO chat_user', current_database());
+END $$;
+
+-- migrate:down
+-- The baseline is never rolled back: that would drop every user's data.

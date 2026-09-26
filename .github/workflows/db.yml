@@ -1,0 +1,107 @@
+name: db
+
+# PR -> apply every migration to a fresh Postgres, twice (catches broken SQL and
+# migrations that can't be re-run). Push to main -> also build/push the migration
+# image. Tag db-v* -> also run it in production (the Cloud Run Job from
+# terraform/migrations.tf). Tag db-v* before the service tags of a release that
+# needs a schema change.
+
+on:
+  pull_request:
+    paths:
+      - "db/**"
+      - ".github/workflows/db.yml"
+  push:
+    branches: [main]
+    tags: ["db-v*"]
+
+permissions:
+  contents: read
+  id-token: write # Workload Identity Federation — no GCP key stored in this repo
+
+env:
+  IMAGE: ${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/prod-services/migrate
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: bookkeeping
+          POSTGRES_USER: owner
+          POSTGRES_PASSWORD: owner_pw
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U owner -d bookkeeping"
+          --health-interval 2s --health-retries 30
+    env:
+      PGPASSWORD: owner_pw
+      BOOKKEEPING_DATABASE_URL: postgres://owner:owner_pw@localhost:5432/bookkeeping?sslmode=disable
+      CHAT_DATABASE_URL: postgres://owner:owner_pw@localhost:5432/chat?sslmode=disable
+    steps:
+      - uses: actions/checkout@v4
+      # What the local Postgres container's first boot does (Terraform, in production).
+      - run: psql -h localhost -U owner -d bookkeeping -v ON_ERROR_STOP=1 -f db/init/000_setup.sql
+      - name: Apply migrations, then again (must be a no-op)
+        run: |
+          for _ in 1 2; do
+            docker run --rm --network host -v "$PWD/db:/db:ro" \
+              -e BOOKKEEPING_DATABASE_URL -e CHAT_DATABASE_URL \
+              --entrypoint /bin/sh ghcr.io/amacneil/dbmate:2.36.0 /db/migrate.sh
+          done
+
+  build-and-push:
+    if: github.event_name == 'push'
+    needs: test
+    runs-on: ubuntu-latest
+    outputs:
+      image_tag: ${{ steps.tag.outputs.value }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: tag
+        run: |
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            echo "value=${GITHUB_REF_NAME#db-}" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=sha-$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+          fi
+
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_CI_CD_SERVICE_ACCOUNT }}
+          token_format: access_token
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ vars.GCP_REGION }}-docker.pkg.dev
+          username: oauth2accesstoken
+          password: ${{ steps.auth.outputs.access_token }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: db
+          push: true
+          tags: ${{ env.IMAGE }}:${{ steps.tag.outputs.value }}
+
+  migrate:
+    if: github.ref_type == 'tag'
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    steps:
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_CI_CD_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      # prod-migrate must match terraform's "${var.environment}-migrate".
+      - run: |
+          gcloud run jobs update prod-migrate --region "${{ vars.GCP_REGION }}" \
+            --image "${{ env.IMAGE }}:${{ needs.build-and-push.outputs.image_tag }}"
+          gcloud run jobs execute prod-migrate --region "${{ vars.GCP_REGION }}" --wait

@@ -19,12 +19,15 @@ class TestRunIdempotent:
         assert replayed is False
         handler.assert_awaited_once()
         # The result gets persisted so a retry with the same key replays it.
-        insert_call = mock_conn.execute.call_args
+        insert_call, purge_call = mock_conn.execute.call_args_list
         assert insert_call.args[0].strip().startswith("INSERT INTO idempotency_keys")
         assert insert_call.args[1] == "uid-1"
         assert insert_call.args[2] == "key-1"
         assert insert_call.args[4] == 201
         assert json.loads(insert_call.args[5]) == {"id": "abc"}
+        # Each new write also clears this user's expired keys (and only theirs).
+        assert purge_call.args[0].startswith("DELETE FROM idempotency_keys WHERE uid=$1")
+        assert purge_call.args[1] == "uid-1"
 
     async def test_existing_key_same_payload_replays_without_calling_handler(self, mock_conn: AsyncMock):
         from app.idempotency import _hash
@@ -44,6 +47,15 @@ class TestRunIdempotent:
         assert replayed is True
         handler.assert_not_awaited()
         # No new row written on a replay.
+        mock_conn.execute.assert_not_awaited()
+
+    async def test_replay_does_not_write_or_purge(self, mock_conn: AsyncMock):
+        from app.idempotency import _hash
+
+        mock_conn.fetchrow.return_value = {"request_hash": _hash({"a": 1}), "status": 201, "response": "{}"}
+
+        await run_idempotent(mock_conn, "uid-1", "key-1", {"a": 1}, AsyncMock())
+
         mock_conn.execute.assert_not_awaited()
 
     async def test_existing_key_different_payload_raises_409(self, mock_conn: AsyncMock):

@@ -9,19 +9,12 @@ reasoning behind that piece.
 
 ## What this does NOT cover
 
-- **Database schema.** `db/init/001_schema.sql` and `002_chat.sql` (table
-  definitions, row-level security policies) don't run automatically — Terraform
-  provisions the instance/databases/users, not table DDL. Apply them yourself after
-  the instance exists, e.g. via the [Cloud SQL Auth
-  Proxy](https://cloud.google.com/sql/docs/postgres/connect-auth-proxy) + `psql`:
-  ```bash
-  cloud-sql-proxy $(terraform output -raw cloud_sql_connection_name) &
-  psql "postgresql://postgres@localhost/bookkeeping" -f ../db/init/001_schema.sql
-  psql "postgresql://postgres@localhost/chat" -f ../db/init/002_chat.sql
-  ```
-  (The instance's default `postgres` superuser has no password set by this module —
-  set one with `gcloud sql users set-password postgres --instance=... --prompt-for-password`
-  before this works, or use `gcloud sql connect` instead, which handles auth for you.)
+- **Running the schema migrations.** `migrations.tf` provisions the `migrate` Cloud
+  Run Job (dbmate + `db/migrations/`, as a dedicated `migrator` database user), but
+  running it is CI's job: `.github/workflows/db.yml` on a `db-v*` tag. Verify on the
+  first run that `migrator` can connect after the baseline revokes `CONNECT` from
+  `PUBLIC` (it relies on Cloud SQL users inheriting `cloudsqlsuperuser`, the
+  databases' owner).
 - **Firestore security rules / Hosting rewrites.** `firebase/firestore.rules` and a
   Hosting `firebase.json` rewrite config (routing `/api/chat/*` → the `agent` Cloud
   Run URL, `/api/transactions/*` → `transactions`, same shape as the local
@@ -82,10 +75,11 @@ terraform apply
 
 **First apply, in order:**
 1. `terraform apply`.
-2. Add real secret values (see below), then run the DB schema migration above.
+2. Add real secret values (see below).
 3. Copy the CI/CD outputs into GitHub repo variables (see "GitHub Actions setup"
-   below), then push a version tag (`git tag agent-v0.1.0 && git push --tags`, same
-   for `transactions`/`web`) to trigger a real first deploy — from here on, CI owns
+   below), then push `git tag db-v0.1.0 && git push --tags` to create the schema,
+   then the service tags (`agent-v0.1.0`, `transactions-v0.1.0`, `web-v0.1.0`) to
+   trigger a real first deploy — from here on, CI owns
    the deployed image, not `terraform.tfvars`'s `agent_image`/`transactions_image`.
 
 ### Adding real secret values

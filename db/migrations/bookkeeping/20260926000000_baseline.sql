@@ -1,9 +1,11 @@
--- Bookkeeping DB: transactions, category_corrections, idempotency_keys + RLS.
--- Runs against the default database created by POSTGRES_DB (bookkeeping).
+-- migrate:up
+-- The schema as of the move to migrations. Idempotent, so a database created by the
+-- old db/init scripts adopts it without changes. The app_user role itself is created
+-- outside migrations (Terraform in production, db/init locally).
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto; -- gen_random_uuid()
 
-CREATE TABLE transactions (
+CREATE TABLE IF NOT EXISTS transactions (
     id                        uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     uid                       text NOT NULL,
     occurred_on               date NOT NULL,
@@ -16,17 +18,17 @@ CREATE TABLE transactions (
     batch_id                  uuid,
     created_at                timestamptz NOT NULL DEFAULT now()
 );
-CREATE INDEX ON transactions (uid, occurred_on DESC);
-CREATE INDEX ON transactions (uid, currency, category);
+CREATE INDEX IF NOT EXISTS transactions_uid_occurred_on_idx ON transactions (uid, occurred_on DESC);
+CREATE INDEX IF NOT EXISTS transactions_uid_currency_category_idx ON transactions (uid, currency, category);
 
-CREATE TABLE category_corrections (
+CREATE TABLE IF NOT EXISTS category_corrections (
     uid                 text NOT NULL,
     item_key            text NOT NULL, -- normalized description
     category            text NOT NULL,
     PRIMARY KEY (uid, item_key)
 );
 
-CREATE TABLE idempotency_keys (
+CREATE TABLE IF NOT EXISTS idempotency_keys (
     uid                       text NOT NULL,
     key                       text NOT NULL, -- tool_call_id or receipt batch_id
     request_hash              text NOT NULL,
@@ -35,22 +37,27 @@ CREATE TABLE idempotency_keys (
     created_at                timestamptz NOT NULL DEFAULT now(),
     PRIMARY KEY (uid, key)
 );
--- purge rows older than 24h with a daily scheduled job (see services/transactions/app/main.py)
 
 ALTER TABLE transactions ENABLE ROW LEVEL SECURITY;
-CREATE POLICY own_rows ON transactions
-    USING (uid = current_setting('app.uid'));
+DROP POLICY IF EXISTS own_rows ON transactions;
+CREATE POLICY own_rows ON transactions USING (uid = current_setting('app.uid'));
 
 ALTER TABLE category_corrections ENABLE ROW LEVEL SECURITY;
-CREATE POLICY own_rows ON category_corrections
-    USING (uid = current_setting('app.uid'));
+DROP POLICY IF EXISTS own_rows ON category_corrections;
+CREATE POLICY own_rows ON category_corrections USING (uid = current_setting('app.uid'));
 
 ALTER TABLE idempotency_keys ENABLE ROW LEVEL SECURITY;
-CREATE POLICY own_rows ON idempotency_keys
-    USING (uid = current_setting('app.uid'));
+DROP POLICY IF EXISTS own_rows ON idempotency_keys;
+CREATE POLICY own_rows ON idempotency_keys USING (uid = current_setting('app.uid'));
 
-CREATE ROLE app_user LOGIN PASSWORD 'app_pw';
 GRANT SELECT, INSERT, UPDATE, DELETE ON transactions, category_corrections, idempotency_keys TO app_user;
 
-REVOKE CONNECT ON DATABASE bookkeeping FROM PUBLIC;
-GRANT CONNECT ON DATABASE bookkeeping TO app_user;
+-- Only app_user may connect (chat_user can't read this database).
+DO $$
+BEGIN
+    EXECUTE format('REVOKE CONNECT ON DATABASE %I FROM PUBLIC', current_database());
+    EXECUTE format('GRANT CONNECT ON DATABASE %I TO app_user', current_database());
+END $$;
+
+-- migrate:down
+-- The baseline is never rolled back: that would drop every user's data.

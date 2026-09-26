@@ -326,8 +326,20 @@ styled `window.confirm()` stand-in, used by the delete button above).
   as the production design's Firebase Hosting rewrites, with SSE responses flushed
   immediately instead of buffered.
 - **Postgres 16** — two databases (`bookkeeping`, `chat`), each with its own
-  least-privilege role and row-level security policy keyed off `app.uid`, created by
-  `db/init/001_schema.sql` and `002_chat.sql` on first boot.
+  least-privilege role and row-level security policy keyed off `app.uid`.
+  `db/init/000_setup.sql` creates the second database and the roles on first boot;
+  the schema comes from `db/migrations/`, applied by the one-shot `migrate` service
+  before the app services start.
+
+### Database migrations
+
+Schema changes are numbered SQL files in `db/migrations/bookkeeping/` and
+`db/migrations/chat/`, applied by [dbmate](https://github.com/amacneil/dbmate), which
+records what's applied in each database's `schema_migrations` table. To change the
+schema, add a file (`dbmate new <name>` or copy the naming), with `-- migrate:up` and
+`-- migrate:down` sections, then `docker compose up migrate`. The same
+`db/migrate.sh` runs locally and in production; CI applies every migration to a fresh
+database, twice, on each PR that touches `db/`.
 
 ## Environment variables (`.env`)
 
@@ -436,7 +448,10 @@ docker compose exec transactions uv run python -m evals.categorize_eval \
 ## Layout
 
 ```
-db/init/                     Postgres schema + RLS policies (bookkeeping DB, chat DB)
+db/init/                     first-boot setup: the chat database and the app roles
+db/migrations/               schema + RLS policies, per database (dbmate)
+db/Dockerfile, migrate.sh    the migration runner (Compose `migrate`, Cloud Run Job)
+docs/improvement-plan.md     process improvement plan and its status
 firebase/                    Auth + Firestore emulator container; emulator-data/
                                holds its persisted state (gitignored)
 gcs/receipts-local/          fake-gcs-server's on-disk backing store
@@ -491,9 +506,11 @@ Cloud Run services, Cloud SQL (the same `bookkeeping`/`chat` databases), the rec
 bucket, a Cloud Tasks queue, Secret Manager secrets, Artifact Registry, the Firebase
 project link + Firestore database + a Web App, and a Workload Identity Federation
 setup for CI/CD (no long-lived GCP key stored anywhere). It does *not* cover:
-applying the DB schema (`db/init/*.sql` — still a manual/CI migration step against
-the instance it creates), Firestore rules content (still `firebase deploy`), or
+Firestore rules content (still `firebase deploy`), or
 Firebase Auth's Google sign-in provider (enabled once by hand in the console).
+The schema is applied by the `migrate` Cloud Run Job, run by
+`.github/workflows/db.yml` on a `db-v*` tag (push it before the service tags of a
+release that needs a schema change).
 Service-to-service calls (`transactions`'s `POST /categorize` and
 `/categorize/batch`, `agent`'s
 `POST /internal/summarize`) are authenticated with real Google-signed OIDC tokens,

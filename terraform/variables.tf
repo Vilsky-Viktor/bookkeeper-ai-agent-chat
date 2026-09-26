@@ -63,6 +63,12 @@ variable "langsmith_tracing" {
 # real image, re-running `terraform apply` won't reset it back to these defaults —
 # these variables only matter for the very first apply on a brand new project.
 
+variable "migrate_image" {
+  description = "Placeholder until .github/workflows/db.yml pushes the real migration image (db/Dockerfile)."
+  type        = string
+  default     = "us-docker.pkg.dev/cloudrun/container/job"
+}
+
 variable "agent_image" {
   type    = string
   default = "us-docker.pkg.dev/cloudrun/container/hello"

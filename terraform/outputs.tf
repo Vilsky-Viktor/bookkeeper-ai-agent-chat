@@ -55,3 +55,8 @@ output "firebase_web_app_project_id" {
   description = "-> repo variable VITE_FIREBASE_PROJECT_ID (same as project_id, listed for copy-paste convenience)"
   value       = var.project_id
 }
+
+output "migrate_job_name" {
+  description = "The Cloud Run Job .github/workflows/db.yml executes to apply db/migrations."
+  value       = google_cloud_run_v2_job.migrate.name
+}

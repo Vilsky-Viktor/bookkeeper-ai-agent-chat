@@ -1,5 +1,6 @@
 """Every write accepts an Idempotency-Key header. Same key + same request body ->
-replay the stored response. Same key + different body -> 409."""
+replay the stored response. Same key + different body -> 409. Keys are kept for
+KEY_TTL; each new write also clears that user's expired ones."""
 
 import hashlib
 import json
@@ -7,6 +8,8 @@ from typing import Any, Awaitable, Callable
 
 import asyncpg
 from fastapi import HTTPException
+
+KEY_TTL = "24 hours"
 
 
 def _hash(payload: Any) -> str:
@@ -42,4 +45,8 @@ async def run_idempotent(
         status,
         json.dumps(response, default=str),
     )
+    # Cleanup piggybacks on writes: scoped to this user, so row-level security allows
+    # it with the app's own role, and it needs no scheduler (which a scale-to-zero
+    # Cloud Run service couldn't run reliably anyway).
+    await conn.execute(f"DELETE FROM idempotency_keys WHERE uid=$1 AND created_at < now() - interval '{KEY_TTL}'", uid)
     return status, response, False
