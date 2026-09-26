@@ -107,6 +107,13 @@ yet.
   or searches the whole table by description text ("the bagel one") when it isn't —
   or, unambiguously, from an explicit `#` reference button on any table row, which
   drops a `[transaction: <id>]` marker into the message box.
+- **Directly editable table.** Every column (date via a native date picker, category
+  via a dropdown built from the same list the backend categorizer uses, amount,
+  currency, description — full text on hover via a tooltip once it's truncated) is
+  also editable in place, and each row has its own delete button, gated behind a
+  custom confirmation dialog (`ConfirmDialog.tsx`, styled to match the rest of the
+  app) since deleting is irreversible — chat isn't the only way to change a
+  transaction, just the natural-language one.
 - **Analysis.** "How much did I spend on dining last month?" always calls a real
   aggregates endpoint — the model is instructed to never state a number from memory
   or from the conversation summary.
@@ -260,7 +267,10 @@ Key files: `src/lib/i18n.tsx` (translation dictionaries, RTL/`dir` handling,
 `useTranslation()`), `src/lib/sync.ts` (the Firestore live-update listener),
 `src/components/ChatPanel.tsx` (message list + SSE streaming input, exposes an
 imperative `insertReference` handle so the table's `#` button can drop a marker into
-the chat input), `src/components/TransactionsTable.tsx`.
+the chat input), `src/components/TransactionsTable.tsx` (every column editable
+in place — date/category/amount/currency/description — via `lib/api.ts`'s
+`patchTransaction`/`deleteTransaction`), `src/components/ConfirmDialog.tsx` (a
+styled `window.confirm()` stand-in, used by the delete button above).
 
 ### Local infrastructure
 - **`firebase/`** — a container running the Auth and Firestore emulators plus the
@@ -359,7 +369,8 @@ web/                          React + Vite + TypeScript — chat pane + transact
   eslint.config.js / .prettierrc.json  lint + format config
   src/lib/i18n.tsx               translation dictionaries, RTL handling, useTranslation()
   src/lib/sync.ts                Firestore cross-tab live-update listener
-  src/components/                ChatPanel, TransactionsTable, ReceiptModal, Tooltip, …
+  src/components/                ChatPanel, TransactionsTable, ReceiptModal,
+                                  ConfirmDialog, Tooltip, …
 Caddyfile                     Reverse proxy — same routing shape as Firebase Hosting rewrites
 docker-compose.yml
 terraform/                    GCP infrastructure as code — see "Deploying to GCP" below
