@@ -126,16 +126,19 @@ yet.
   (Whisper) server-side and dropped into the message box for you to review or edit
   before sending — same as typing it, nothing is sent automatically.
 - **Receipts.** Upload a photo or PDF; the configured vision model (`gpt-4o` by
-  default — see "Swapping the LLM provider") extracts line items and categorizes each
-  one, and the UI shows editable proposed rows — nothing is written until you
-  confirm. Rows can be edited, removed, or added before confirming (Confirm & save
-  is disabled once the list is empty), and each row's category is a dropdown built
-  from the same built-in category list the backend categorizer uses, so it can't
-  drift out of sync. There's no separate merchant field: a merchant/place name, when
-  identifiable, is folded straight into the item's description. Category corrections
-  (made via chat or by editing a proposed row) are learned per normalized description
-  and reused on future similar purchases, with an LLM fallback that recognizes
-  near-duplicate wording it doesn't match exactly.
+  default — see "Swapping the LLM provider") reads the receipt's grand total, date and
+  merchant, plus a short summary and the names of the items bought. That becomes ONE
+  proposed transaction for the total (per-item price splitting proved unreliable
+  across real receipts). Its category is the one most of the items fall into: each
+  item name goes through the same backend categorizer, and the majority wins (a tie
+  goes to whichever category appears first on the receipt). The UI shows the proposal
+  as an editable row — nothing is written until you confirm — and rows can still be
+  edited, removed, or added before confirming. Each row's category is a dropdown
+  built from the same built-in list the backend categorizer uses. There's no separate
+  merchant field: a merchant name, when identifiable, is folded into the description.
+  Category corrections (made via chat or by editing a proposed row) are learned per
+  normalized description and reused on future similar purchases, with an LLM
+  fallback that recognizes near-duplicate wording it doesn't match exactly.
 - **Exchange rates.** "What's 50 USD in EUR?" calls a free, keyless daily reference
   rate covering 300+ currencies — explicitly a reference rate, never used to silently
   convert or alter a transaction's actual stated
@@ -151,7 +154,7 @@ yet.
 - **Localization.** Ten languages — English, Spanish, Indonesian, French, German,
   Portuguese, Hebrew, Russian, Ukrainian, Arabic — selectable per account. Not just UI
   strings: the chat model is instructed to reply in the selected language regardless
-  of what language the user types in, receipt line items get translated into it, the
+  of what language the user types in, receipt descriptions get translated into it, the
   category column's built-in labels are translated for display (the stored/matched
   value stays the English key), and Hebrew/Arabic flip the whole layout to RTL via
   logical CSS properties (not just a `dir` attribute flip).
@@ -254,7 +257,7 @@ the agent has no elevated identity of its own.
 | `get_total_in_currency` | Sum transactions (optionally filtered) and convert the result into one target currency — the multiply-and-sum happens in code, never left to the model to compute in its reply. |
 | `set_filter` | Drive the transactions table's filter from chat. |
 | `export_transactions` | Signal the UI to build and attach a CSV of the table's current view. |
-| `extract_receipt` | Vision-extract line items from an uploaded receipt image/PDF, categorize each, and propose (never write) rows. |
+| `extract_receipt` | Vision-read an uploaded receipt image/PDF into one proposed (never written) row: its total, a summarized description, and the majority category of its items. |
 
 ### Frontend
 React 19 + Vite 6 + TypeScript. TanStack Query for server cache, invalidated by the

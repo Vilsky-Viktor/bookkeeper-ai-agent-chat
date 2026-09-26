@@ -14,6 +14,8 @@ import os
 import asyncpg
 from openai import AsyncOpenAI
 
+from .money import to_decimal_string
+
 CATEGORIES = [
     "groceries",
     "dining",
@@ -33,14 +35,14 @@ CATEGORIES = [
 # that also sells food) lands on the right bucket instead of defaulting to whatever
 # category the merchant is best known for.
 CATEGORY_DEFINITIONS = {
-    "groceries": "raw/packaged food and household consumables bought to prepare or stock at home (rice, produce, snacks, cooking oil, cleaning supplies)",
+    "groceries": "raw/packaged food and household consumables bought to prepare or stock at home (rice, produce, snacks, cooking oil, cleaning supplies) — food and consumables ONLY: tobacco and alcohol bought from a grocery store or minimarket are not food, so they belong in shopping instead, not groceries just because of where they were bought",
     "dining": "prepared food and drink consumed out or ordered in (restaurants, cafes, takeout, delivery)",
     "transport": "getting from place to place (fuel, rideshare, public transit, parking, tolls)",
     "housing": "rent, mortgage, home repairs and furnishings",
     "utilities": "recurring service bills (electricity, water, gas, internet, phone plan)",
     "entertainment": "leisure and media (movies, games, streaming, hobbies, events)",
     "health": "pharmacy, medical care, and personal care/hygiene items (toothpaste, soap, medicine, doctor visits)",
-    "shopping": "clothing, electronics and other general retail goods not covered above",
+    "shopping": "clothing, electronics, tobacco, alcohol, and other general retail goods not covered above",
     "travel": "flights, hotels, and trip-specific costs",
     "fees": "bank fees, service charges, interest, penalties",
     "other": "anything that genuinely doesn't fit the categories above",
@@ -143,7 +145,7 @@ async def categorize(
         "Classify this single line item into exactly one of these categories:\n"
         f"{category_list}\n\n"
         f"Item / description: {description or ''}\n"
-        f"Amount: {amount_minor} minor units {currency}\n\n"
+        f"Amount: {to_decimal_string(amount_minor, currency)} {currency}\n\n"
         "The user has previously corrected these categorizations:\n"
         f"{history_text}\n\n"
         "If this transaction's description clearly describes the same purchase as one "

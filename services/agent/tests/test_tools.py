@@ -5,7 +5,7 @@ import httpx
 import pytest
 
 from app import tools as tools_module
-from app.models.tool_results import ReceiptExtraction, ReceiptLineItem
+from app.models.tool_results import ReceiptExtraction
 from app.tools import receipts as receipts_module
 
 _RealAsyncClient = httpx.AsyncClient  # captured before any monkeypatching below
@@ -363,7 +363,7 @@ class TestExtractReceipt:
     async def test_not_a_receipt_returns_message_without_writing(self, build, monkeypatch):
         monkeypatch.setattr(receipts_module.storage, "read_bytes", lambda name: (b"imgdata", "image/jpeg"))
         monkeypatch.setattr(
-            receipts_module, "_extract_line_items", AsyncMock(return_value=ReceiptExtraction(is_receipt=False))
+            receipts_module, "_read_receipt", AsyncMock(return_value=ReceiptExtraction(is_receipt=False))
         )
 
         tool = _tool_by_name(build(lambda r: httpx.Response(200)), "extract_receipt")
@@ -371,66 +371,110 @@ class TestExtractReceipt:
 
         assert result["not_a_receipt"] is True
 
-    async def test_success_folds_merchant_and_categorizes_each_item(self, build, monkeypatch):
+    async def test_receipt_without_a_total_is_treated_as_not_a_receipt(self, build, monkeypatch):
+        monkeypatch.setattr(receipts_module.storage, "read_bytes", lambda name: (b"imgdata", "image/jpeg"))
+        monkeypatch.setattr(
+            receipts_module, "_read_receipt", AsyncMock(return_value=ReceiptExtraction(is_receipt=True, items=["Rice"]))
+        )
+
+        tool = _tool_by_name(build(lambda r: httpx.Response(200)), "extract_receipt")
+        result = await tool.coroutine(object_name="receipts/u1/x.jpg")
+
+        assert result["not_a_receipt"] is True
+
+    async def test_proposes_one_row_for_the_total_with_the_majority_category(self, build, monkeypatch):
         monkeypatch.setattr(receipts_module.storage, "read_bytes", lambda name: (b"imgdata", "image/jpeg"))
         monkeypatch.setattr(
             receipts_module,
-            "_extract_line_items",
+            "_read_receipt",
             AsyncMock(
                 return_value=ReceiptExtraction(
                     is_receipt=True,
                     merchant="Alfamart",
                     occurred_on="2026-01-01",
                     currency="idr",
-                    items=[ReceiptLineItem(description="Rice 1kg", amount="10000")],
+                    total_paid="164100",
+                    description="Rice, eggs and 1 more item",
+                    items=["Rice 1kg", "Eggs", "Shampoo"],
                 )
             ),
         )
+        categories = {
+            "Rice 1kg - Alfamart": "groceries",
+            "Eggs - Alfamart": "groceries",
+            "Shampoo - Alfamart": "health",
+        }
+        seen = []
 
         def handler(request: httpx.Request) -> httpx.Response:
             assert request.url.path == "/api/transactions/categorize"
-            return httpx.Response(200, json={"category": "groceries"})
+            name = json.loads(request.content)["description"]
+            seen.append(name)
+            return httpx.Response(200, json={"category": categories[name]})
 
         tool = _tool_by_name(build(handler), "extract_receipt")
         result = await tool.coroutine(object_name="receipts/u1/x.jpg")
 
         assert result["ui_event"] == "receipt_proposed"
+        # Each item is categorized with the merchant attached, for context.
+        assert sorted(seen) == ["Eggs - Alfamart", "Rice 1kg - Alfamart", "Shampoo - Alfamart"]
+        assert len(result["items"]) == 1
         item = result["items"][0]
+        assert item["amount"] == "164100"
         assert item["category"] == "groceries"
         assert item["currency"] == "IDR"
-        assert "Alfamart" in item["description"]
+        assert item["description"] == "Rice, eggs and 1 more item - Alfamart"
 
-    async def test_categorize_call_failure_defaults_to_other(self, build, monkeypatch):
+    async def test_no_item_names_categorizes_the_description(self, build, monkeypatch):
         monkeypatch.setattr(receipts_module.storage, "read_bytes", lambda name: (b"imgdata", "image/jpeg"))
         monkeypatch.setattr(
             receipts_module,
-            "_extract_line_items",
+            "_read_receipt",
             AsyncMock(
                 return_value=ReceiptExtraction(
-                    is_receipt=True,
-                    merchant=None,
-                    occurred_on="2026-01-01",
-                    currency="usd",
-                    items=[ReceiptLineItem(description="widget", amount="5.00")],
+                    is_receipt=True, currency="usd", total_paid="40.00", description="Dinner for two"
                 )
             ),
         )
 
         def handler(request: httpx.Request) -> httpx.Response:
-            return httpx.Response(500)
+            assert json.loads(request.content)["description"] == "Dinner for two"
+            return httpx.Response(200, json={"category": "dining"})
 
         tool = _tool_by_name(build(handler), "extract_receipt")
+        result = await tool.coroutine(object_name="receipts/u1/x.jpg")
+
+        assert result["items"][0]["category"] == "dining"
+
+    async def test_categorize_call_failure_defaults_to_other(self, build, monkeypatch):
+        monkeypatch.setattr(receipts_module.storage, "read_bytes", lambda name: (b"imgdata", "image/jpeg"))
+        monkeypatch.setattr(
+            receipts_module,
+            "_read_receipt",
+            AsyncMock(
+                return_value=ReceiptExtraction(is_receipt=True, currency="usd", total_paid="5.00", items=["widget"])
+            ),
+        )
+
+        tool = _tool_by_name(build(lambda r: httpx.Response(500)), "extract_receipt")
         result = await tool.coroutine(object_name="receipts/u1/x.jpg")
 
         assert result["items"][0]["category"] == "other"
 
 
-class TestExtractLineItems:
-    async def test_prompt_includes_todays_date_with_no_placeholder_left_over(self, monkeypatch):
-        # A misread receipt date (e.g. wrong year) is a real failure mode for the
-        # vision model — giving it today's date as an anchor is the mitigation. This
-        # guards the substitution itself: no literal "{today}"/"{language}" leftover,
-        # and the date that lands in the prompt is the real one, not hardcoded.
+class TestMajorityCategory:
+    def test_most_common_wins(self):
+        assert receipts_module._majority_category(["health", "groceries", "groceries"]) == "groceries"
+
+    def test_tie_goes_to_the_first_on_the_receipt(self):
+        assert receipts_module._majority_category(["shopping", "groceries", "groceries", "shopping"]) == "shopping"
+
+    def test_empty_is_other(self):
+        assert receipts_module._majority_category([]) == "other"
+
+
+class TestReadReceipt:
+    async def test_prompt_substitutes_placeholders_and_stays_locale_neutral(self, monkeypatch):
         captured = {}
 
         class _FakeVisionModel:
@@ -440,60 +484,28 @@ class TestExtractLineItems:
 
         monkeypatch.setattr(receipts_module.llm, "vision_model", lambda: _FakeVisionModel())
 
-        await receipts_module._extract_line_items(b"imgdata", "image/jpeg", "en")
+        await receipts_module._read_receipt(b"imgdata", "image/jpeg", "en")
 
+        prompt = captured["prompt"]
         today = receipts_module.datetime.date.today().isoformat()
-        assert today in captured["prompt"]
-        assert "{today}" not in captured["prompt"]
-        assert "{language}" not in captured["prompt"]
-        # Guards the specific failure mode that prompted this: a receipt printing a
-        # relative label ("Today, 5:52 PM") instead of a calendar date, which the
-        # model has no way to resolve without being told what "today" actually is.
-        assert "Today" in captured["prompt"] and "Yesterday" in captured["prompt"]
-        # Guards a second, separate failure mode: a receipt (e.g. an app/delivery
-        # order) that lists item names and quantities but no per-item price — the
-        # model must not invent a per-item amount (observed: it used the quantity
-        # number, e.g. "3", as if it were a price) and must fall back to the
-        # receipt's real total instead.
-        assert "never use a quantity number as if it were a price" in captured["prompt"]
-        assert "collapse everything into ONE item" in captured["prompt"]
-        # Guards a third failure mode: a receipt with a real per-item price plus extra
-        # charges on top (delivery/packaging/service fee) that raise the actual total
-        # paid — observed: the model reported only the product subtotal and silently
-        # dropped the fees, understating what was actually spent.
-        assert "sum of every item" in captured["prompt"]
-        assert "Delivery & packaging" in captured["prompt"]
-        # A fee must get its own line item even with only one product — folding it
-        # into that product's amount was tried and rejected (it corrupts both the
-        # amount and the category attributed to the actual purchase).
-        assert "not even when there's only one product" in captured["prompt"]
-        # Guards the same pattern in its restaurant-bill form: many dishes plus a
-        # shared service charge/tip/tax, sometimes printed only as a percentage with
-        # no computed amount of its own — the model must compute it, and must not
-        # split or fold it into the individual dishes.
-        assert "restaurant bill with many" in captured["prompt"]
-        assert "calculate the actual amount yourself" in captured["prompt"]
-        # Guards a fourth failure mode: an unreadable merchant name written as the
-        # placeholder "Unknown" instead of null, which then folds into the
-        # description as if it were a real merchant.
-        assert 'set "merchant" to null' in captured["prompt"]
-        # Guards a fifth failure mode, the mirror image of the fee-separation one:
-        # e-commerce checkout receipts print discounts/vouchers as their own
-        # negative-amount lines (observed: a Shopee order produced a "Shipping
-        # Discount Subtotal: -14000" and "Shopee Voucher Applied: -10000" as if they
-        # were their own transactions). A discount isn't a purchase — it must be
-        # netted into the charge it reduces, not reported as a standalone item.
-        assert "Never report one of these as its own item" in captured["prompt"]
-        assert "omit it entirely" in captured["prompt"]
-        # The fifth failure mode recurred in a different shape: a food-delivery app
-        # receipt's generic "Other discounts" line (not tied to a specific fee by
-        # name, unlike "Shipping Discount") still came back as its own negative-amount
-        # item instead of netted into the product. The prompt-only fix didn't hold, so
-        # ReceiptExtraction._normalize_amounts (models/tool_results.py) now also nets
-        # a stray negative item in code as a safety net — see
-        # TestReceiptExtractionNormalization in test_models.py for that.
-        assert "Other discounts" in captured["prompt"]
-        assert "never from a fee" in captured["prompt"]
+        assert today in prompt
+        assert "{today}" not in prompt and "{language}" not in prompt
+        # A relative date label ("Today, 5:52 PM") can only be resolved with today's date.
+        assert "Today" in prompt and "Yesterday" in prompt
+        assert 'set "merchant" to null' in prompt
+        # The one amount read is the grand total — not the subtotal or cash tendered.
+        assert '"total_paid"' in prompt
+        assert "NOT the subtotal" in prompt
+        # items drive the majority category: summary labels and fees in there once
+        # voted a restaurant delivery order into "groceries" ("Price" vs "Handling and
+        # delivery fee" vs "Other discounts", tie -> first).
+        assert "list ONLY real" in prompt
+        assert "never summary labels" in prompt
+        # Receipts come from any country: describe line types by function, never one
+        # locale's wording.
+        assert "any language" in prompt
+        for locale_specific in ("TUNAI", "KEMBALI", "HEMAT", "BELANJA", "PPN", "Indomaret", "rupiah"):
+            assert locale_specific not in prompt
 
 
 class TestFoldMerchant:

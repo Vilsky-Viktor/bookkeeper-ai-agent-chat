@@ -27,9 +27,9 @@ def build_crud_tools(http_client: Callable[[], httpx.AsyncClient]) -> list[BaseT
         then its own model), so pass description and let it decide.
         description should be a short, complete, human-readable phrase covering what it
         was for, including the merchant/vendor/service name whenever one is
-        identifiable — not just the bare item name. E.g. for "I spent 5000 IDR for
-        indomie in Indomart", set description to "indomie purchased in Indomart", not
-        just "indomie"; for a subscription with no physical store, still name it, e.g.
+        identifiable — not just the bare item name. E.g. for "I spent 5 on noodles at
+        7-Eleven", set description to "noodles purchased at 7-Eleven", not just
+        "noodles"; for a subscription with no physical store, still name it, e.g.
         "Claude subscription payment". Corrections are matched against this exact text
         (loosely, via near-duplicate matching), so use the SAME short, consistent
         wording for the same recurring purchase every time (e.g. always "Claude
@@ -75,7 +75,7 @@ def build_crud_tools(http_client: Callable[[], httpx.AsyncClient]) -> list[BaseT
         to search the whole table before asking the user which one they mean. Only
         pass fields that change. If you set
         description, keep it a complete, human-readable phrase with context including
-        the merchant/vendor name when relevant (e.g. "indomie purchased in Indomart"),
+        the merchant/vendor name when relevant (e.g. "noodles purchased at 7-Eleven"),
         not just an item name."""
         body = {
             k: v

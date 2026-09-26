@@ -6,6 +6,7 @@ import base64
 import datetime
 import json
 import os
+from collections import Counter
 from typing import Callable
 
 import httpx
@@ -84,7 +85,7 @@ def _fold_merchant(description: str | None, merchant: str | None) -> str | None:
     return f"{description} - {merchant}"
 
 
-async def _extract_line_items(image_bytes: bytes, content_type: str, language: str) -> ReceiptExtraction:
+async def _read_receipt(image_bytes: bytes, content_type: str, language: str) -> ReceiptExtraction:
     b64 = base64.b64encode(image_bytes).decode()
     language_name = SUPPORTED_LANGUAGES.get(language, "English")
     prompt = RECEIPT_EXTRACTION_PROMPT.replace("{language}", language_name).replace(
@@ -103,16 +104,27 @@ async def _extract_line_items(image_bytes: bytes, content_type: str, language: s
     return ReceiptExtraction.model_validate(json.loads(text or "{}"))
 
 
+def _majority_category(categories: list[str]) -> str:
+    """Most common category across the receipt's items; a tie goes to whichever of
+    the tied categories appears first on the receipt."""
+    if not categories:
+        return "other"
+    counts = Counter(categories)
+    top = max(counts.values())
+    return next(c for c in categories if counts[c] == top)
+
+
 def build_receipt_tools(http_client: Callable[[], httpx.AsyncClient], language: str) -> list[BaseTool]:
     @tool
     async def extract_receipt(object_name: str) -> dict:
-        """Extract line items from an uploaded receipt, image or PDF. object_name looks
-        like receipts/<uid>/<id>.jpg and is given to you in the user's message as
-        '[uploaded receipt: <path>]' — use that exact path. Categorizes each item but
-        NEVER writes to the table; a card below your reply shows the proposed rows for
+        """Read an uploaded receipt (image or PDF) into ONE proposed transaction for
+        its total, with a summarized description and the category most of its items
+        fall in. object_name looks like receipts/<uid>/<id>.jpg and is given to you in
+        the user's message as '[uploaded receipt: <path>]' — use that exact path.
+        NEVER writes to the table; a card below your reply shows the proposed row for
         the user to edit and confirm before anything is saved, so keep your own reply
         to one short sentence (the date, plus something like "edit or confirm below")
-        instead of re-listing the items yourself. If the result says not_a_receipt,
+        instead of re-describing it yourself. If the result says not_a_receipt,
         tell the user plainly that the file doesn't look like a receipt and ask them
         to upload an actual receipt (photo or PDF) — don't imply anything was saved or
         proposed."""
@@ -129,56 +141,54 @@ def build_receipt_tools(http_client: Callable[[], httpx.AsyncClient], language: 
                 )
             ).model_dump()
 
-        extracted = await _extract_line_items(image_bytes, content_type, language)
+        extracted = await _read_receipt(image_bytes, content_type, language)
 
-        if not extracted.is_receipt or not extracted.items:
+        if not extracted.is_receipt or not extracted.total_paid:
             return NotAReceiptResult(
                 message=(
-                    "That doesn't look like a receipt — I couldn't find any purchase "
-                    "line items on it. Please upload a photo or PDF of an actual "
-                    "receipt."
+                    "That doesn't look like a receipt — I couldn't find a purchase total "
+                    "on it. Please upload a photo or PDF of an actual receipt."
                 ),
             ).model_dump()
 
-        merchant = extracted.merchant
-        occurred_on = extracted.occurred_on
         currency = (extracted.currency or "USD").upper()
         receipt_uri = f"gs://{storage.BUCKET}/{object_name}"
 
         service_token = await _categorize_service_token()
         service_headers = {"X-Serverless-Authorization": f"Bearer {service_token}"} if service_token else {}
 
-        proposed: list[ReceiptProposedItem] = []
-        async with http_client() as c:
-            for item in extracted.items:
-                description = _fold_merchant(item.description, merchant)
-                category = "other"
-                try:
-                    cat_resp = await c.post(
-                        "/api/transactions/categorize",
-                        json={
-                            "description": description,
-                            "amount": item.amount,
-                            "currency": currency,
-                            "type": "expense",
-                        },
-                        headers=service_headers,
-                    )
-                    if cat_resp.status_code == 200:
-                        category = cat_resp.json().get("category", "other")
-                except httpx.HTTPError:
-                    pass
-                proposed.append(
-                    ReceiptProposedItem(
-                        occurred_on=occurred_on,
-                        type="expense",
-                        amount=item.amount,
-                        currency=currency,
-                        category=category,
-                        description=description,
-                        receipt_uri=receipt_uri,
-                    )
+        async def categorize_one(c: httpx.AsyncClient, name: str) -> str | None:
+            try:
+                resp = await c.post(
+                    "/api/transactions/categorize",
+                    json={"description": name, "amount": extracted.total_paid, "currency": currency, "type": "expense"},
+                    headers=service_headers,
                 )
-        return ReceiptProposedResult(items=proposed, receipt_uri=receipt_uri).model_dump()
+            except httpx.HTTPError:
+                return None
+            return resp.json().get("category") if resp.status_code == 200 else None
+
+        # Categorized per item (so past corrections and the categorizer's definitions
+        # apply to each product), then the receipt takes the majority category.
+        # The merchant rides along with each name: "Nasi goreng - Warung Jakarta"
+        # categorizes far better than a bare "Nasi goreng", and matches how the saved
+        # description (and so the user's corrections) is worded.
+        names = [
+            _fold_merchant(n, extracted.merchant) or "" for n in (extracted.items or [extracted.description or ""])
+        ]
+        async with http_client() as c:
+            results = await asyncio.gather(*(categorize_one(c, n) for n in names))
+        category = _majority_category([r for r in results if r])
+
+        proposed = ReceiptProposedItem(
+            occurred_on=extracted.occurred_on,
+            type="expense",
+            amount=extracted.total_paid,
+            currency=currency,
+            category=category,
+            description=_fold_merchant(extracted.description, extracted.merchant),
+            receipt_uri=receipt_uri,
+        )
+        return ReceiptProposedResult(items=[proposed], receipt_uri=receipt_uri).model_dump()
 
     return [extract_receipt]

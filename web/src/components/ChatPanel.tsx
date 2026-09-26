@@ -1,6 +1,6 @@
 import { fetchEventSource } from "@microsoft/fetch-event-source";
 import { useQueryClient } from "@tanstack/react-query";
-import { Mic, Paperclip, Plus, Sparkles, Square, Trash2 } from "lucide-react";
+import { Mic, Paperclip, Sparkles, Square } from "lucide-react";
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import {
   authHeaders,
@@ -77,7 +77,7 @@ export interface ChatPanelHandle {
 }
 
 const proposedInputClass =
-  "rounded-md border border-zinc-200 bg-white px-1.5 py-1 text-xs text-zinc-900 focus:outline-none focus:ring-2 focus:ring-sky-500/40 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:focus:ring-sky-400/40";
+  "rounded-md border border-zinc-200 bg-white px-2.5 py-1.5 text-xs text-zinc-900 focus:outline-none focus:ring-2 focus:ring-sky-500/40 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:focus:ring-sky-400/40";
 
 const ChatPanel = forwardRef<ChatPanelHandle, Props>(function ChatPanel(
   { threadId, onThreadId, filter, onFilterSet, onViewImage },
@@ -412,27 +412,6 @@ const ChatPanel = forwardRef<ChatPanelHandle, Props>(function ChatPanel(
     });
   }
 
-  function removeProposedItem(idx: number) {
-    setProposed((p) => (p ? { ...p, items: p.items.filter((_, i) => i !== idx) } : p));
-  }
-
-  function addProposedItem() {
-    setProposed((p) => {
-      if (!p) return p;
-      const last = p.items[p.items.length - 1];
-      const blank: ProposedItem = {
-        occurred_on: last?.occurred_on ?? new Date().toISOString().slice(0, 10),
-        type: "expense",
-        amount: "",
-        currency: last?.currency ?? "USD",
-        category: "other",
-        description: "",
-        receipt_uri: p.receipt_uri,
-      };
-      return { ...p, items: [...p.items, blank] };
-    });
-  }
-
   useImperativeHandle(ref, () => ({
     insertReference(id: string) {
       const marker = `[transaction: ${id}]`;
@@ -502,61 +481,48 @@ const ChatPanel = forwardRef<ChatPanelHandle, Props>(function ChatPanel(
         )}
 
         {proposed && (
-          <div className="rounded-xl border border-dashed border-zinc-300 bg-zinc-50 p-3 dark:border-zinc-700 dark:bg-zinc-900/50">
+          <div className="rounded-xl border border-dashed border-zinc-300 bg-zinc-100 p-3 dark:border-zinc-700 dark:bg-zinc-800/80">
             <strong className="mb-2.5 block text-sm font-medium text-zinc-900 dark:text-zinc-100">
               {t("receiptFoundHeading")}
             </strong>
             {proposed.items.map((item, i) => (
-              <div className="flex items-center gap-1.5 py-1 text-sm" key={i}>
+              <div className="flex flex-col gap-1.5 py-1 text-sm" key={i}>
                 <input
                   value={item.description ?? ""}
                   onChange={(e) => updateProposedItem(i, "description", e.target.value)}
-                  className={`${proposedInputClass} flex-1`}
+                  className={`${proposedInputClass} w-full`}
                 />
-                <input
-                  value={item.amount}
-                  onChange={(e) => updateProposedItem(i, "amount", e.target.value)}
-                  className={`${proposedInputClass} w-[60px]`}
-                />
-                <input
-                  value={item.currency}
-                  onChange={(e) => updateProposedItem(i, "currency", e.target.value.toUpperCase())}
-                  className={`${proposedInputClass} w-[45px]`}
-                />
-                <select
-                  value={item.category}
-                  onChange={(e) => updateProposedItem(i, "category", e.target.value)}
-                  className={`${proposedInputClass} w-[90px]`}
-                >
-                  {!BUILT_IN_CATEGORIES.includes(item.category.toLowerCase()) && (
-                    <option value={item.category}>{tCategory(item.category)}</option>
-                  )}
-                  {BUILT_IN_CATEGORIES.map((c) => (
-                    <option key={c} value={c}>
-                      {tCategory(c)}
-                    </option>
-                  ))}
-                </select>
-                <button
-                  onClick={() => removeProposedItem(i)}
-                  aria-label={t("removeItem")}
-                  className="inline-flex h-6 w-6 flex-none items-center justify-center rounded-md text-zinc-400 transition-colors hover:bg-red-50 hover:text-red-600 dark:text-zinc-600 dark:hover:bg-red-950/40 dark:hover:text-red-400"
-                >
-                  <Trash2 size={14} />
-                </button>
+                <div className="flex items-center gap-1.5">
+                  <select
+                    value={item.category}
+                    onChange={(e) => updateProposedItem(i, "category", e.target.value)}
+                    className={`${proposedInputClass} min-w-0 flex-1`}
+                  >
+                    {!BUILT_IN_CATEGORIES.includes(item.category.toLowerCase()) && (
+                      <option value={item.category}>{tCategory(item.category)}</option>
+                    )}
+                    {BUILT_IN_CATEGORIES.map((c) => (
+                      <option key={c} value={c}>
+                        {tCategory(c)}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    value={item.amount}
+                    onChange={(e) => updateProposedItem(i, "amount", e.target.value)}
+                    className={`${proposedInputClass} w-28`}
+                  />
+                  <input
+                    value={item.currency}
+                    onChange={(e) => updateProposedItem(i, "currency", e.target.value.toUpperCase())}
+                    className={`${proposedInputClass} w-16`}
+                  />
+                </div>
               </div>
             ))}
-            <button
-              onClick={addProposedItem}
-              className="mt-1 inline-flex items-center gap-1 rounded-lg px-1.5 py-1 text-xs font-medium text-sky-700 transition-colors hover:bg-sky-50 dark:text-sky-300 dark:hover:bg-sky-950/40"
-            >
-              <Plus size={14} />
-              {t("addItem")}
-            </button>
             <div className="mt-2 flex gap-2">
               <button
                 onClick={confirmReceipt}
-                disabled={proposed.items.length === 0}
                 className="rounded-lg bg-sky-200 px-3 py-1.5 text-xs font-medium text-sky-900 transition-colors hover:bg-sky-300 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-sky-200 dark:bg-sky-900/70 dark:text-sky-100 dark:hover:bg-sky-900/90 dark:disabled:hover:bg-sky-900/70"
               >
                 {t("confirmAndSave")}

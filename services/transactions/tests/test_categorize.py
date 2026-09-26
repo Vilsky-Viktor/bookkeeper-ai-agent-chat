@@ -104,6 +104,34 @@ class TestCategorize:
 
         assert category == "other"
 
+    async def test_prompt_steers_tobacco_away_from_groceries(self, mock_conn: AsyncMock, monkeypatch):
+        # Regression: a minimarket receipt's cigarettes ("Camel White 20's") came back
+        # categorized as "groceries" — the groceries definition covered food/household
+        # consumables broadly enough that the model treated "sold at a grocery store"
+        # as sufficient, rather than requiring the item itself to actually be food.
+        mock_conn.fetchrow.return_value = None
+        mock_conn.fetch.return_value = []
+
+        captured = {}
+
+        async def fake_create(**kwargs):
+            captured["prompt"] = kwargs["messages"][0]["content"]
+            response = MagicMock()
+            response.choices = [MagicMock(message=MagicMock(content="shopping"))]
+            return response
+
+        mock_client = MagicMock()
+        mock_client.chat.completions.create = fake_create
+        monkeypatch.setattr("app.categorize._get_client", lambda: mock_client)
+
+        category = await categorize(mock_conn, "uid-1", "Camel White 20's - Indomaret", 34900, "IDR", "expense")
+
+        assert category == "shopping"
+        assert "tobacco" in captured["prompt"].lower()
+        # Shown as a real amount, not "34900 minor units" (which reads as 349.00 for
+        # a 2-decimal currency and is meaningless to the model either way).
+        assert "Amount: 34900 IDR" in captured["prompt"]
+
     async def test_empty_description_skips_correction_lookup_but_still_calls_llm(
         self, mock_conn: AsyncMock, monkeypatch
     ):
