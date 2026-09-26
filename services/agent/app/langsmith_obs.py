@@ -1,10 +1,7 @@
-"""LangSmith tracing. Unlike Langfuse (a third-party integration that needed an
-explicit CallbackHandler attached to every graph run), LangSmith is native to
-LangChain: tracing activates purely from LANGSMITH_TRACING/LANGSMITH_API_KEY/
-LANGSMITH_PROJECT being set in the environment, and LangChain's own tracer attaches
-itself to every run automatically — no client to build or handler to thread through
-call sites. An empty .env means tracing never activates, the same no-op-by-default
-behavior the Langfuse setup had."""
+"""LangSmith tracing. Native to LangChain: it activates purely from
+LANGSMITH_TRACING/LANGSMITH_API_KEY/LANGSMITH_PROJECT in the environment, and
+LangChain's own tracer attaches itself to every run — no client or callback handler
+to thread through call sites. An empty .env means tracing never activates."""
 
 import contextlib
 import hashlib

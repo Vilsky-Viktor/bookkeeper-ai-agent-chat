@@ -40,7 +40,7 @@ def compact_tool_result(tool_name: str, result: dict) -> dict:
     return {"summary": text[:200] + ("..." if len(text) > 200 else "")}
 
 
-def _row_to_message(row, full_detail: bool) -> BaseMessage:
+def row_to_message(row, full_detail: bool) -> BaseMessage:
     content = _content_json(row)
     role = row["role"]
 
@@ -70,7 +70,7 @@ def _row_to_message(row, full_detail: bool) -> BaseMessage:
     raise ValueError(f"unknown message role: {role}")
 
 
-def _group_into_turns(rows: list) -> list[list]:
+def group_into_turns(rows: list) -> list[list]:
     """Groups oldest-first rows into turns: a user message starts a new turn; the
     assistant/tool messages that follow belong to it. Keeps a tool call and its
     result in the same turn so trimming never separates them."""
@@ -84,9 +84,9 @@ def _group_into_turns(rows: list) -> list[list]:
     if current:
         turns.append(current)
 
-    # `rows` is a raw row-count window (chat_db.recent_messages LIMIT), which has no
+    # `rows` is a row-count window (chat_db.unsummarized_messages), which has no
     # notion of turn boundaries — it can start mid-turn, e.g. on a tool-result message
-    # whose assistant tool_calls message fell just outside the limit. Sending an
+    # whose assistant tool_calls message fell just outside the limit or was summarized. Sending an
     # orphaned tool message with no preceding tool_calls message breaks OpenAI's
     # message-order validation, so drop that incomplete leading fragment.
     if turns and turns[0][0]["role"] != "user":

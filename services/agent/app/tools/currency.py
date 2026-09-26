@@ -8,6 +8,7 @@ import httpx
 from langchain_core.tools import BaseTool, tool
 
 from ..models.tool_results import CurrencyBreakdownEntry, ExchangeRateResult, ToolError, TotalInCurrencyResult
+from .filters import filter_params
 
 # Free, no-key, daily-updated exchange rates covering 300+ currencies (vs. ~30 for the
 # ECB-only Frankfurter.app source this replaced, which didn't have UAH). Static JSON on
@@ -78,17 +79,7 @@ def build_currency_tools(http_client: Callable[[], httpx.AsyncClient]) -> list[B
         """Total of transactions (optionally filtered, same filters as
         query_transactions) converted into to_currency, with exact per-currency
         arithmetic. Use it for any total that spans more than one currency."""
-        params = {
-            k: v
-            for k, v in {
-                "type": type,
-                "from": from_date,
-                "to": to_date,
-                "currency": currency,
-                "category": category,
-            }.items()
-            if v is not None
-        }
+        params = filter_params(type=type, from_date=from_date, to_date=to_date, currency=currency, category=category)
         async with http_client() as c:
             resp = await c.get("/api/transactions/aggregates", params=params)
         resp.raise_for_status()

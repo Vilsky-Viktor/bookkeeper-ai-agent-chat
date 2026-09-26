@@ -13,6 +13,9 @@ class TransactionIn(BaseModel):
     description: Optional[str] = None
     receipt_uri: Optional[str] = None
     batch_id: Optional[str] = None
+    # Receipt confirm flow: the category the app proposed, so a correction is only
+    # learned when the user changed it (see create.py).
+    suggested_category: Optional[str] = None
 
     @field_validator("currency")
     @classmethod
@@ -73,14 +76,10 @@ class PatchIdempotencyPayload(TransactionPatch):
 
 
 class BulkDeleteFilterPayload(BaseModel):
-    """What delete_transactions_bulk hashes/persists in idempotency_keys — mirrors the
-    filter kwargs build_filter_clauses() takes, using "from" (a Python keyword) as the
-    on-the-wire key via alias, same as the dict literal this replaces.
-
-    populate_by_name=True so callers can construct this with from_= (the field's own
-    Python name — "from" alone isn't valid keyword-argument syntax); .model_dump(
-    by_alias=True) still emits "from" on the way out, matching the original dict's key
-    exactly for idempotency-hash consistency."""
+    """What delete_transactions_bulk hashes/persists in idempotency_keys — the filter
+    kwargs build_filter_clauses() takes. "from" is a Python keyword, so the field is
+    from_ with alias "from": construct with from_=, dump with by_alias=True so the
+    hashed key stays "from"."""
 
     model_config = ConfigDict(populate_by_name=True)
 

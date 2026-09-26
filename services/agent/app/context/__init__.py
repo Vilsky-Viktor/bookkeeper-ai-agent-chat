@@ -1,7 +1,6 @@
-"""Prompt assembly (architecture doc, Chat memory > Context-window handling, p. 9):
-system prompt + preferences + working set + rolling summary, then the thread's
-unsummarized messages newest-first within HISTORY_TOKEN_BUDGET (never splitting a
-tool call from its result), then the current message."""
+"""Prompt assembly: system prompt + preferences + working set + rolling summary, then
+the thread's unsummarized messages newest-first within HISTORY_TOKEN_BUDGET (never
+splitting a tool call from its result), then the current message."""
 
 import datetime
 import json
@@ -24,12 +23,12 @@ def _select_turns(recent_rows: list) -> list[tuple[list, list]]:
     The newest turn is always kept, even alone over budget — dropping the exchange
     the user is replying to would break the conversation. Returns (rows, rendered
     messages) per turn, oldest-first."""
-    turns = messages._group_into_turns(recent_rows)
+    turns = messages.group_into_turns(recent_rows)
     selected: list[tuple[list, list]] = []
     used = 0
     for i, turn in enumerate(reversed(turns)):
         full_detail = i < messages.FULL_DETAIL_TURNS
-        rendered = [messages._row_to_message(row, full_detail) for row in turn]
+        rendered = [messages.row_to_message(row, full_detail) for row in turn]
         turn_tokens = sum(count_tokens(str(m.content)) for m in rendered)
         if selected and used + turn_tokens > tokens.HISTORY_TOKEN_BUDGET:
             break
@@ -69,14 +68,9 @@ def build_context(
     if isinstance(working_set, str):
         working_set = json.loads(working_set) if working_set else {}
     working_set = dict(working_set) if working_set else {}
-    # A "[transaction: <id>]" marker's id must always appear in this list, even if it
-    # fell off the working set's cap — otherwise its absence reads to the model as
-    # evidence the id is invalid, which in practice overrode the marker-priority rule
-    # elsewhere even with an explicit caveat added below saying this list is
-    # incomplete (observed directly, repeatedly: a marker edit whose id was still in
-    # this list succeeded immediately every time; the one whose id had been evicted
-    # kept failing regardless of prompt wording). Injecting the id here — not just
-    # arguing the model out of the doubt — is what actually fixed it.
+    # A marker's id is always listed, even if it fell off the working set's cap: the
+    # model treats an id missing from this list as invalid, and no prompt wording
+    # reliably talked it out of that.
     for marker_id in TRANSACTION_MARKER_RE.findall(current_user_text):
         working_set.setdefault(marker_id, "referenced in this message")
     if working_set:

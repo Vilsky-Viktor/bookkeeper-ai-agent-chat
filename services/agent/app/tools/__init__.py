@@ -1,7 +1,7 @@
-"""Tools the agent calls (architecture doc, Agent service > Tool table, p. 7). Every
-tool forwards the user's JWT to the transactions service — the agent never asserts
-"act as uid X" with its own identity. Built per-request via build_tools() so each
-closure carries this turn's JWT/X-Client-Id without leaking across requests."""
+"""Tools the agent calls. Every tool forwards the user's JWT to the transactions service
+— the agent never asserts "act as uid X" with its own identity. Built per-request via
+build_tools() so each closure carries this turn's JWT/X-Client-Id without leaking across
+requests."""
 
 import os
 

@@ -1,6 +1,5 @@
-"""Rolling summary, off the hot path (architecture doc, Chat memory > Context-window
-handling, technique 3, p. 9). Folds messages that fell out of the context window into
-threads.summary with a cheap model, then advances summarized_through with a
+"""Rolling summary, off the hot path. Folds messages that fell out of the context window
+into threads.summary with a cheap model, then advances summarized_through with a
 compare-and-set so a redelivered task is a no-op."""
 
 import json

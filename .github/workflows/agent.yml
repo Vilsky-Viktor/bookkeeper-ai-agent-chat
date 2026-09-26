@@ -16,6 +16,9 @@ on:
     paths:
       - "services/agent/**"
       - ".github/workflows/agent.yml"
+      # Read by tests/test_contracts.py (lists this service keeps copies of).
+      - "services/transactions/app/money.py"
+      - "web/src/lib/i18n/languages.ts"
   push:
     branches: [main]
     tags: ["agent-v*"]

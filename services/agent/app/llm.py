@@ -1,14 +1,11 @@
-"""LLM call policy: timeouts, retries and a fallback model (architecture doc,
-Scalability and resilience > LLM calls, p. 15). Retry-on-429/5xx with backoff+jitter is
-handled by the provider SDK's own max_retries; we add an overall timeout, an
-in-process concurrency cap, and a one-shot fallback to a secondary model.
+"""LLM call policy: timeouts, retries and a fallback model. Retry-on-429/5xx with
+backoff+jitter is handled by the provider SDK's own max_retries; we add an overall
+timeout, an in-process concurrency cap, and a one-shot fallback to a secondary model.
 
 Every chat model in the app — including the one-shot receipt-vision call in
-tools.py, which used to go through a separate raw OpenAI client — is built through
-build_chat_model() below instead of importing a provider's LangChain integration
-directly at each call site. Swapping providers is then a matter of adding one builder
-function (and its package as a dependency) here and setting LLM_PROVIDER, not
-hunting down every place a model gets constructed."""
+tools/receipts.py — is built through build_chat_model() below instead of importing a
+provider's LangChain integration at each call site, so swapping providers means adding
+one builder function (and its package) here and setting LLM_PROVIDER."""
 
 import asyncio
 import os
@@ -52,16 +49,10 @@ def _build_openai(model: str, temperature: float, *, json_mode: bool, max_tokens
 def _build_anthropic(model: str, temperature: float, *, json_mode: bool, max_tokens: int) -> BaseChatModel:
     from langchain_anthropic import ChatAnthropic
 
-    # Unlike OpenAI, Anthropic's Messages API has no response_format/json_object mode
-    # — json_mode is a no-op here; JSON-only output relies on the prompt itself (see
-    # tools.py's RECEIPT_EXTRACTION_PROMPT), which Claude follows reliably in practice.
-    #
-    # model/anthropic_api_key/default_request_timeout are the field names (what
-    # self.model etc. read back as); model_name/api_key/timeout are their Field(alias=)
-    # — pydantic's dataclass_transform only types the constructor by alias, so mypy
-    # rejects the field names here even though they're also accepted at runtime.
-    # stop=None is likewise just satisfying mypy: stop_sequences (alias "stop") has a
-    # real default, but dataclass_transform doesn't see it as optional in this class.
+    # Anthropic has no JSON mode, so json_mode is a no-op: the receipt prompt asks for
+    # JSON only, which Claude follows. The constructor args use the fields' aliases
+    # (model_name, api_key, timeout, max_tokens_to_sample) because mypy only accepts
+    # aliases here; stop=None is also only there for mypy.
     return ChatAnthropic(
         model_name=model,
         api_key=SecretStr(os.environ["LLM_API_KEY"]),
@@ -125,7 +116,7 @@ def summary_model() -> BaseChatModel:
 
 
 def vision_model() -> BaseChatModel:
-    """Used for receipt image extraction (see tools.py) — a one-shot structured-JSON
+    """Used for receipt image extraction (see tools/receipts.py) — a one-shot structured-JSON
     call outside the main chat graph, so it's built directly rather than bound with
     tools."""
     return build_chat_model(VISION_MODEL, temperature=0, json_mode=True, max_tokens=600)

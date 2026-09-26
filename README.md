@@ -18,7 +18,8 @@ see "Swapping the LLM provider") and a free public exchange-rate lookup.
 3. `docker compose up --build` (or `docker-compose up --build` on the standalone CLI).
 4. Open `http://localhost:8080` and sign in — the Auth emulator shows a fake Google
    account picker; add any test account, no real Google account needed.
-5. Reset everything with `docker compose down -v` (also drops the Postgres volume).
+5. Reset everything with `docker compose down -v` (drops the Postgres volume) plus
+   `rm -rf firebase/emulator-data` (the emulator's saved accounts and Firestore data).
 
 **First boot is slow to become responsive (15–30s):** the `agent` container imports the
 full LangGraph/LangChain/LangSmith stack at startup, and `firebase-tools`
@@ -29,10 +30,16 @@ Useful side doors while it's running:
 - `http://localhost:4000` — Firebase Emulator UI (inspect signed-in users/tokens)
 - `localhost:5432` — Postgres (`owner`/`owner_pw`, databases `bookkeeping` and `chat`)
 
-Two of the four app containers (`agent`, `transactions`) bake their code into the
-image at build time — editing their source requires `docker compose up -d --build
-<service>` to take effect, a plain `restart` won't pick it up. `web` bind-mounts
-`./web` and runs Vite's dev server, so frontend edits hot-reload immediately.
+All three app containers hot-reload: `web` bind-mounts `./web` and runs Vite's dev
+server; `agent` and `transactions` bind-mount their `app/` folders and run uvicorn with
+`--reload` (`uv run poe dev`). Edits take effect within seconds, no rebuild. Only a
+dependency change (`pyproject.toml`/`uv.lock`) needs `docker compose up -d --build
+--no-deps <service>`.
+
+The Firebase emulator keeps its accounts and Firestore data in
+`firebase/emulator-data/` (gitignored): imported on start, exported when the
+container stops, so test users survive restarts and rebuilds. Delete the folder to
+start clean.
 
 Each of `services/agent`/`services/transactions` has two Dockerfiles:
 `Dockerfile.dev` is what `docker-compose.yml` builds (matches this section — full
@@ -61,8 +68,8 @@ uv run poe test          # pytest
 uv run poe check         # format:check + lint + test, in one go
 ```
 
-`format`/`format:check`/`lint` also run inside the already-built containers (e.g.
-`docker compose exec agent uv run poe lint`), since `app/` is baked into the image.
+`format`/`format:check`/`lint` also run inside the running containers (e.g.
+`docker compose exec agent uv run poe lint`), which see the live `app/` folder.
 `test`/`check` need the local (non-Docker) `uv sync` above instead — `tests/` is
 deliberately not copied into the runtime image.
 
@@ -71,6 +78,11 @@ categorization, context assembly, tool HTTP calls, quotas, pagination, etc.) wit
 mocked DB connections and HTTP transports — no live Postgres or network access needed
 to run them — plus a handful of endpoint-level tests via FastAPI's `TestClient`,
 covering both success and error paths (400/401/404/409/429/501 as appropriate).
+Each service also has a `tests/test_contracts.py` that reads the other side's source
+file and fails if a list copied across services drifts (categories, supported
+languages, zero-decimal currencies) — the services share no code on purpose, so this
+is what keeps those copies honest. The pull-request workflows also run on changes to
+those other files.
 
 The frontend uses [`pnpm`](https://pnpm.io/) plus ESLint (flat config,
 `typescript-eslint` + React Hooks/Refresh plugins), Prettier, and
@@ -95,9 +107,10 @@ Tests run in `jsdom` with no real network/DOM: pure logic (`src/lib/*.test.ts` �
 building, the default filter's rolling date window, translation lookups, the
 Firestore cross-tab dedup logic) plus component tests (`src/components/*.test.tsx` —
 `@testing-library/react`, mocking `lib/api.ts`/Firebase/`fetch` at the module
-boundary rather than hitting a network). `ChatPanel.tsx` and `App.tsx` aren't
-covered yet — they'd need SSE/fetch-stream mocking infrastructure that doesn't exist
-yet.
+boundary rather than hitting a network). The chat pane is covered through its parts
+— `useChatStream` (SSE events → UI state, with `fetchEventSource` mocked),
+`ChatComposer`, `ReceiptProposalCard`, and `lib/chat.ts` — rather than the
+`ChatPanel` shell that wires them together; `App.tsx` isn't covered yet.
 
 ## What it does
 
@@ -133,14 +146,16 @@ yet.
   across real receipts). Its category is the one most of the items fall into: each
   item name goes through the same backend categorizer, and the majority wins (a tie
   goes to whichever category appears first on the receipt). The UI shows the proposal
-  as an editable row — nothing is written until you confirm — and rows can still be
-  edited, removed, or added before confirming. Each row's category is a dropdown
-  built from the same built-in list the backend categorizer uses. There's no separate
+  as an editable row (description on its own line; category, amount and currency
+  below) — nothing is written until you confirm. The category is a dropdown built
+  from the same built-in list the backend categorizer uses. There's no separate
   merchant field: a merchant name, when identifiable, is folded into the description.
   A plain upload (no typed text) skips the chat model entirely: the receipt tool runs
   directly and the reply is a fixed, translated sentence, since the outcome is fully
   determined; an upload with text still goes through the model so instructions are
-  honored. Images are downscaled (1600px long side, JPEG) before the vision call.
+  honored. Images are downscaled (1600px long side, JPEG, phone rotation applied)
+  before the vision call, and all of a receipt's items are categorized in a single
+  batch request.
   Category corrections (made via chat or by editing a proposed row) are learned per
   normalized description and reused on future similar purchases, with an LLM
   fallback that recognizes near-duplicate wording it doesn't match exactly.
@@ -151,11 +166,14 @@ yet.
 - **Live updates.** A same-tab SSE event updates the table instantly; a Firestore
   `sync/{uid}` document signals other open tabs/devices to refetch (each client tags
   its own writes with a client ID so it doesn't re-trigger itself).
-- **Chat memory.** Threads persist in Postgres and survive reloads/devices. Once a
-  thread's message history exceeds the context window's recent-message budget, the
-  overflow folds into a rolling per-thread summary (a background task, off the hot
-  path) that records intents/decisions, never specific amounts, since a lossy summary
-  must never be trusted for numbers.
+- **Chat memory.** Threads persist in Postgres and survive reloads/devices. The model
+  sees a rolling per-thread summary plus the messages it doesn't cover yet: once a
+  thread has more than 24 unsummarized messages, everything but the newest ~12 (cut
+  at a turn boundary) is folded into the summary by a background task, off the hot
+  path. History sent per call is also capped at `LLM_HISTORY_TOKEN_BUDGET` tokens,
+  and anything that cap trims is folded into the summary too, so nothing is silently
+  forgotten. The summary records intents/decisions, never specific amounts, since a
+  lossy summary must never be trusted for numbers.
 - **Localization.** Ten languages — English, Spanish, Indonesian, French, German,
   Portuguese, Hebrew, Russian, Ukrainian, Arabic — selectable per account. Not just UI
   strings: the chat model is instructed to reply in the selected language regardless
@@ -183,6 +201,7 @@ agent ──LLM provider (chat + vision)──► primary model, with a fallback
 agent ──Firebase Auth emulator──► verify_id_token (never skipped, even locally)
 agent ──Firestore emulator──► sync/{uid} live-update signal
 agent ──currency-api (jsdelivr CDN)──► exchange-rate lookups (no key, free)
+transactions ──LLM provider──► categorizer (per-row, or one batch call per receipt)
 ```
 
 The agent never impersonates a user: every call it makes to the transactions service
@@ -206,7 +225,9 @@ the agent has no elevated identity of its own.
     `aggregates.py` (currency/category/type/date range/amount range/description →
     SQL `WHERE` clause), so the three don't drift out of sync with each other.
   - `categorize.py` — corrections-first, LLM-fallback categorization, keyed on the
-    normalized transaction description (no merchant field).
+    normalized transaction description (no merchant field). `categorize()` handles
+    one row; `categorize_many()` (behind `POST /categorize/batch`) handles a whole
+    receipt with at most one model call.
   - `money.py` — amounts are stored as integer minor units (`amount_minor`), scaled
     by each currency's ISO 4217 exponent (most currencies 2 decimals, some 0 or 3),
     so aggregation never touches floating point.
@@ -223,19 +244,27 @@ the agent has no elevated identity of its own.
   stops calling tools. No checkpointer — the graph runs once per HTTP request and
   history lives in the chat DB, not graph state.
   - `llm.py` — a primary model with a one-shot fallback to a secondary model on
-    failure/timeout, a 60s overall call timeout, and an in-process concurrency cap.
-  - `context/` — token-budgeted prompt assembly: `prompts.py` (the system prompt),
-    `tokens.py` (token counting/budget constants), `messages.py` (turn grouping +
-    per-row rendering), and `__init__.py`'s `build_context()` (preferences, working
-    set, rolling summary, then as many recent turns as fit the budget, newest-first,
-    never splitting a tool call from its result).
-  - `chat/` — `streaming.py` runs one graph turn via `astream_events` and translates
-    it into the SSE wire format; `turns.py` decides whether a `[transaction: <id>]`
-    marker turn actually called the tool it claimed to, records a fallback assistant
-    message when a turn fails outright (so the thread never ends up with an
-    unanswered user message poisoning the next turn's context), and persists a
-    completed turn (assistant message, tool results, working set, quota,
-    summarization trigger).
+    failure/timeout, a 60s overall call timeout, per-purpose output-token caps, and an
+    in-process concurrency cap.
+  - `graph.py` — the `StateGraph`; also sends the model a compacted tool schema
+    (collapsed docstrings, plain optional params), since it's resent on every call.
+  - `context/` — prompt assembly: `prompts.py` (the system prompt), `tokens.py` (token
+    counting, `HISTORY_TOKEN_BUDGET`), `messages.py` (turn grouping + per-row
+    rendering, older tool results compacted), and `__init__.py`'s `build_context()`
+    (preferences, working set, rolling summary, then unsummarized turns newest-first
+    within the budget, never splitting a tool call from its result) and
+    `first_kept_seq()` (where the kept history starts, so trimmed rows get summarized).
+  - `chat/` — `runner.py` runs one chat turn end to end (save the message, build
+    context, pick how to run it, persist, turn failures into error events), so
+    `main.py`'s `/api/chat/chat` is just the HTTP layer; `streaming.py` runs one graph
+    turn via `astream_events` and translates it into the SSE wire format;
+    `receipt_turn.py` handles a plain receipt upload
+    without the model (runs `extract_receipt`, replies with a fixed translated
+    sentence); `turns.py` decides whether a `[transaction: <id>]` marker turn
+    actually called the tool it claimed to, records a fallback assistant message when
+    a turn fails outright (so the thread never ends up with an unanswered user message
+    poisoning the next turn's context), persists a completed turn (assistant message,
+    tool results, working set, quota), and triggers summarization by message count.
   - `tools/` — see the table below; `crud.py`/`currency.py`/`utility.py`/
     `receipts.py` each build one group of tools, `prompts.py` holds the
     receipt-extraction vision prompt, `__init__.py`'s `build_tools()` composes all of
@@ -271,11 +300,17 @@ for styling (dark mode via a class toggle + `@custom-variant`, RTL via logical
 properties), `lucide-react` for icons, `@microsoft/fetch-event-source` for SSE (plain
 `EventSource` can't send an auth header or a POST body).
 
-Key files: `src/lib/i18n.tsx` (translation dictionaries, RTL/`dir` handling,
-`useTranslation()`), `src/lib/sync.ts` (the Firestore live-update listener),
-`src/components/ChatPanel.tsx` (message list + SSE streaming input, exposes an
-imperative `insertReference` handle so the table's `#` button can drop a marker into
-the chat input), `src/components/TransactionsTable.tsx` (every column editable
+Key files: `src/lib/i18n/` (`locales/<lang>.ts` — one file per language, typed
+against `en.ts` so a missing key is a compile error; `LanguageProvider`, RTL/`dir`
+handling, `useTranslation()`), `src/lib/sync.ts` (the Firestore live-update listener),
+`src/components/ChatPanel.tsx` (the chat pane — composes the pieces below, and exposes
+an imperative `insertReference` handle so the table's `#` button can drop a marker
+into the chat input), `src/lib/useChatStream.ts` (sends a turn and turns its SSE
+events into UI state), `src/lib/useThreadMessages.ts` (thread history + paging back),
+`src/lib/useVoiceRecorder.ts` (press-and-hold voice input), `src/lib/chat.ts` (chat
+message/receipt types and pure helpers), `src/components/ChatComposer.tsx` (message
+box with the upload and mic buttons), `src/components/ReceiptProposalCard.tsx` (the
+editable receipt proposal), `src/components/TransactionsTable.tsx` (every column editable
 in place — date/category/amount/currency/description — via `lib/api.ts`'s
 `patchTransaction`/`deleteTransaction`), `src/components/ConfirmDialog.tsx` (a
 styled `window.confirm()` stand-in, used by the delete button above).
@@ -306,6 +341,7 @@ styled `window.confirm()` stand-in, used by the delete button above).
 | `LLM_VISION_MODEL` | no | default `gpt-4o` — receipt image extraction (not tied to `LLM_MODEL`: `gpt-4o-mini` bills images at a large multiplier and reads receipts less reliably) |
 | `TRANSCRIBE_MODEL` | no | default `gpt-4o-mini-transcribe` — voice-input transcription |
 | `LLM_CATEGORIZE_MODEL` | no | default `gpt-4o` — transactions service's categorizer (`gpt-4o-mini` is ~16x cheaper but misfiles brand-only item names more often) |
+| `LLM_HISTORY_TOKEN_BUDGET` | no | default `6000` — max tokens of conversation history per model call; anything trimmed is folded into the summary |
 | `LANGSMITH_TRACING` / `LANGSMITH_API_KEY` / `LANGSMITH_PROJECT` / `LANGSMITH_ENDPOINT` | no | tracing no-ops if unset |
 
 `DAILY_TURN_LIMIT` (default 200) and `DAILY_RECEIPT_LIMIT` (default 50) are also
@@ -348,6 +384,28 @@ its own registry: `transcribe_client()` and `_TRANSCRIBE_CLIENT_BUILDERS` in
 `app/llm.py`, also keyed on `LLM_PROVIDER`. Adding a provider that supports
 transcription means a builder in that registry too.
 
+### Keeping LLM costs down
+
+What the agent does to keep per-turn cost low (measured with the eval below and
+LangSmith's per-run token counts):
+
+- **Cheap chat model, strong where it matters.** Chat runs on `gpt-4o-mini`; receipt
+  reading and categorization stay on `gpt-4o`, where the mini models were measurably
+  worse (see the env var table).
+- **No model call when the outcome is fixed.** A plain receipt upload runs the tool
+  directly (`chat/receipt_turn.py`).
+- **Small fixed overhead, cached.** Tool descriptions hold only what each tool does
+  (behavior rules live once, in the system prompt), schemas are compacted
+  (`graph.py`), and the static prefix (tools + system prompt) comes first so
+  OpenAI's automatic prompt caching bills it at a discount on repeat calls.
+- **Bounded history and output.** The summary window and `LLM_HISTORY_TOKEN_BUDGET`
+  (see "Chat memory" above), plus `max_tokens` caps per purpose in `llm.py`.
+- **Batching and smaller inputs.** One categorize call per receipt, not per item;
+  images are downscaled before the vision call.
+- **Visibility.** LangSmith tags per purpose (`turn`, `receipt-direct`,
+  `receipt-vision`, `summarize`); the transactions service logs its categorizer's
+  token usage.
+
 ### Evaluating a cheaper chat model
 
 Before changing `LLM_MODEL`, run `services/agent/evals/chat_model_eval.py`. It replays
@@ -359,8 +417,7 @@ production context builder, system prompt and tool schemas, with canned tool res
 so no real data is touched. It reports pass rates and API cost per model:
 
 ```bash
-docker cp services/agent/evals bookkeeper-chat-agent-1:/app/
-docker exec bookkeeper-chat-agent-1 uv run python -m evals.chat_model_eval \
+docker compose exec agent uv run python -m evals.chat_model_eval \
   --models gpt-4o gpt-4.1-mini --runs 3
 ```
 
@@ -370,7 +427,8 @@ Keep `--concurrency` low on low OpenAI rate-limit tiers (the eval retries 429s).
 
 ```
 db/init/                     Postgres schema + RLS policies (bookkeeping DB, chat DB)
-firebase/                    Auth + Firestore emulator container
+firebase/                    Auth + Firestore emulator container; emulator-data/
+                               holds its persisted state (gitignored)
 gcs/receipts-local/          fake-gcs-server's on-disk backing store
 services/transactions/       FastAPI — owns Postgres, CRUD, categorization, idempotency
   pyproject.toml / uv.lock own uv project — deps, black/isort/mypy, poe tasks
@@ -387,19 +445,25 @@ services/agent/               FastAPI + LangGraph — owns chat DB, SSE chat, to
                                  build_tools()
   app/context/                  prompts.py (system prompt), tokens.py, messages.py,
                                  __init__.py's build_context()
-  app/chat/                     streaming.py (runs one graph turn -> SSE), turns.py
-                                 (marker-retry decision, failure recording, persisting
-                                 a completed turn)
+  app/chat/                     runner.py (one chat turn end to end),
+                                 streaming.py (runs one graph turn -> SSE),
+                                 receipt_turn.py (model-free plain receipt upload),
+                                 turns.py (marker-retry decision, failure recording,
+                                 persisting a turn, summarization trigger)
   app/models/                   Pydantic models, by domain (turns, message_content,
                                  api, tool_results)
   app/languages.py              supported chat/receipt-translation languages
   app/graph.py                  the LangGraph StateGraph (model ⇄ tools loop)
+  evals/chat_model_eval.py      model comparison on known failure modes (not shipped)
 web/                          React + Vite + TypeScript — chat pane + transactions table
   eslint.config.js / .prettierrc.json  lint + format config
-  src/lib/i18n.tsx               translation dictionaries, RTL handling, useTranslation()
+  src/lib/i18n/                  locales/<lang>.ts (typed against en.ts), LanguageProvider,
+                                 useTranslation(), supported languages
   src/lib/sync.ts                Firestore cross-tab live-update listener
-  src/components/                ChatPanel, TransactionsTable, ReceiptModal,
-                                  ConfirmDialog, Tooltip, …
+  src/lib/useChatStream.ts, useThreadMessages.ts, useVoiceRecorder.ts, chat.ts
+                                 chat pane logic (streaming, history, voice, types)
+  src/components/                ChatPanel (+ ChatComposer, ReceiptProposalCard),
+                                  TransactionsTable, ReceiptModal, ConfirmDialog, …
 Caddyfile                     Reverse proxy — same routing shape as Firebase Hosting rewrites
 docker-compose.yml
 terraform/                    GCP infrastructure as code — see "Deploying to GCP" below
@@ -419,7 +483,8 @@ setup for CI/CD (no long-lived GCP key stored anywhere). It does *not* cover:
 applying the DB schema (`db/init/*.sql` — still a manual/CI migration step against
 the instance it creates), Firestore rules content (still `firebase deploy`), or
 Firebase Auth's Google sign-in provider (enabled once by hand in the console).
-Service-to-service calls (`transactions`'s `POST /categorize`, `agent`'s
+Service-to-service calls (`transactions`'s `POST /categorize` and
+`/categorize/batch`, `agent`'s
 `POST /internal/summarize`) are authenticated with real Google-signed OIDC tokens,
 not a stub — `service_auth.py` verifies signature, a fixed audience, and the
 specific expected caller identity; `tasks.py` and `receipts.py` are the two
@@ -442,6 +507,7 @@ Terraform outputs into GitHub repo variables) is in `terraform/README.md`'s
 - `get_exchange_rate` returns a *daily* reference rate, not live tick-by-tick market
   data.
 - Production-only concerns not covered by `terraform/` or `.github/workflows/` —
-  App Check, an external load balancer beyond Firebase Hosting, an eval gate, Cloud
+  App Check, an external load balancer beyond Firebase Hosting, running the model
+  eval as a CI gate (it exists, but is run by hand), Cloud
   Run autoscaling tuning, a GCS backend for Terraform state (still local, see
   `terraform/README.md`) — are intentionally out of scope for now.

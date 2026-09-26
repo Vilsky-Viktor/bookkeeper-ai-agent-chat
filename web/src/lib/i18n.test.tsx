@@ -60,3 +60,19 @@ describe("useTranslation", () => {
     });
   });
 });
+
+describe("locales", () => {
+  it("every language has a non-empty string for every key English has", async () => {
+    const { LOCALES } = await import("./i18n/languages");
+    const en = LOCALES.en;
+    for (const [code, locale] of Object.entries(LOCALES)) {
+      for (const section of ["ui", "categories"] as const) {
+        const expected = Object.keys(en[section]).sort();
+        expect(Object.keys(locale[section]).sort(), `${code}.${section}`).toEqual(expected);
+        for (const [key, value] of Object.entries(locale[section])) {
+          expect(value.trim(), `${code}.${section}.${key}`).not.toBe("");
+        }
+      }
+    }
+  });
+});

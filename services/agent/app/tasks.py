@@ -1,13 +1,9 @@
-"""Background work. TASKS_MODE=local runs the handler in-process via
-asyncio.create_task (no Cloud Run CPU throttling to worry about locally); in
-production this enqueues an HTTP task to the real Cloud Tasks queue instead, which
-Cloud Tasks then POSTs back to this same service's /internal/summarize with a
-signed OIDC token — service_auth.py's require_service_caller is what verifies that
-token on the way back in, so its AUDIENCE must match what's minted here.
-agent_base_url (this service's own origin, for the callback URL) comes from the
-triggering request's Host header — see main.py's chat() — not an env var, since a
-Cloud Run service can't reference its own computed URL from within its own
-Terraform resource block."""
+"""Background summarization. TASKS_MODE=local runs it in-process
+(asyncio.create_task); in production it's a Cloud Tasks HTTP task that POSTs back to
+this service's /internal/summarize with a signed OIDC token, verified by
+service_auth.py — so its AUDIENCE must match what's minted here. The callback's
+base URL comes from the triggering request's Host header (see main.py's chat()),
+since Terraform can't give a Cloud Run service its own URL."""
 
 import asyncio
 import json

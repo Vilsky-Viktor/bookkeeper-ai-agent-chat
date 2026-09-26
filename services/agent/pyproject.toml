@@ -42,19 +42,20 @@ package = false
 
 [tool.poe.tasks]
 start = "uvicorn app.main:app --host 0.0.0.0 --port 8000"
-lint = "mypy app"
+dev = "uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir app"
+lint = "mypy app evals"
 test = "pytest"
 
 # Plain-string tasks run via exec (no shell), so `&&` chains need the explicit shell
 # task type instead.
 [tool.poe.tasks.format]
-shell = "black app tests && isort app tests"
+shell = "black app tests evals && isort app tests evals"
 
 [tool.poe.tasks."format:check"]
-shell = "black --check app tests && isort --check app tests"
+shell = "black --check app tests evals && isort --check app tests evals"
 
 [tool.poe.tasks.check]
-shell = "black --check app tests && isort --check app tests && mypy app && pytest"
+shell = "black --check app tests evals && isort --check app tests evals && mypy app evals && pytest"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

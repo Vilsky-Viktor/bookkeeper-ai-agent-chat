@@ -1,4 +1,4 @@
-"""Per-turn state handed between chat/streaming.py's _run_turn (which builds it while
+"""Per-turn state handed between chat/streaming.py's run_graph_turn (which builds it while
 draining the graph's event stream) and chat/turns.py's finalize_turn (which persists
 it) — the turn's outcome in one place instead of untyped dict keys."""
 
@@ -29,9 +29,9 @@ class ToolResult(BaseModel):
 
 
 class TurnState(BaseModel):
-    """Mutated in place throughout _run_turn (list fields support the same
+    """Mutated in place throughout run_graph_turn (list fields support the same
     .append()/.clear() calls a dict-of-lists did), then read by finalize_turn and
-    turns._marker_call_missing once the turn is done."""
+    turns.marker_call_missing once the turn is done."""
 
     assistant_text_parts: list[str] = Field(default_factory=list)
     tool_calls_made: list[ToolCallRecord] = Field(default_factory=list)

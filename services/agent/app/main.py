@@ -6,11 +6,9 @@ from contextlib import asynccontextmanager
 from fastapi import Depends, FastAPI, File, Header, HTTPException, Query, Request, UploadFile
 from fastapi.responses import StreamingResponse
 
-from . import chat_db, context, llm, quotas, signal, storage
+from . import chat_db, llm, signal, storage
 from .auth import bearer_token, require_uid
-from .chat import receipt_turn, streaming, turns
-from .graph import build_graph
-from .langsmith_obs import traced_turn
+from .chat import runner
 from .languages import SUPPORTED_LANGUAGES
 from .models.api import (
     ChatRequest,
@@ -26,19 +24,11 @@ from .models.api import (
     TranscribeResponse,
     UploadTargetOut,
 )
-from .models.message_content import UserMessageContent
-from .models.turns import TurnState
 from .service_auth import require_service_caller
 from .summarize import run_summarize
-from .tools import build_tools
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("agent")
-
-# Single source of truth lives in context/messages.py (build_context() also needs it
-# to force a marker's id into the working-set text). Re-exported here since chat()
-# below also needs it, for the retry-on-no-matching-tool-call logic.
-TRANSACTION_MARKER_RE = context.TRANSACTION_MARKER_RE
 
 
 @asynccontextmanager
@@ -189,134 +179,14 @@ async def chat(
     jwt: str = Depends(bearer_token),
     x_client_id: str | None = Header(default=None, alias="X-Client-Id"),
 ):
-    # Cloud Run always terminates TLS at its own edge and forwards over plain HTTP
-    # internally with the original external Host header preserved as-is — so this is
-    # reliably this service's own real public origin, no proxy-header trust config
-    # needed (unlike scheme, which uvicorn would need --forwarded-allow-ips to trust
-    # from X-Forwarded-Proto; hardcoding https sidesteps that entirely, and is always
-    # correct for a *.run.app URL). Used by finalize_turn -> tasks.enqueue_summarize
-    # so Cloud Tasks knows where to POST back to — avoids a Terraform self-reference
-    # (a Cloud Run service can't read its own .uri from within its own resource
-    # block) that an AGENT_URL env var would otherwise require.
+    # This service's own public origin, for Cloud Tasks to POST summaries back to.
+    # Cloud Run terminates TLS at its edge and preserves the external Host header, so
+    # Host plus a hardcoded https is reliable — and avoids an AGENT_URL env var, which
+    # Terraform can't set (a Cloud Run service can't reference its own URL).
     agent_base_url = f"https://{request.headers.get('host', '')}"
-
-    async def event_stream():
-        request_id = str(uuid.uuid4())
-        thread_id: str | None = None
-        try:
-            async with chat_db.uid_conn(uid) as conn:
-                if not body.thread_id:
-                    thread_row = await chat_db.create_thread(conn, uid)
-                    thread = dict(thread_row)
-                else:
-                    try:
-                        uuid.UUID(body.thread_id)
-                    except ValueError:
-                        raise HTTPException(status_code=404, detail="thread not found")
-                    thread_row = await chat_db.get_thread(conn, uid, body.thread_id)
-                    if thread_row is None:
-                        raise HTTPException(status_code=404, detail="thread not found")
-                    thread = dict(thread_row)
-                thread_id = str(thread["id"])
-
-                user_text = body.message
-                if body.receipt_object:
-                    user_text = f"{user_text}\n\n[uploaded receipt: {body.receipt_object}]"
-
-                user_tokens = context.count_tokens(user_text)
-                inserted = await chat_db.insert_message(
-                    conn,
-                    uid,
-                    thread_id,
-                    "user",
-                    UserMessageContent(text=user_text).model_dump(),
-                    user_tokens,
-                    client_msg_id=body.client_msg_id,
-                )
-                if inserted is None:
-                    yield streaming._sse("error", {"message": "That message was already sent — no need to resend it."})
-                    return
-
-                # Quota and receipt counters only advance once we know this is a new
-                # message, not a resubmit of one already processed.
-                await quotas.increment_and_check_turn(conn, uid)
-                if body.receipt_object:
-                    await quotas.increment_receipt(conn, uid)
-
-                preferences_row = await chat_db.get_preferences(conn, uid)
-                preferences = dict(preferences_row) if preferences_row else None
-
-                recent_rows = await chat_db.unsummarized_messages(
-                    conn, uid, thread_id, thread.get("summarized_through") or 0, turns.MAX_UNSUMMARIZED_MESSAGES
-                )
-                recent_rows = [r for r in recent_rows if r["seq"] != inserted["seq"]]
-                messages = context.build_context(thread, preferences, recent_rows, user_text)
-                kept_from = context.first_kept_seq(recent_rows)
-                trimmed_before_seq = (
-                    kept_from if recent_rows and kept_from and kept_from > recent_rows[0]["seq"] else None
-                )
-
-            language = (preferences or {}).get("language") or "en"
-            tools = build_tools(jwt, x_client_id, language)
-            compiled_graph = build_graph(tools)
-
-            marker_ids = TRANSACTION_MARKER_RE.findall(user_text)
-            state = TurnState()
-
-            if body.receipt_object and not body.message.strip():
-                with traced_turn(uid, thread_id, request_id, tags=["turn", "receipt-direct"]) as run_config:
-                    async for chunk in receipt_turn.run_receipt_turn(
-                        tools, body.receipt_object, language, run_config, state
-                    ):
-                        yield chunk
-            elif marker_ids:
-                # A "[transaction: <id>]" marker turn should always end in exactly
-                # one matching edit_transaction/delete_transaction call — the id
-                # comes straight from a table row the user clicked, so it's always
-                # valid. Observed failure mode: the model occasionally replies "not
-                # found"/"invalid id" without ever calling the tool at all (an empty
-                # tool_calls list). Buffer instead of streaming live, so a fabricated
-                # reply never reaches the client before it's checked, and retry once
-                # (silently, from scratch — the failed attempt made no tool calls, so
-                # there's nothing to undo) if this exact failure signature shows up.
-                with traced_turn(uid, thread_id, request_id, tags=["turn"]) as run_config:
-                    buffered = [c async for c in streaming._run_turn(compiled_graph, messages, run_config, state)]
-                if turns._marker_call_missing(state.tool_calls_made, marker_ids):
-                    log.warning("transaction-marker turn made no matching tool call, retrying once")
-                    state = TurnState()
-                    with traced_turn(uid, thread_id, request_id, tags=["turn", "retry"]) as run_config:
-                        buffered = [c async for c in streaming._run_turn(compiled_graph, messages, run_config, state)]
-                for chunk in buffered:
-                    yield chunk
-            else:
-                with traced_turn(uid, thread_id, request_id, tags=["turn"]) as run_config:
-                    async for chunk in streaming._run_turn(compiled_graph, messages, run_config, state):
-                        yield chunk
-
-            await turns.finalize_turn(
-                uid, thread_id, thread, state, user_tokens, agent_base_url, trimmed_before_seq=trimmed_before_seq
-            )
-
-            await signal.bump_async(uid, [f"thread_versions.{thread_id}"], x_client_id)
-            yield streaming._sse("done", {"thread_id": thread_id})
-
-        except HTTPException as e:
-            log.warning("chat turn returned %s: %s", e.status_code, e.detail)
-            # Quota messages (429) are already written as user-facing sentences (see
-            # quotas.py); everything else gets a plain, non-technical message instead
-            # of surfacing the raw detail (e.g. "thread not found") in the chat.
-            message = e.detail if e.status_code == 429 else "Sorry, I couldn't do that — please try again."
-            if thread_id is not None:
-                await turns._record_turn_failure(uid, thread_id, message)
-            yield streaming._sse("error", {"message": message, "status": e.status_code})
-        except Exception:
-            log.exception("chat turn failed")
-            message = "Sorry, I ran into a problem and couldn't finish that. Please try again."
-            if thread_id is not None:
-                await turns._record_turn_failure(uid, thread_id, message)
-            yield streaming._sse("error", {"message": message})
-
-    return StreamingResponse(event_stream(), media_type="text/event-stream")
+    return StreamingResponse(
+        runner.stream_chat_turn(body, uid, jwt, x_client_id, agent_base_url), media_type="text/event-stream"
+    )
 
 
 # --- internal ------------------------------------------------------------------------

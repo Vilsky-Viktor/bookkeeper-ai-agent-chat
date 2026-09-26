@@ -16,6 +16,8 @@ on:
     paths:
       - "services/transactions/**"
       - ".github/workflows/transactions.yml"
+      # Read by tests/test_contracts.py (lists this service keeps copies of).
+      - "web/src/lib/i18n/locales/en.ts"
   push:
     branches: [main]
     tags: ["transactions-v*"]

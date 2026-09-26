@@ -19,6 +19,8 @@ from openai import AsyncOpenAI
 
 from .money import to_decimal_string
 
+# Also the web app's category keys (web/src/lib/i18n/locales/en.ts);
+# tests/test_contracts.py fails if they drift.
 CATEGORIES = [
     "groceries",
     "dining",
@@ -142,15 +144,10 @@ async def _classification_context(conn: asyncpg.Connection, uid: str) -> _Contex
         "\n".join(f'- "{r["item_key"]}" -> {r["category"]}' for r in history_rows) if history_rows else "(none yet)"
     )
 
-    # The category list is a starting point, not a hard enum: the user can type any
-    # free-text category via a correction (the table's category cell has no fixed
-    # list), and a past correction's category must stay usable here even when it
-    # isn't one of the built-in ones — otherwise the model recognizes the match but
-    # is structurally unable to apply it, and silently falls back to "other".
-    # Keyed by lowercase so the model's (lowercased) answer can be mapped straight
-    # back to the exact original casing the user typed — otherwise a reply of "work"
-    # would get stored as "work" even when the user's own category is "Work",
-    # fragmenting the table into near-duplicate categories over time.
+    # Custom categories from the user's corrections are allowed answers too, or the
+    # model could recognize a match but never apply it. Keyed by lowercase so its
+    # (lowercased) reply maps back to the user's own casing ("work" -> "Work")
+    # instead of creating a near-duplicate category.
     custom_category_map = {
         r["category"].lower(): r["category"] for r in history_rows if r["category"] not in CATEGORIES
     }

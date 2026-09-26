@@ -1,6 +1,6 @@
-"""LangGraph graph (architecture doc, Key design decisions: "LangGraph library inside
-FastAPI", no LangGraph Server/Platform, no checkpointer — the graph runs once per HTTP
-request and threads persist in the chat DB instead, see chat_db.py)."""
+"""LangGraph graph (the LangGraph library inside FastAPI — no LangGraph Server/Platform,
+no checkpointer — the graph runs once per HTTP request and threads persist in the chat
+DB instead, see chat_db.py)."""
 
 from langchain_core.messages import AnyMessage
 from langchain_core.runnables import RunnableConfig
@@ -12,7 +12,7 @@ from langgraph.prebuilt import ToolNode, tools_condition
 from . import llm
 
 
-def _compact_tool_schema(tool: BaseTool) -> dict:
+def compact_tool_schema(tool: BaseTool) -> dict:
     """The schema sent to the model on EVERY call, so every token here is billed on
     every request. Collapses the docstring's indentation/newlines and rewrites each
     optional param's generated `anyOf: [{type: X}, {type: null}], default: null`
@@ -32,7 +32,7 @@ def _compact_tool_schema(tool: BaseTool) -> dict:
 
 
 def build_graph(tools: list[BaseTool]):
-    schemas = [_compact_tool_schema(t) for t in tools]
+    schemas = [compact_tool_schema(t) for t in tools]
     model_with_tools = llm.primary_model().bind_tools(schemas)
     fallback_with_tools = llm.fallback_model().bind_tools(schemas)
 

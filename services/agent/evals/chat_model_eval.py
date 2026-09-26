@@ -6,9 +6,9 @@ Each case is built with the production context builder, system prompt and compac
 tool schemas; tool calls are answered with canned results, so nothing touches the
 transactions service or real data. Only the model under test is called.
 
-Run inside the agent container (it has LLM_API_KEY and TRANSACTIONS_URL set):
-    docker cp services/agent/evals bookkeeper-chat-agent-1:/app/
-    docker exec bookkeeper-chat-agent-1 uv run python -m evals.chat_model_eval \\
+Run inside the agent container (it has LLM_API_KEY and TRANSACTIONS_URL set, and
+mounts this folder):
+    docker compose exec agent uv run python -m evals.chat_model_eval \\
         --models gpt-4o gpt-4.1-mini --runs 3
 """
 
@@ -17,15 +17,15 @@ import asyncio
 import datetime
 import json
 import re
-from decimal import Decimal, InvalidOperation
 from dataclasses import dataclass, field
+from decimal import Decimal, InvalidOperation
 from typing import Callable
 
 from langchain_core.messages import AIMessage, ToolMessage
 
 from app import llm
 from app.context import build_context
-from app.graph import _compact_tool_schema
+from app.graph import compact_tool_schema
 from app.tools import build_tools
 
 TODAY = datetime.date.today()
@@ -151,7 +151,7 @@ def user(text: str) -> dict:
     return {"role": "user", "content": {"text": text}, "compact": None}
 
 
-def assistant(text: str, calls: list[tuple[str, str, dict]] = ()) -> dict:  # type: ignore[assignment]
+def assistant(text: str, calls: tuple[tuple[str, str, dict], ...] = ()) -> dict:
     return {
         "role": "assistant",
         "compact": None,
@@ -254,14 +254,14 @@ def _check_receipt_reply(path: str) -> Callable[[Run], str | None]:
 
 EXPORT_HISTORY = [
     user("Export my transactions"),
-    assistant(f"Here's your export. {DOWNLOAD_SENTENCE}", [("call_exp1", "export_transactions", {})]),
+    assistant(f"Here's your export. {DOWNLOAD_SENTENCE}", (("call_exp1", "export_transactions", {}),)),
     tool("call_exp1", "export_transactions", {}),
 ]
 RECEIPT_HISTORY = [
     user("Here's my receipt\n\n[uploaded receipt: receipts/u1/r1.jpg]"),
     assistant(
         f"Extracted your receipt from {TODAY} — you can edit or confirm it below.",
-        [("call_r1", "extract_receipt", {"object_name": "receipts/u1/r1.jpg"})],
+        (("call_r1", "extract_receipt", {"object_name": "receipts/u1/r1.jpg"}),),
     ),
     tool("call_r1", "extract_receipt", fake_result("extract_receipt", {})),
 ]
@@ -421,13 +421,13 @@ async def _invoke_with_rate_limit_retry(model, messages) -> AIMessage:
 
 async def run_case(model_name: str, case: Case) -> Run:
     tools = build_tools("eval-jwt", None, case.language)
-    model = llm.build_chat_model(model_name).bind_tools([_compact_tool_schema(t) for t in tools])
+    model = llm.build_chat_model(model_name).bind_tools([compact_tool_schema(t) for t in tools])
     thread = {"working_set": case.working_set, "summary": case.summary}
     messages = build_context(thread, {"language": case.language}, case.history, case.message)
     run = Run(calls=[], text="")
     for _ in range(6):
         ai = await _invoke_with_rate_limit_retry(model, messages)
-        usage = ai.usage_metadata or {}
+        usage: dict = dict(ai.usage_metadata or {})
         run.input_tokens += usage.get("input_tokens", 0)
         run.cached_tokens += (usage.get("input_token_details") or {}).get("cache_read", 0) or 0
         run.output_tokens += usage.get("output_tokens", 0)
@@ -494,7 +494,7 @@ async def main(models: list[str], runs: int, only: list[str] | None, concurrency
     if failures:
         print("\nFailures:")
         for m, name, _, reason in failures:
-            print(f"- [{m}] {name}: {reason[:300]}")
+            print(f"- [{m}] {name}: {(reason or '')[:300]}")
 
 
 if __name__ == "__main__":

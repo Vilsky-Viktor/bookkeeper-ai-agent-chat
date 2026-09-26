@@ -1,5 +1,4 @@
-"""JWT verification. Always on, local too — this is the isolation boundary
-(see architecture doc, Security section)."""
+"""JWT verification. Always on, local too — this is the isolation boundary."""
 
 from fastapi import Header, HTTPException
 from firebase_admin import auth as fb_auth

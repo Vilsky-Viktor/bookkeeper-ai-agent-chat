@@ -7,26 +7,25 @@ from ..graph import initial_state
 from ..models.turns import ToolCallRecord, ToolResult, TurnState
 
 
-def _sse(event: str | None, data: dict) -> bytes:
+def sse(event: str | None, data: dict) -> bytes:
     lines = [f"event: {event}"] if event else []
     lines.append(f"data: {json.dumps(data, default=str)}")
     return ("\n".join(lines) + "\n\n").encode()
 
 
-async def _run_turn(compiled_graph, messages: list, run_config: dict, state: TurnState):
+async def run_graph_turn(compiled_graph, messages: list, run_config: dict, state: TurnState):
     """Runs the graph once, yielding each SSE chunk as it's produced and writing the
     turn's outcome into `state` (assistant_text_parts/tool_calls_made/tool_results/
     total_tokens_used) as it goes. The caller either forwards each yielded chunk to
     the client immediately (true streaming, the normal case) or collects them into a
     list first so it can inspect `state` and discard+retry before anything reaches
-    the client — see chat()'s handling of a "[transaction: <id>]" marker turn below,
+    the client — see runner._run_marker_turn's handling of a "[transaction: <id>]" marker turn,
     where an empty tool_calls_made despite the marker means the model fabricated a
     reply without ever calling the tool.
 
     run_config carries the LangSmith tags/metadata built by langsmith_obs.traced_turn
-    — LangSmith attaches its own tracer to this run automatically from environment
-    variables, so there's no callback handler to pass here (unlike the old Langfuse
-    setup)."""
+    — LangSmith attaches its own tracer from environment variables, so there's no
+    callback handler to pass here."""
     async for event in compiled_graph.astream_events(initial_state(messages), config=run_config, version="v2"):
         kind = event["event"]
         # Some tools (extract_receipt's vision call) make their own, separate LLM
@@ -43,7 +42,7 @@ async def _run_turn(compiled_graph, messages: list, run_config: dict, state: Tur
             text = chunk.content if isinstance(chunk.content, str) else ""
             if text:
                 state.assistant_text_parts.append(text)
-                yield _sse(None, {"type": "token", "text": text})
+                yield sse(None, {"type": "token", "text": text})
 
         elif kind == "on_chat_model_end":
             output = event["data"].get("output")
@@ -65,7 +64,7 @@ async def _run_turn(compiled_graph, messages: list, run_config: dict, state: Tur
                 # follows the tool result, with no separator, reading as a garbled
                 # double answer.
                 state.assistant_text_parts.clear()
-                yield _sse("reset_pending", {"type": "reset_pending"})
+                yield sse("reset_pending", {"type": "reset_pending"})
 
         elif kind == "on_tool_end":
             output = event["data"].get("output")
@@ -96,4 +95,4 @@ async def _run_turn(compiled_graph, messages: list, run_config: dict, state: Tur
             else:
                 payload = None
             if payload:
-                yield _sse(ui_event, payload)
+                yield sse(ui_event, payload)

@@ -11,7 +11,7 @@ from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool
 
 from ..models.turns import ToolCallRecord, ToolResult, TurnState
-from .streaming import _sse
+from .streaming import sse
 
 _REPLIES: dict[str, dict[str, str]] = {
     "en": {
@@ -96,11 +96,11 @@ async def run_receipt_turn(
     ui_event = result.pop("ui_event", None)
     state.tool_results.append(ToolResult(name="extract_receipt", tool_call_id=call_id, result=result))
     if ui_event == "receipt_proposed":
-        yield _sse(
+        yield sse(
             ui_event,
             {"type": "receipt_proposed", "items": result.get("items", []), "receipt_uri": result.get("receipt_uri")},
         )
 
     text = _reply(result, ui_event, language)
     state.assistant_text_parts.append(text)
-    yield _sse(None, {"type": "token", "text": text})
+    yield sse(None, {"type": "token", "text": text})

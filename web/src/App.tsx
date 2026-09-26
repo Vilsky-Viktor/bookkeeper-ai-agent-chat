@@ -63,9 +63,8 @@ function AppContent({ user }: { user: User | null }) {
   );
 
   useEffect(() => {
-    // Threads persist server-side (architecture doc, Chat memory: "chats survive
-    // reloads and devices"); on reload the UI just needs to ask for the most recent
-    // one instead of starting a fresh, empty thread every time.
+    // Threads persist server-side (they survive reloads and devices), so on reload
+    // ask for the most recent one instead of starting a fresh, empty thread.
     if (!user) return;
     listThreads().then((res) => {
       if (res.items.length > 0) setThreadId(res.items[0].id);

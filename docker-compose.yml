@@ -15,6 +15,10 @@ services:
   firebase:
     build: ./firebase
     ports: ["9099:9099", "8081:8081", "4000:4000"] # auth, firestore, emulator UI
+    # Emulator state survives restarts and recreation (see firebase/Dockerfile's CMD).
+    # Delete this folder to start from a clean emulator.
+    volumes: ["./firebase/emulator-data:/emulator/state"]
+    stop_grace_period: 30s # time to export on shutdown
 
   postgres:
     image: postgres:16
@@ -40,8 +44,16 @@ services:
     build:
       context: ./services/transactions
       dockerfile: Dockerfile.dev # Dockerfile itself is the Cloud Run production image
+    # Source is bind-mounted and uvicorn reloads on change, like web's Vite server —
+    # only dependency (pyproject.toml/uv.lock) changes need a rebuild.
+    command: ["uv", "run", "poe", "dev"]
+    volumes: ["./services/transactions/app:/app/app"]
     env_file: .env
     environment:
+      # Bytecode lives in the container only: never written into the mounted source,
+      # and never read from it (host test runs write __pycache__ there too, and a
+      # reload that reads one mid-write crashes on a truncated .pyc).
+      PYTHONPYCACHEPREFIX: /tmp/pycache
       DATABASE_URL: postgresql://app_user:app_pw@postgres:5432/bookkeeping
       FIREBASE_AUTH_EMULATOR_HOST: firebase:9099
       FIRESTORE_EMULATOR_HOST: firebase:8081
@@ -55,8 +67,11 @@ services:
     build:
       context: ./services/agent
       dockerfile: Dockerfile.dev # Dockerfile itself is the Cloud Run production image
+    command: ["uv", "run", "poe", "dev"] # see transactions above
+    volumes: ["./services/agent/app:/app/app", "./services/agent/evals:/app/evals"]
     env_file: .env
     environment:
+      PYTHONPYCACHEPREFIX: /tmp/pycache # see transactions above
       CHAT_DATABASE_URL: postgresql://chat_user:chat_pw@postgres:5432/chat
       TRANSACTIONS_URL: http://transactions:8000
       FIREBASE_AUTH_EMULATOR_HOST: firebase:9099

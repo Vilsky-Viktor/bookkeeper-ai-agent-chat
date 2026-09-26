@@ -1,5 +1,5 @@
 """Per-user daily quotas, counted in the chat DB so every instance sees the same
-count (architecture doc, Scalability and resilience > Per-user quotas, p. 15)."""
+count."""
 
 import os
 

@@ -101,8 +101,8 @@ class ReceiptProposedResult(BaseModel):
     receipt_uri: str
 
 
-# Currencies with a 0 exponent — must stay in sync with services/transactions/app/
-# money.py's _EXPONENTS (a separate service, no shared code to import this from). A
+# Currencies with a 0 exponent — a copy of services/transactions/app/money.py's
+# (no shared code between services; tests/test_contracts.py fails if they drift). A
 # correctly-formatted zero-decimal amount never contains a ".", so a "." here can only
 # be a misread thousands separator (e.g. "63.800" meaning 63800), never a real decimal
 # point — safe to strip.

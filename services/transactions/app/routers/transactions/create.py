@@ -56,11 +56,12 @@ async def create_transactions(
                 )
                 created.append(row_to_out(row).model_dump(mode="json"))
 
-                # Receipt confirmation flow: the user may have edited a proposed row's
-                # category before confirming. That edit is a correction for future
-                # extractions of this item (architecture doc, Receipt ingestion, p.
-                # 11), even though this call is a create, not a PATCH.
-                if t.receipt_uri and t.category:
+                # Receipt confirmation flow: a category the user changed on the
+                # proposed row is a correction, even though this call is a create, not
+                # a PATCH. An unchanged one isn't — saving it anyway filled the table
+                # with one-off receipt summaries that crowd out real corrections in
+                # the categorizer's prompt.
+                if t.receipt_uri and t.category and t.category != t.suggested_category:
                     await save_correction(conn, uid, t.description, category)
             return 201, {"items": created}
 

@@ -14,3 +14,5 @@ terraform/.terraform/
 terraform/*.tfstate*
 terraform/*.tfvars
 !terraform/terraform.tfvars.example
+# Firebase emulator state (accounts, Firestore), kept across container restarts.
+firebase/emulator-data/

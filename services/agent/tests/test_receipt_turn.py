@@ -4,7 +4,7 @@ from langchain_core.tools import tool
 
 from app.chat import receipt_turn
 from app.chat.receipt_turn import _REPLIES
-from app.graph import _compact_tool_schema
+from app.graph import compact_tool_schema
 from app.models.turns import TurnState
 
 
@@ -96,7 +96,7 @@ class TestCompactToolSchema:
             Second line,    indented."""
             return {}
 
-        fn = _compact_tool_schema(query)["function"]
+        fn = compact_tool_schema(query)["function"]
 
         assert fn["description"] == "Find things. Second line, indented."
         assert fn["parameters"]["properties"]["currency"] == {"type": "string"}

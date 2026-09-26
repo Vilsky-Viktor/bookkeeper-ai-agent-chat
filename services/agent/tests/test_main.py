@@ -3,8 +3,8 @@ from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
 
+from app import context
 from app import llm as llm_module
-from app import main
 from app import tools as tools_module
 from app.chat import streaming, turns
 from app.graph import build_graph
@@ -39,7 +39,7 @@ class _ScriptedChatModel(BaseChatModel):
 class TestRunTurnAgainstARealGraph:
     async def test_drives_a_tool_call_to_completion_without_state_shape_errors(self, monkeypatch):
         # Regression: messages were wrapped with initial_state() by the caller AND
-        # again inside _run_turn, double-nesting the graph's state into
+        # again inside run_graph_turn, double-nesting the graph's state into
         # {"messages": {"messages": [...]}} — this broke every single chat turn in
         # production (not just the marker-retry path) with "Message dict must
         # contain 'role' and 'content' keys". A test that mocks the model or the
@@ -68,7 +68,7 @@ class TestRunTurnAgainstARealGraph:
         messages = [SystemMessage(content="you are a test agent"), HumanMessage(content="show my transactions")]
         state = TurnState()
 
-        chunks = [c async for c in streaming._run_turn(compiled_graph, messages, {}, state)]
+        chunks = [c async for c in streaming.run_graph_turn(compiled_graph, messages, {}, state)]
 
         assert chunks  # some SSE bytes were actually produced
         # The real regression-guard: the graph ran end to end (through ToolNode and
@@ -81,14 +81,14 @@ class TestRunTurnAgainstARealGraph:
 
 class TestTransactionMarkerRe:
     def test_extracts_single_id(self):
-        assert main.TRANSACTION_MARKER_RE.findall("Change amount [transaction: abc-123] to 5") == ["abc-123"]
+        assert context.TRANSACTION_MARKER_RE.findall("Change amount [transaction: abc-123] to 5") == ["abc-123"]
 
     def test_extracts_multiple_ids(self):
         text = "Delete [transaction: id-1] and [transaction: id-2]"
-        assert main.TRANSACTION_MARKER_RE.findall(text) == ["id-1", "id-2"]
+        assert context.TRANSACTION_MARKER_RE.findall(text) == ["id-1", "id-2"]
 
     def test_no_marker_returns_empty(self):
-        assert main.TRANSACTION_MARKER_RE.findall("Change amount of the coffee one to 5") == []
+        assert context.TRANSACTION_MARKER_RE.findall("Change amount of the coffee one to 5") == []
 
 
 class TestRecordTurnFailure:
@@ -99,7 +99,7 @@ class TestRecordTurnFailure:
     # (traced to a real incident: repeated, otherwise-inexplicable failures retrying
     # the same edit, all in one thread that had this exact orphaned message).
     async def test_inserts_an_assistant_message_with_the_given_note(self, patch_chat_uid_conn):
-        await turns._record_turn_failure("uid-1", "thread-1", "Sorry, something went wrong.")
+        await turns.record_turn_failure("uid-1", "thread-1", "Sorry, something went wrong.")
 
         patch_chat_uid_conn.fetchrow.assert_awaited_once()
         args = patch_chat_uid_conn.fetchrow.await_args.args
@@ -114,7 +114,7 @@ class TestRecordTurnFailure:
         # Must not raise — this runs from inside an except block handling a turn
         # that already failed; a second exception here would replace the real error
         # response the client is waiting for.
-        await turns._record_turn_failure("uid-1", "thread-1", "Sorry, something went wrong.")
+        await turns.record_turn_failure("uid-1", "thread-1", "Sorry, something went wrong.")
 
 
 class TestMarkerCallMissing:
@@ -122,26 +122,26 @@ class TestMarkerCallMissing:
     # marker turn is only trusted if a real edit_transaction/delete_transaction call
     # was made against that specific id — never inferred from the assistant's text.
     def test_true_when_no_tool_calls_at_all(self):
-        assert turns._marker_call_missing([], ["abc-123"]) is True
+        assert turns.marker_call_missing([], ["abc-123"]) is True
 
     def test_false_when_edit_transaction_matches_the_marker_id(self):
         tool_calls = [ToolCallRecord(name="edit_transaction", args={"transaction_id": "abc-123", "amount": "5"})]
-        assert turns._marker_call_missing(tool_calls, ["abc-123"]) is False
+        assert turns.marker_call_missing(tool_calls, ["abc-123"]) is False
 
     def test_false_when_delete_transaction_matches_the_marker_id(self):
         tool_calls = [ToolCallRecord(name="delete_transaction", args={"transaction_id": "abc-123"})]
-        assert turns._marker_call_missing(tool_calls, ["abc-123"]) is False
+        assert turns.marker_call_missing(tool_calls, ["abc-123"]) is False
 
     def test_true_when_tool_call_is_for_a_different_id(self):
         tool_calls = [ToolCallRecord(name="edit_transaction", args={"transaction_id": "other-id", "amount": "5"})]
-        assert turns._marker_call_missing(tool_calls, ["abc-123"]) is True
+        assert turns.marker_call_missing(tool_calls, ["abc-123"]) is True
 
     def test_true_when_only_an_unrelated_tool_was_called(self):
         # e.g. the model called query_transactions instead of actually editing —
         # still counts as a miss, since nothing was actually changed.
         tool_calls = [ToolCallRecord(name="query_transactions", args={"description": "coffee"})]
-        assert turns._marker_call_missing(tool_calls, ["abc-123"]) is True
+        assert turns.marker_call_missing(tool_calls, ["abc-123"]) is True
 
     def test_false_when_any_of_multiple_marker_ids_matches(self):
         tool_calls = [ToolCallRecord(name="edit_transaction", args={"transaction_id": "id-2", "amount": "5"})]
-        assert turns._marker_call_missing(tool_calls, ["id-1", "id-2"]) is False
+        assert turns.marker_call_missing(tool_calls, ["id-1", "id-2"]) is False

@@ -24,22 +24,17 @@ SUMMARIZE_AFTER_MESSAGES = 24
 MAX_UNSUMMARIZED_MESSAGES = 60
 
 
-def _marker_call_missing(tool_calls_made: list[ToolCallRecord], marker_ids: list[str]) -> bool:
+def marker_call_missing(tool_calls_made: list[ToolCallRecord], marker_ids: list[str]) -> bool:
     return not any(
         tc.name in ("edit_transaction", "delete_transaction") and (tc.args or {}).get("transaction_id") in marker_ids
         for tc in tool_calls_made
     )
 
 
-async def _record_turn_failure(uid: str, thread_id: str, note: str) -> None:
-    """Called when a turn fails after its user message was already saved (a crash, a
-    quota 429, anything reaching the except blocks below with thread_id set) —
-    without this, the thread's next turn sees two consecutive human messages with no
-    assistant reply between them, which is a much stronger source of confusion for
-    the model than ordinary response variance. Observed directly: an unhandled crash
-    left exactly this kind of orphaned message behind, and every retry of the same
-    edit in that thread afterward failed the same way, even though the same context
-    replayed outside that thread succeeded."""
+async def record_turn_failure(uid: str, thread_id: str, note: str) -> None:
+    """Saves an assistant reply for a turn that failed after the user's message was
+    stored. Otherwise the thread holds two user messages in a row with no reply
+    between them, which derails the model on every later turn in that thread."""
     try:
         async with chat_db.uid_conn(uid) as conn:
             await chat_db.insert_message(

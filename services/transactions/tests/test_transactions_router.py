@@ -90,6 +90,50 @@ class TestCreateTransactions:
         assert res.json()["items"][0]["amount"] == "12.50"
         patch_signal.assert_awaited_once()
 
+    def _confirm_receipt(self, client, mock_conn: AsyncMock, category: str, suggested: str):
+        mock_conn.fetchrow.side_effect = [None, _row(receipt_uri="gs://b/r.jpg", category=category)]
+        return client.post(
+            "/api/transactions/transactions",
+            json={
+                "transactions": [
+                    {
+                        "occurred_on": "2026-01-15",
+                        "type": "expense",
+                        "amount": "12.50",
+                        "currency": "USD",
+                        "category": category,
+                        "suggested_category": suggested,
+                        "description": "Rice, eggs and 2 more - Shop",
+                        "receipt_uri": "gs://b/r.jpg",
+                    }
+                ]
+            },
+            headers={"Idempotency-Key": "key-r"},
+        )
+
+    def test_confirmed_receipt_with_unchanged_category_saves_no_correction(
+        self, client, mock_conn: AsyncMock, patch_signal: AsyncMock, monkeypatch
+    ):
+        save = AsyncMock()
+        monkeypatch.setattr("app.routers.transactions.create.save_correction", save)
+
+        res = self._confirm_receipt(client, mock_conn, category="groceries", suggested="groceries")
+
+        assert res.status_code == 201
+        save.assert_not_awaited()
+
+    def test_confirmed_receipt_with_changed_category_saves_a_correction(
+        self, client, mock_conn: AsyncMock, patch_signal: AsyncMock, monkeypatch
+    ):
+        save = AsyncMock()
+        monkeypatch.setattr("app.routers.transactions.create.save_correction", save)
+
+        res = self._confirm_receipt(client, mock_conn, category="shopping", suggested="groceries")
+
+        assert res.status_code == 201
+        save.assert_awaited_once()
+        assert save.await_args.args[2:] == ("Rice, eggs and 2 more - Shop", "shopping")
+
     def test_empty_batch_returns_400(self, client):
         res = client.post(
             "/api/transactions/transactions",
@@ -139,6 +183,7 @@ class TestCreateTransactions:
                 "description": "coffee",
                 "receipt_uri": None,
                 "batch_id": None,
+                "suggested_category": None,
             }
         ]
         mock_conn.fetchrow.return_value = {

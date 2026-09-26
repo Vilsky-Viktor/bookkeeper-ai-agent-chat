@@ -7,6 +7,7 @@ import httpx
 from langchain_core.tools import BaseTool, InjectedToolCallId, tool
 
 from ..models.tool_results import TableChangedResult, ToolError
+from .filters import filter_params
 
 
 def build_crud_tools(http_client: Callable[[], httpx.AsyncClient]) -> list[BaseTool]:
@@ -116,20 +117,16 @@ def build_crud_tools(http_client: Callable[[], httpx.AsyncClient]) -> list[BaseT
         """Delete every transaction matching these filters (same as
         query_transactions) in one irreversible operation; no filters deletes ALL of
         the user's transactions. Confirm with the user what will be deleted first."""
-        params = {
-            k: v
-            for k, v in {
-                "currency": currency,
-                "category": category,
-                "type": type,
-                "from": from_date,
-                "to": to_date,
-                "min_amount": min_amount,
-                "max_amount": max_amount,
-                "description": description,
-            }.items()
-            if v is not None
-        }
+        params = filter_params(
+            currency=currency,
+            category=category,
+            type=type,
+            from_date=from_date,
+            to_date=to_date,
+            min_amount=min_amount,
+            max_amount=max_amount,
+            description=description,
+        )
         async with http_client() as c:
             resp = await c.delete(
                 "/api/transactions/transactions",
@@ -156,20 +153,16 @@ def build_crud_tools(http_client: Callable[[], httpx.AsyncClient]) -> list[BaseT
         description is a case-insensitive substring match: to find a vaguely
         referenced transaction ("the bagel one"), pass one short distinctive word, not
         the full phrase."""
-        params = {
-            k: v
-            for k, v in {
-                "currency": currency,
-                "category": category,
-                "type": type,
-                "from": from_date,
-                "to": to_date,
-                "min_amount": min_amount,
-                "max_amount": max_amount,
-                "description": description,
-            }.items()
-            if v is not None
-        }
+        params = filter_params(
+            currency=currency,
+            category=category,
+            type=type,
+            from_date=from_date,
+            to_date=to_date,
+            min_amount=min_amount,
+            max_amount=max_amount,
+            description=description,
+        )
         path = "/api/transactions/aggregates" if aggregate else "/api/transactions/transactions"
         async with http_client() as c:
             resp = await c.get(path, params=params)
