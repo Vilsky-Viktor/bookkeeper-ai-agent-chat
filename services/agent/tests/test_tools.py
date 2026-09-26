@@ -485,6 +485,15 @@ class TestExtractLineItems:
         # netted into the charge it reduces, not reported as a standalone item.
         assert "Never report one of these as its own item" in captured["prompt"]
         assert "omit it entirely" in captured["prompt"]
+        # The fifth failure mode recurred in a different shape: a food-delivery app
+        # receipt's generic "Other discounts" line (not tied to a specific fee by
+        # name, unlike "Shipping Discount") still came back as its own negative-amount
+        # item instead of netted into the product. The prompt-only fix didn't hold, so
+        # ReceiptExtraction._normalize_amounts (models/tool_results.py) now also nets
+        # a stray negative item in code as a safety net — see
+        # TestReceiptExtractionNormalization in test_models.py for that.
+        assert "Other discounts" in captured["prompt"]
+        assert "never from a fee" in captured["prompt"]
 
 
 class TestFoldMerchant:

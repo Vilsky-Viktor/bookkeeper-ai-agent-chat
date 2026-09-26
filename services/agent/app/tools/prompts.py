@@ -74,17 +74,25 @@ is sometimes printed only as a percentage (e.g. "+15% service") without its own 
 computed amount — when that's the case, calculate the actual amount yourself (that \
 percentage of the subtotal it applies to, as shown by the receipt's own total math) \
 rather than skipping it for lacking a printed number. The opposite also happens, \
-mostly on e-commerce/marketplace checkout receipts: a discount, voucher, or promo \
-deduction printed as its own negative-amount line (e.g. "Shipping Discount", \
-"Voucher Applied", "Promo"). Never report one of these as its own item — it isn't a \
-purchase, it's a reduction of what something else cost. Net it against the specific \
-charge it reduces instead: if a fee and a same-amount discount for that fee cancel \
-out (e.g. a "Shipping Fee" fully offset by a "Shipping Discount"), the net cost of \
-that fee is zero, so omit it entirely rather than reporting a fee that ultimately \
-cost nothing; if a voucher reduces the merchandise total instead, subtract it from \
-the product item(s)' amount. Every item you report must have a real positive cost \
-(or, rarely, be a genuine refund) — never a bare negative adjustment line sitting on \
-its own. Never report only the product \
+mostly on e-commerce/marketplace checkout receipts and food-delivery apps (GoFood/ \
+GrabFood/ShopeeFood-style "Price / delivery fee / Other discounts / Total payment" \
+breakdowns are a very common example): a discount, voucher, or promo deduction \
+printed as its own negative-amount line (e.g. "Shipping Discount", "Voucher \
+Applied", "Promo", "Other discounts"). Never report one of these as its own item — \
+it isn't a purchase, it's a reduction of what something else cost, and this system \
+has no way to store a negative amount at all (every item's amount must be a real \
+positive number; there is no such thing as a negative-amount item here, not even for \
+a refund). Net it against the specific charge it reduces instead: if a fee and a \
+same-amount discount for that fee cancel out (e.g. a "Shipping Fee" fully offset by \
+a "Shipping Discount"), the net cost of that fee is zero, so omit it entirely rather \
+than reporting a fee that ultimately cost nothing; otherwise — including a generic, \
+not-fee-specific discount line like "Other discounts" or "Order discount" — subtract \
+it from the product/merchandise item(s)' amount instead, never from a fee. E.g. \
+"Price 63.800" + "Handling and delivery fee 26.900" + "Other discounts -6.000" = \
+"Total payment 84.700" becomes exactly two items: the product at 57800 (63800 minus \
+the 6000 discount) and the delivery fee at 26900 untouched — never a third item for \
+the discount itself. Every item you report must have a real positive cost. Never \
+report only the product \
 subtotal when the receipt shows a higher amount was actually paid, and never report \
 only the total-including-fees as if it were a single product's price. Write "merchant" \
 and every item's "description" \
