@@ -19,23 +19,14 @@ def build_crud_tools(http_client: Callable[[], httpx.AsyncClient]) -> list[BaseT
         tool_call_id: Annotated[str, InjectedToolCallId],
         description: Optional[str] = None,
     ) -> dict:
-        """Add one transaction (expense or income). occurred_on is YYYY-MM-DD, amount
-        is a decimal string like '12.50', currency is a 3-letter ISO 4217 code, type is
-        'expense' or 'income'. Ask a clarifying question first if amount or currency is
-        missing from the user's request. There is no category argument: the
-        transactions service categorizes every row itself (past corrections first,
-        then its own model), so pass description and let it decide.
-        description should be a short, complete, human-readable phrase covering what it
-        was for, including the merchant/vendor/service name whenever one is
-        identifiable — not just the bare item name. E.g. for "I spent 5 on noodles at
-        7-Eleven", set description to "noodles purchased at 7-Eleven", not just
-        "noodles"; for a subscription with no physical store, still name it, e.g.
-        "Claude subscription payment". Corrections are matched against this exact text
-        (loosely, via near-duplicate matching), so use the SAME short, consistent
-        wording for the same recurring purchase every time (e.g. always "Claude
-        subscription payment", never alternating with "Anthropic Claude payment") —
-        inconsistent wording across separate adds makes past corrections less likely
-        to reapply."""
+        """Add one transaction. occurred_on is YYYY-MM-DD, amount a decimal string
+        like '12.50', currency a 3-letter ISO 4217 code, type 'expense' or 'income'.
+        There's no category argument: the transactions service categorizes each row
+        itself. description is a short, human-readable phrase naming what it was for,
+        plus the merchant/service when identifiable (e.g. "noodles purchased at
+        7-Eleven", "Claude subscription payment"), not just the bare item. Past
+        category corrections match on this text, so reuse the same wording for the
+        same recurring purchase every time."""
         async with http_client() as c:
             resp = await c.post(
                 "/api/transactions/transactions",
@@ -66,17 +57,12 @@ def build_crud_tools(http_client: Callable[[], httpx.AsyncClient]) -> list[BaseT
         category: Optional[str] = None,
         description: Optional[str] = None,
     ) -> dict:
-        """Edit fields on an existing transaction, identified by transaction_id.
-        Resolve "that one" / "the coffee one" from recently referenced transactions or
-        a prior query_transactions call — or from a "[transaction: <id>]" marker in the
-        message, which takes priority when present. If the reference isn't something
-        you've already seen this conversation, call query_transactions with
-        description set to a distinctive word from what the user said (e.g. "bagel")
-        to search the whole table before asking the user which one they mean. Only
-        pass fields that change. If you set
-        description, keep it a complete, human-readable phrase with context including
-        the merchant/vendor name when relevant (e.g. "noodles purchased at 7-Eleven"),
-        not just an item name."""
+        """Edit an existing transaction by transaction_id; pass only the fields that
+        change. Take the id from a "[transaction: <id>]" marker (it takes priority),
+        from recently referenced transactions, or from a prior query_transactions
+        result; if none match, search with query_transactions(description=<a
+        distinctive word>) before asking the user. A new description follows
+        add_transaction's style."""
         body = {
             k: v
             for k, v in {
@@ -102,16 +88,9 @@ def build_crud_tools(http_client: Callable[[], httpx.AsyncClient]) -> list[BaseT
 
     @tool
     async def delete_transaction(transaction_id: str, tool_call_id: Annotated[str, InjectedToolCallId]) -> dict:
-        """Delete ONE transaction by id. For deleting more than one — "delete all",
-        "clear the table", "remove my Starbucks purchases" — use
-        delete_transactions_matching instead; it deletes in a single server-side
-        operation instead of one id at a time. query_transactions only ever returns
-        one page of results (up to 50), so looping delete_transaction over its output
-        silently misses everything past the first page. "The last transaction"/"most
-        recent" means current table state — resolve it with a fresh query_transactions
-        call (newest-first) right before this, don't reuse an id from earlier in the
-        conversation. If this returns an error, that transaction was NOT deleted — say
-        so, don't report success anyway."""
+        """Delete ONE transaction by id; for more than one, use
+        delete_transactions_matching. If this returns an error, the transaction was NOT
+        deleted."""
         async with http_client() as c:
             resp = await c.delete(
                 f"/api/transactions/transactions/{transaction_id}",
@@ -134,14 +113,9 @@ def build_crud_tools(http_client: Callable[[], httpx.AsyncClient]) -> list[BaseT
         max_amount: Optional[str] = None,
         description: Optional[str] = None,
     ) -> dict:
-        """Delete every transaction matching these filters (same filters as
-        query_transactions) in one operation — pass no filters to delete ALL of the
-        user's transactions. This is irreversible: always confirm with the user
-        exactly what will be deleted (and roughly how many, via query_transactions if
-        unsure) before calling this. This is the right tool for "delete all my
-        transactions", "clear the table", or deleting more than one transaction at
-        once — never loop delete_transaction over query_transactions results, since
-        that only sees one page and would leave the rest behind."""
+        """Delete every transaction matching these filters (same as
+        query_transactions) in one irreversible operation; no filters deletes ALL of
+        the user's transactions. Confirm with the user what will be deleted first."""
         params = {
             k: v
             for k, v in {
@@ -177,14 +151,11 @@ def build_crud_tools(http_client: Callable[[], httpx.AsyncClient]) -> list[BaseT
         description: Optional[str] = None,
         aggregate: bool = False,
     ) -> dict:
-        """List transactions matching filters, or (aggregate=true) sums by category and
-        month per currency. Use aggregate=true for analysis or savings questions — never
-        state a total from memory or from the conversation summary, always call this.
-        description is a case-insensitive substring match against the transaction's
-        description — use it to resolve a vague reference ("the bagel one", "that
-        Starbucks purchase") against the whole table, not just transactions already
-        mentioned earlier in this conversation; try a short, distinctive word from
-        what the user said (e.g. "bagel"), not the full phrase."""
+        """List transactions matching the filters (newest first, one page of up to
+        50), or with aggregate=true, sums by category and month per currency.
+        description is a case-insensitive substring match: to find a vaguely
+        referenced transaction ("the bagel one"), pass one short distinctive word, not
+        the full phrase."""
         params = {
             k: v
             for k, v in {

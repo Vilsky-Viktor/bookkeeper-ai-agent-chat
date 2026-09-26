@@ -49,11 +49,13 @@ class TestMessagesPage:
         assert has_more is False
 
 
-class TestRecentMessages:
-    async def test_reverses_to_oldest_first(self, mock_conn: AsyncMock):
+class TestUnsummarizedMessages:
+    async def test_reverses_to_oldest_first_and_filters_past_the_summary(self, mock_conn: AsyncMock):
         mock_conn.fetch.return_value = [_msg_row(3), _msg_row(2), _msg_row(1)]
-        rows = await chat_db.recent_messages(mock_conn, "uid-1", "thread-1", 40)
+        rows = await chat_db.unsummarized_messages(mock_conn, "uid-1", "thread-1", 0, 60)
         assert [r["seq"] for r in rows] == [1, 2, 3]
+        sql, *params = mock_conn.fetch.call_args.args
+        assert "seq > $3" in sql and params == ["uid-1", "thread-1", 0, 60]
 
 
 class TestInsertMessage:

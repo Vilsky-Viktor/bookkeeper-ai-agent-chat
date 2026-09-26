@@ -12,7 +12,16 @@ from ..models.turns import ToolCallRecord, TurnState
 
 log = logging.getLogger("agent")
 
-RECENT_MESSAGE_LIMIT = 40  # rows fetched before token-budget trimming (context/__init__.py)
+# The prompt carries the rolling summary plus the messages it doesn't cover yet. Once
+# more than SUMMARIZE_AFTER_MESSAGES are unsummarized, everything but the newest
+# KEEP_RECENT_MESSAGES (~4 turns, extended back to a turn start) is folded into the
+# summary — so the verbatim window stays at 12-24 messages, summarizing in batches
+# (one cheap call every ~4 turns) rather than on every turn.
+KEEP_RECENT_MESSAGES = 12
+SUMMARIZE_AFTER_MESSAGES = 24
+# Loaded per turn; only reached if summarization falls behind (the token budget in
+# context/tokens.py trims further anyway).
+MAX_UNSUMMARIZED_MESSAGES = 60
 
 
 def _marker_call_missing(tool_calls_made: list[ToolCallRecord], marker_ids: list[str]) -> bool:
@@ -68,13 +77,48 @@ def _cap_working_set(ws: dict, limit: int = 20) -> dict:
     return ws
 
 
+async def _summarize_through(
+    conn, uid: str, thread_id: str, summarized_through: int, trimmed_before_seq: int | None
+) -> int | None:
+    """The seq to fold the summary through, or None if nothing needs summarizing.
+    Counts this thread's messages — seq is one global counter across every thread
+    and user, so seq arithmetic says nothing about how long a thread is."""
+    rows = await conn.fetch(
+        "SELECT seq, role FROM messages WHERE uid=$1 AND thread_id=$2 AND seq > $3 ORDER BY seq DESC",
+        uid,
+        thread_id,
+        summarized_through,
+    )
+    through = 0
+    if len(rows) > SUMMARIZE_AFTER_MESSAGES:
+        # Keep at least KEEP_RECENT_MESSAGES, extended back to a user message so the
+        # kept window starts on a turn boundary, never mid-turn.
+        start = next(
+            (i for i in range(KEEP_RECENT_MESSAGES - 1, len(rows)) if rows[i]["role"] == "user"),
+            None,
+        )
+        if start is not None and start + 1 < len(rows):
+            through = rows[start + 1]["seq"]
+    if trimmed_before_seq is not None:
+        # The token budget dropped older messages from this turn's prompt: fold them
+        # into the summary so they aren't forgotten.
+        through = max(through, trimmed_before_seq - 1)
+    return through if through > summarized_through else None
+
+
 async def finalize_turn(
-    uid: str, thread_id: str, thread: dict, state: TurnState, user_tokens: int, agent_base_url: str
+    uid: str,
+    thread_id: str,
+    thread: dict,
+    state: TurnState,
+    user_tokens: int,
+    agent_base_url: str,
+    trimmed_before_seq: int | None = None,
 ) -> None:
     """Persists a completed turn: assistant message + tool result messages, updates
     the working set, touches the thread, advances the token quota, and enqueues
-    rolling-summary work if the unsummarized tail has grown past
-    RECENT_MESSAGE_LIMIT."""
+    rolling-summary work when the unsummarized tail is long enough (or the token
+    budget trimmed part of it — trimmed_before_seq, see context.first_kept_seq)."""
     assistant_text = "".join(state.assistant_text_parts)
 
     async with chat_db.uid_conn(uid) as conn:
@@ -113,19 +157,16 @@ async def finalize_turn(
             conn, uid, state.total_tokens_used or (user_tokens + context.count_tokens(assistant_text))
         )
 
-        latest = await conn.fetchrow(
-            "SELECT max(seq) AS max_seq FROM messages WHERE uid=$1 AND thread_id=$2", uid, thread_id
-        )
-        latest_seq = latest["max_seq"] or 0
         summarized_through = thread.get("summarized_through") or 0
+        through = await _summarize_through(conn, uid, thread_id, summarized_through, trimmed_before_seq)
 
-    # Off the hot path: fold anything that fell out of the recent-message window into
-    # the rolling summary (architecture doc, p. 9, technique 3). Caught here, not left
-    # to propagate — a failure to enqueue a background summarization job (e.g. a
-    # misconfigured Cloud Tasks env var) must not surface as the whole turn erroring
-    # out to the user; the turn itself already succeeded by this point.
-    if latest_seq - summarized_through > RECENT_MESSAGE_LIMIT:
+    # Off the hot path: fold older messages into the rolling summary (architecture
+    # doc, p. 9, technique 3). Caught here, not left to propagate — a failure to
+    # enqueue a background summarization job (e.g. a misconfigured Cloud Tasks env
+    # var) must not surface as the whole turn erroring out to the user; the turn
+    # itself already succeeded by this point.
+    if through is not None:
         try:
-            await tasks.enqueue_summarize(uid, thread_id, latest_seq - RECENT_MESSAGE_LIMIT, agent_base_url)
+            await tasks.enqueue_summarize(uid, thread_id, through, agent_base_url)
         except Exception:
             log.exception("failed to enqueue summarize task", extra={"thread_id": thread_id})

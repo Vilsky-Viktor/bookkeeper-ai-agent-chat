@@ -94,14 +94,19 @@ async def insert_message(
     )
 
 
-async def recent_messages(conn: asyncpg.Connection, uid: str, thread_id: str, limit: int) -> list[asyncpg.Record]:
+async def unsummarized_messages(
+    conn: asyncpg.Connection, uid: str, thread_id: str, after_seq: int, limit: int
+) -> list[asyncpg.Record]:
+    """The thread's messages the rolling summary doesn't cover yet (seq > after_seq),
+    newest `limit` of them — the limit only matters if summarization falls behind."""
     rows = await conn.fetch(
-        "SELECT * FROM messages WHERE uid=$1 AND thread_id=$2 ORDER BY seq DESC LIMIT $3",
+        "SELECT * FROM messages WHERE uid=$1 AND thread_id=$2 AND seq > $3 ORDER BY seq DESC LIMIT $4",
         uid,
         thread_id,
+        after_seq,
         limit,
     )
-    return list(reversed(rows))  # oldest-first for display / prompt assembly
+    return list(reversed(rows))  # oldest-first for prompt assembly
 
 
 async def all_messages(conn: asyncpg.Connection, uid: str, thread_id: str) -> list[asyncpg.Record]:

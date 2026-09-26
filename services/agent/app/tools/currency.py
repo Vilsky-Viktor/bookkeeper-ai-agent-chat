@@ -62,13 +62,8 @@ async def _fetch_exchange_rate(from_currency: str, to_currency: str) -> dict:
 def build_currency_tools(http_client: Callable[[], httpx.AsyncClient]) -> list[BaseTool]:
     @tool
     async def get_exchange_rate(from_currency: str, to_currency: str) -> dict:
-        """Look up the current exchange rate between two currencies (e.g. "what's the
-        exchange rate from USD to EUR", "how much is 50 USD in IDR") — free, no API
-        key, daily-updated, covers 300+ currencies. This is a daily rate, not
-        tick-by-tick live market data, and it's for the user's reference only: never
-        use it to silently convert or alter a transaction's actual stated
-        amount/currency — record what the user said exactly. currencies are 3-letter
-        ISO codes."""
+        """Daily reference exchange rate between two 3-letter currency codes, for the
+        user's information only."""
         return await _fetch_exchange_rate(from_currency, to_currency)
 
     @tool
@@ -80,16 +75,9 @@ def build_currency_tools(http_client: Callable[[], httpx.AsyncClient]) -> list[B
         currency: Optional[str] = None,
         category: Optional[str] = None,
     ) -> dict:
-        """Sums transactions (optionally filtered by type/date range/currency/
-        category, same filters as query_transactions) and converts the result into
-        to_currency. Use this for ANY total that spans more than one currency (e.g.
-        "total expenses this month in USD", "how much have I spent overall in EUR")
-        — it does the per-currency aggregation and the multiply-and-convert
-        arithmetic in code, not an approximation. Never compute a cross-currency
-        total yourself by calling query_transactions(aggregate=true) and
-        get_exchange_rate separately and doing the multiplication/summing in your
-        own reply — that arithmetic is not guaranteed to be exact, this tool's is.
-        Same daily reference rate as get_exchange_rate, not live tick-by-tick data."""
+        """Total of transactions (optionally filtered, same filters as
+        query_transactions) converted into to_currency, with exact per-currency
+        arithmetic. Use it for any total that spans more than one currency."""
         params = {
             k: v
             for k, v in {

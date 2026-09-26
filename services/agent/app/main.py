@@ -8,7 +8,7 @@ from fastapi.responses import StreamingResponse
 
 from . import chat_db, context, llm, quotas, signal, storage
 from .auth import bearer_token, require_uid
-from .chat import streaming, turns
+from .chat import receipt_turn, streaming, turns
 from .graph import build_graph
 from .langsmith_obs import traced_turn
 from .languages import SUPPORTED_LANGUAGES
@@ -246,9 +246,15 @@ async def chat(
                 preferences_row = await chat_db.get_preferences(conn, uid)
                 preferences = dict(preferences_row) if preferences_row else None
 
-                recent_rows = await chat_db.recent_messages(conn, uid, thread_id, turns.RECENT_MESSAGE_LIMIT)
+                recent_rows = await chat_db.unsummarized_messages(
+                    conn, uid, thread_id, thread.get("summarized_through") or 0, turns.MAX_UNSUMMARIZED_MESSAGES
+                )
                 recent_rows = [r for r in recent_rows if r["seq"] != inserted["seq"]]
                 messages = context.build_context(thread, preferences, recent_rows, user_text)
+                kept_from = context.first_kept_seq(recent_rows)
+                trimmed_before_seq = (
+                    kept_from if recent_rows and kept_from and kept_from > recent_rows[0]["seq"] else None
+                )
 
             language = (preferences or {}).get("language") or "en"
             tools = build_tools(jwt, x_client_id, language)
@@ -257,7 +263,13 @@ async def chat(
             marker_ids = TRANSACTION_MARKER_RE.findall(user_text)
             state = TurnState()
 
-            if marker_ids:
+            if body.receipt_object and not body.message.strip():
+                with traced_turn(uid, thread_id, request_id, tags=["turn", "receipt-direct"]) as run_config:
+                    async for chunk in receipt_turn.run_receipt_turn(
+                        tools, body.receipt_object, language, run_config, state
+                    ):
+                        yield chunk
+            elif marker_ids:
                 # A "[transaction: <id>]" marker turn should always end in exactly
                 # one matching edit_transaction/delete_transaction call — the id
                 # comes straight from a table row the user clicked, so it's always
@@ -281,7 +293,9 @@ async def chat(
                     async for chunk in streaming._run_turn(compiled_graph, messages, run_config, state):
                         yield chunk
 
-            await turns.finalize_turn(uid, thread_id, thread, state, user_tokens, agent_base_url)
+            await turns.finalize_turn(
+                uid, thread_id, thread, state, user_tokens, agent_base_url, trimmed_before_seq=trimmed_before_seq
+            )
 
             await signal.bump_async(uid, [f"thread_versions.{thread_id}"], x_client_id)
             yield streaming._sse("done", {"thread_id": thread_id})

@@ -32,12 +32,12 @@ variable "llm_provider" {
 
 variable "llm_model" {
   type    = string
-  default = "gpt-4o"
+  default = "gpt-4o-mini"
 }
 
 variable "llm_fallback_model" {
   type    = string
-  default = "gpt-4o-mini"
+  default = "gpt-4o"
 }
 
 variable "llm_summary_model" {

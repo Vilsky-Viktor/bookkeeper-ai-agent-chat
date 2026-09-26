@@ -62,7 +62,9 @@ async def run_summarize(uid: str, thread_id: str, through_seq: int) -> None:
         prompt = SUMMARIZE_PROMPT.format(previous_summary=thread["summary"] or "(none yet)", messages=rendered)
 
         model = llm.summary_model()
-        response = await model.ainvoke([HumanMessage(content=prompt)])
+        response = await model.ainvoke(
+            [HumanMessage(content=prompt)], config={"run_name": "summarize", "tags": ["summarize"]}
+        )
         new_summary = response.content if isinstance(response.content, str) else str(response.content)
 
         await conn.execute(

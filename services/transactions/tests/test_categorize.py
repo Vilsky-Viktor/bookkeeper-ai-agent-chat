@@ -2,7 +2,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from app.categorize import categorize, normalize_item, save_correction
+from app.categorize import CATEGORIZE_MODEL, categorize, categorize_many, normalize_item, save_correction
 
 
 class TestNormalizeItem:
@@ -146,3 +146,59 @@ class TestCategorize:
 
         assert category == "other"
         mock_conn.fetchrow.assert_not_awaited()
+
+
+def _json_client(content: str, captured: dict | None = None) -> MagicMock:
+    async def fake_create(**kwargs):
+        if captured is not None:
+            captured.update(kwargs)
+        response = MagicMock()
+        response.choices = [MagicMock(message=MagicMock(content=content))]
+        return response
+
+    client = MagicMock()
+    client.chat.completions.create = AsyncMock(side_effect=fake_create)
+    return client
+
+
+class TestCategorizeMany:
+    async def test_one_model_call_for_all_uncorrected_items(self, mock_conn: AsyncMock, monkeypatch):
+        mock_conn.fetch.side_effect = [
+            [{"item_key": "shampoo - shop", "category": "health"}],  # exact corrections
+            [],  # history for the prompt
+        ]
+        captured: dict = {}
+        client = _json_client('{"categories": ["groceries", "shopping"]}', captured)
+        monkeypatch.setattr("app.categorize._get_client", lambda: client)
+
+        result = await categorize_many(mock_conn, "uid-1", ["Rice - Shop", "Shampoo - Shop", "Cigarettes - Shop"])
+
+        assert result == ["groceries", "health", "shopping"]
+        client.chat.completions.create.assert_awaited_once()
+        prompt = captured["messages"][0]["content"]
+        # Only the two uncorrected items are sent, numbered in order.
+        assert "1. Rice - Shop" in prompt and "2. Cigarettes - Shop" in prompt
+        assert "Shampoo" not in prompt
+        assert captured["model"] == CATEGORIZE_MODEL
+
+    async def test_no_model_call_when_every_item_has_a_correction(self, mock_conn: AsyncMock, monkeypatch):
+        mock_conn.fetch.return_value = [{"item_key": "rice", "category": "groceries"}]
+        client = _json_client("{}")
+        monkeypatch.setattr("app.categorize._get_client", lambda: client)
+
+        assert await categorize_many(mock_conn, "uid-1", ["Rice"]) == ["groceries"]
+        client.chat.completions.create.assert_not_awaited()
+
+    async def test_short_or_invalid_model_reply_falls_back_to_other(self, mock_conn: AsyncMock, monkeypatch):
+        mock_conn.fetch.side_effect = [[], []]
+        monkeypatch.setattr("app.categorize._get_client", lambda: _json_client('{"categories": ["not-a-category"]}'))
+
+        assert await categorize_many(mock_conn, "uid-1", ["a", "b"]) == ["other", "other"]
+
+    async def test_model_error_falls_back_to_other(self, mock_conn: AsyncMock, monkeypatch):
+        mock_conn.fetch.side_effect = [[], []]
+        client = MagicMock()
+        client.chat.completions.create = AsyncMock(side_effect=RuntimeError("API down"))
+        monkeypatch.setattr("app.categorize._get_client", lambda: client)
+
+        assert await categorize_many(mock_conn, "uid-1", ["a"]) == ["other"]

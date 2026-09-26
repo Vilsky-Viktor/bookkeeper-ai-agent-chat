@@ -24,6 +24,7 @@ dependencies = [
     "python-multipart==0.0.9",
     "langchain-anthropic==1.7.4",
     "langchain-google-genai==4.4.0",
+    "pillow==12.3.0",
 ]
 
 [dependency-groups]

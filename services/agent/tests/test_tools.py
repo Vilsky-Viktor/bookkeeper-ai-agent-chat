@@ -1,8 +1,10 @@
+import io
 import json
 from unittest.mock import AsyncMock, MagicMock
 
 import httpx
 import pytest
+from PIL import Image
 
 from app import tools as tools_module
 from app.models.tool_results import ReceiptExtraction
@@ -407,17 +409,18 @@ class TestExtractReceipt:
         seen = []
 
         def handler(request: httpx.Request) -> httpx.Response:
-            assert request.url.path == "/api/transactions/categorize"
-            name = json.loads(request.content)["description"]
-            seen.append(name)
-            return httpx.Response(200, json={"category": categories[name]})
+            # One batch request for the whole receipt, not one per item.
+            assert request.url.path == "/api/transactions/categorize/batch"
+            names = json.loads(request.content)["descriptions"]
+            seen.append(names)
+            return httpx.Response(200, json={"categories": [categories[n] for n in names]})
 
         tool = _tool_by_name(build(handler), "extract_receipt")
         result = await tool.coroutine(object_name="receipts/u1/x.jpg")
 
         assert result["ui_event"] == "receipt_proposed"
         # Each item is categorized with the merchant attached, for context.
-        assert sorted(seen) == ["Eggs - Alfamart", "Rice 1kg - Alfamart", "Shampoo - Alfamart"]
+        assert seen == [["Rice 1kg - Alfamart", "Eggs - Alfamart", "Shampoo - Alfamart"]]
         assert len(result["items"]) == 1
         item = result["items"][0]
         assert item["amount"] == "164100"
@@ -438,8 +441,8 @@ class TestExtractReceipt:
         )
 
         def handler(request: httpx.Request) -> httpx.Response:
-            assert json.loads(request.content)["description"] == "Dinner for two"
-            return httpx.Response(200, json={"category": "dining"})
+            assert json.loads(request.content)["descriptions"] == ["Dinner for two"]
+            return httpx.Response(200, json={"categories": ["dining"]})
 
         tool = _tool_by_name(build(handler), "extract_receipt")
         result = await tool.coroutine(object_name="receipts/u1/x.jpg")
@@ -478,7 +481,7 @@ class TestReadReceipt:
         captured = {}
 
         class _FakeVisionModel:
-            async def ainvoke(self, messages):
+            async def ainvoke(self, messages, config=None):
                 captured["prompt"] = messages[0].content[0]["text"]
                 return MagicMock(content='{"is_receipt": false}')
 
@@ -536,3 +539,38 @@ class TestFoldMerchant:
 
     def test_unknown_merchant_with_no_description_returns_none(self):
         assert receipts_module._fold_merchant(None, "Unknown") is None
+
+
+def _jpeg(width: int, height: int, orientation: int | None = None) -> bytes:
+    img = Image.new("RGB", (width, height), "white")
+    out = io.BytesIO()
+    if orientation is None:
+        img.save(out, format="JPEG")
+    else:
+        exif = Image.Exif()
+        exif[0x0112] = orientation
+        img.save(out, format="JPEG", exif=exif)
+    return out.getvalue()
+
+
+class TestShrinkForVision:
+    def test_caps_the_long_side_and_keeps_the_aspect_ratio(self):
+        shrunk, content_type = receipts_module._shrink_for_vision(_jpeg(1200, 4000), "image/jpeg")
+        assert content_type == "image/jpeg"
+        with Image.open(io.BytesIO(shrunk)) as img:
+            assert img.size == (480, receipts_module.MAX_IMAGE_SIDE)
+
+    def test_leaves_a_small_image_at_its_size(self):
+        shrunk, _ = receipts_module._shrink_for_vision(_jpeg(600, 900), "image/jpeg")
+        with Image.open(io.BytesIO(shrunk)) as img:
+            assert img.size == (600, 900)
+
+    def test_applies_the_exif_rotation_before_dropping_the_tag(self):
+        # Orientation 6 = "rotate 90° clockwise to display": a phone's portrait shot
+        # stored landscape. Re-encoding without applying it sends a sideways receipt.
+        shrunk, _ = receipts_module._shrink_for_vision(_jpeg(400, 300, orientation=6), "image/jpeg")
+        with Image.open(io.BytesIO(shrunk)) as img:
+            assert img.size == (300, 400)
+
+    def test_undecodable_bytes_are_passed_through_unchanged(self):
+        assert receipts_module._shrink_for_vision(b"not an image", "image/png") == (b"not an image", "image/png")

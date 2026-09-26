@@ -21,15 +21,10 @@ def build_utility_tools() -> list[BaseTool]:
         max_amount: Optional[str] = None,
         description: Optional[str] = None,
     ) -> dict:
-        """Set the transactions table's filter in the UI (e.g. "show USD expenses over
-        100 from last month", "show transactions with 'bagel' in the description").
-        description is a case-insensitive substring match. Calls nothing downstream —
-        the UI re-queries with this filter itself. To clear the filter (e.g. "clear
-        the filter", "reset"), call this with every argument left unset — you must
-        still call it; replying that the filter is cleared without calling this tool
-        does nothing. Clearing resets the table to its default view, the last 30 days
-        — not to every transaction ever, so don't tell the user it now shows
-        "everything"/"all transactions"; say it's back to showing the last 30 days."""
+        """Set the transactions table's filter in the UI; the UI re-queries itself.
+        description is a case-insensitive substring match. Call with no arguments to
+        clear the filter, which resets the table to its default view of the last 30
+        days."""
         filt = TransactionFilter(
             currency=currency,
             category=category,
@@ -44,19 +39,12 @@ def build_utility_tools() -> list[BaseTool]:
 
     @tool
     def export_transactions() -> dict:
-        """Export the transactions table's current view to a CSV file (e.g. "export
-        transactions", "export this view", "download as csv"). You MUST call this
-        tool for every such request, even if you exported earlier in this
-        conversation — there is no file until you call it THIS turn; saying you've
-        exported without calling it produces no file at all and misleads the user.
-        Takes no arguments — it always exports exactly what the table is currently
-        filtered to, not a filter you construct; if the user wants a different filter
-        exported, call set_filter first, then this. Does nothing itself — the UI
-        builds the CSV and attaches it to your reply as a clickable file; it is NOT
-        downloaded automatically. Your reply's last sentence must say exactly "You can
-        download it by clicking the file below." — use that exact wording, don't
-        paraphrase it, and don't say it's been downloaded or saved anywhere, since
-        nothing happens until they click it."""
+        """Export the table's current view (whatever it's filtered to) to a CSV that
+        the UI attaches to your reply; nothing downloads until the user clicks it. To
+        export a different view, call set_filter first. Call this every time an export
+        is asked for. End your reply with exactly: "You can download it by clicking
+        the file below."
+        """
         return ExportReadyResult().model_dump()
 
     return [set_filter, export_transactions]

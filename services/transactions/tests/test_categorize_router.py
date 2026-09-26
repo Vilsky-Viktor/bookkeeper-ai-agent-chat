@@ -1,6 +1,18 @@
 from unittest.mock import AsyncMock, MagicMock
 
 
+class TestCategorizeBatchEndpoint:
+    def test_returns_one_category_per_description(self, client, monkeypatch):
+        monkeypatch.setattr("app.routers.categorize.categorize_many", AsyncMock(return_value=["groceries", "health"]))
+        res = client.post("/api/transactions/categorize/batch", json={"descriptions": ["rice", "soap"]})
+        assert res.status_code == 200
+        assert res.json() == {"categories": ["groceries", "health"]}
+
+    def test_empty_list_is_rejected(self, client):
+        res = client.post("/api/transactions/categorize/batch", json={"descriptions": []})
+        assert res.status_code == 422
+
+
 class TestCategorizeEndpoint:
     def test_success(self, client, mock_conn: AsyncMock, monkeypatch):
         mock_conn.fetchrow.return_value = {"category": "dining"}

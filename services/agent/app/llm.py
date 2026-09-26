@@ -22,17 +22,18 @@ LLM_CONCURRENCY = int(os.environ.get("LLM_CONCURRENCY", "40"))
 _semaphore = asyncio.Semaphore(LLM_CONCURRENCY)
 
 LLM_PROVIDER = os.environ.get("LLM_PROVIDER", "openai")
-PRIMARY_MODEL = os.environ.get("LLM_MODEL", "gpt-4o")
-FALLBACK_MODEL = os.environ.get("LLM_FALLBACK_MODEL", "gpt-4o-mini")
+# gpt-4o-mini matched gpt-4o on every case of evals/chat_model_eval.py at ~14x lower
+# cost per turn; gpt-4o is the fallback (used only when a call errors or times out).
+PRIMARY_MODEL = os.environ.get("LLM_MODEL", "gpt-4o-mini")
+FALLBACK_MODEL = os.environ.get("LLM_FALLBACK_MODEL", "gpt-4o")
 SUMMARY_MODEL = os.environ.get("LLM_SUMMARY_MODEL", "gpt-4o-mini")
-# Receipt extraction needs real vision + instruction-following (locale number
-# formats, fee attribution, merchant nulls — see tools.py's RECEIPT_EXTRACTION_PROMPT)
-# — it defaults to the primary model rather than the cheaper fallback/summary ones.
-VISION_MODEL = os.environ.get("LLM_VISION_MODEL", PRIMARY_MODEL)
-TRANSCRIBE_MODEL = os.environ.get("TRANSCRIBE_MODEL", "whisper-1")
+# Deliberately not tied to PRIMARY_MODEL: gpt-4o-mini bills images at a large
+# multiplier (so it's no cheaper for vision) and reads receipts less reliably.
+VISION_MODEL = os.environ.get("LLM_VISION_MODEL", "gpt-4o")
+TRANSCRIBE_MODEL = os.environ.get("TRANSCRIBE_MODEL", "gpt-4o-mini-transcribe")
 
 
-def _build_openai(model: str, temperature: float, *, json_mode: bool) -> BaseChatModel:
+def _build_openai(model: str, temperature: float, *, json_mode: bool, max_tokens: int) -> BaseChatModel:
     # Imported here, not at module level, so a provider whose package isn't installed
     # only breaks when actually selected, not for everyone importing this module.
     from langchain_openai import ChatOpenAI
@@ -43,11 +44,12 @@ def _build_openai(model: str, temperature: float, *, json_mode: bool) -> BaseCha
         timeout=CALL_TIMEOUT,
         max_retries=2,  # SDK-level: retries 429/5xx only, backoff+jitter, honors Retry-After
         temperature=temperature,
+        max_completion_tokens=max_tokens,
         model_kwargs={"response_format": {"type": "json_object"}} if json_mode else {},
     )
 
 
-def _build_anthropic(model: str, temperature: float, *, json_mode: bool) -> BaseChatModel:
+def _build_anthropic(model: str, temperature: float, *, json_mode: bool, max_tokens: int) -> BaseChatModel:
     from langchain_anthropic import ChatAnthropic
 
     # Unlike OpenAI, Anthropic's Messages API has no response_format/json_object mode
@@ -66,11 +68,12 @@ def _build_anthropic(model: str, temperature: float, *, json_mode: bool) -> Base
         timeout=CALL_TIMEOUT,
         max_retries=2,
         temperature=temperature,
+        max_tokens_to_sample=max_tokens,
         stop=None,
     )
 
 
-def _build_google(model: str, temperature: float, *, json_mode: bool) -> BaseChatModel:
+def _build_google(model: str, temperature: float, *, json_mode: bool, max_tokens: int) -> BaseChatModel:
     from langchain_google_genai import ChatGoogleGenerativeAI
 
     return ChatGoogleGenerativeAI(
@@ -79,6 +82,7 @@ def _build_google(model: str, temperature: float, *, json_mode: bool) -> BaseCha
         timeout=CALL_TIMEOUT,
         max_retries=2,
         temperature=temperature,
+        max_output_tokens=max_tokens,
         response_mime_type="application/json" if json_mode else None,
     )
 
@@ -94,14 +98,18 @@ _PROVIDER_BUILDERS: dict[str, Callable[..., BaseChatModel]] = {
 }
 
 
-def build_chat_model(model: str, temperature: float = 0.2, *, json_mode: bool = False) -> BaseChatModel:
+# max_tokens caps output, billed at ~4x input: a runaway answer is the priciest
+# failure, and chat replies are meant to be short anyway (see SYSTEM_PROMPT).
+def build_chat_model(
+    model: str, temperature: float = 0.2, *, json_mode: bool = False, max_tokens: int = 800
+) -> BaseChatModel:
     try:
         builder = _PROVIDER_BUILDERS[LLM_PROVIDER]
     except KeyError:
         raise ValueError(
             f"unsupported LLM_PROVIDER: {LLM_PROVIDER!r} (supported: {sorted(_PROVIDER_BUILDERS)})"
         ) from None
-    return builder(model, temperature, json_mode=json_mode)
+    return builder(model, temperature, json_mode=json_mode, max_tokens=max_tokens)
 
 
 def primary_model() -> BaseChatModel:
@@ -113,14 +121,14 @@ def fallback_model() -> BaseChatModel:
 
 
 def summary_model() -> BaseChatModel:
-    return build_chat_model(SUMMARY_MODEL, temperature=0)
+    return build_chat_model(SUMMARY_MODEL, temperature=0, max_tokens=400)
 
 
 def vision_model() -> BaseChatModel:
     """Used for receipt image extraction (see tools.py) — a one-shot structured-JSON
     call outside the main chat graph, so it's built directly rather than bound with
     tools."""
-    return build_chat_model(VISION_MODEL, temperature=0, json_mode=True)
+    return build_chat_model(VISION_MODEL, temperature=0, json_mode=True, max_tokens=600)
 
 
 def _build_openai_transcribe_client() -> Any:

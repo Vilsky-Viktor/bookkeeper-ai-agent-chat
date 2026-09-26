@@ -9,7 +9,10 @@ near-identical description; unlike an old merchant-keyed fallback, it can't gene
 fallback below covers that gap by matching near-duplicate descriptions semantically
 against the user's correction history instead of requiring an exact key match."""
 
+import json
+import logging
 import os
+from typing import NamedTuple
 
 import asyncpg
 from openai import AsyncOpenAI
@@ -47,6 +50,8 @@ CATEGORY_DEFINITIONS = {
     "fees": "bank fees, service charges, interest, penalties",
     "other": "anything that genuinely doesn't fit the categories above",
 }
+
+log = logging.getLogger("categorize")
 
 _client: AsyncOpenAI | None = None
 
@@ -88,31 +93,47 @@ async def save_correction(conn: asyncpg.Connection, uid: str, description: str |
     )
 
 
-async def categorize(
-    conn: asyncpg.Connection,
-    uid: str,
-    description: str | None,
-    amount_minor: int,
-    currency: str,
-    txn_type: str,
-) -> str:
-    if txn_type == "income":
-        return "income"
+def _log_usage(kind: str, resp) -> None:
+    # This service isn't traced in LangSmith (the agent is), so its spend is visible
+    # only through this log line.
+    usage = getattr(resp, "usage", None)
+    if usage:
+        log.info("%s tokens: in=%s out=%s model=%s", kind, usage.prompt_tokens, usage.completion_tokens, resp.model)
 
-    item_key = normalize_item(description)
 
-    if item_key:
-        category = await _lookup_correction(conn, uid, item_key)
-        if category:
-            return category
+# Its own setting, independent of the agent's LLM_MODEL (both read the same .env).
+# gpt-4o by default: side by side on real receipt items, the mini models misfiled
+# brand-only names (e.g. "Laurier" sanitary pads as groceries) that gpt-4o got right.
+# Cost is contained instead by categorize_many's one call per receipt; set this to
+# gpt-4o-mini to trade that accuracy for a ~16x cheaper call.
+CATEGORIZE_MODEL = os.environ.get("LLM_CATEGORIZE_MODEL", "gpt-4o")
 
-    model = os.environ.get("LLM_MODEL", "gpt-4o-mini")
+_MATCHING_RULES = (
+    "If a description clearly describes the same purchase as one of those "
+    "corrections — even worded differently, abbreviated, or naming the merchant/place "
+    'slightly differently (e.g. "coffee at Starbucks" and "Starbucks latte" are the '
+    'same kind of purchase; "claude subscription" and "Claude AI subscription '
+    "payment\" are the same purchase) — use that correction's category, even if it's "
+    "a custom one not in the list above. Otherwise classify based on what the item "
+    "itself is — the same place can sell items across several categories in one "
+    "purchase (e.g. a minimarket receipt where rice is groceries but toothpaste from "
+    "the same receipt is health, not groceries), so don't assume every item from a "
+    "given place shares one category."
+)
 
-    # Exact-key lookup above already missed, but that only catches identical
-    # description text — an LLM add rarely reproduces the exact same wording twice
-    # ("Claude subscription" vs "Claude AI subscription payment", "coffee at
-    # Starbucks" vs "Starbucks latte"). Hand the model the user's past corrections
-    # directly so it can recognize that kind of near-duplicate itself.
+
+class _Context(NamedTuple):
+    category_list: str
+    history_text: str
+    custom_category_map: dict[str, str]
+    allowed: set[str]
+
+
+async def _classification_context(conn: asyncpg.Connection, uid: str) -> _Context:
+    # An exact-key lookup only catches identical description text — an LLM add rarely
+    # reproduces the exact same wording twice ("Claude subscription" vs "Claude AI
+    # subscription payment"). Hand the model the user's past corrections directly so
+    # it can recognize that kind of near-duplicate itself.
     history_rows = await conn.fetch(
         "SELECT item_key, category FROM category_corrections WHERE uid=$1 LIMIT 200",
         uid,
@@ -140,36 +161,98 @@ async def categorize(
             for c in sorted(custom_category_map.values())
         )
     allowed = {c.lower() for c in CATEGORIES if c != "income"} | set(custom_category_map.keys())
+    return _Context(category_list, history_text, custom_category_map, allowed)
 
+
+def _resolve(guess: str, ctx: _Context) -> str:
+    guess = guess.strip().lower()
+    if guess in ctx.custom_category_map:
+        return ctx.custom_category_map[guess]
+    return guess if guess in ctx.allowed else "other"
+
+
+async def categorize(
+    conn: asyncpg.Connection,
+    uid: str,
+    description: str | None,
+    amount_minor: int,
+    currency: str,
+    txn_type: str,
+) -> str:
+    if txn_type == "income":
+        return "income"
+
+    item_key = normalize_item(description)
+
+    if item_key:
+        category = await _lookup_correction(conn, uid, item_key)
+        if category:
+            return category
+
+    ctx = await _classification_context(conn, uid)
     prompt = (
         "Classify this single line item into exactly one of these categories:\n"
-        f"{category_list}\n\n"
+        f"{ctx.category_list}\n\n"
         f"Item / description: {description or ''}\n"
         f"Amount: {to_decimal_string(amount_minor, currency)} {currency}\n\n"
         "The user has previously corrected these categorizations:\n"
-        f"{history_text}\n\n"
-        "If this transaction's description clearly describes the same purchase as one "
-        "of those corrections — even worded differently, abbreviated, or naming the "
-        'merchant/place slightly differently (e.g. "coffee at Starbucks" and '
-        '"Starbucks latte" are the same kind of purchase; "claude subscription" '
-        'and "Claude AI subscription payment" are the same purchase) — use that '
-        "correction's category, even if it's a custom one not in the list above. "
-        "Otherwise classify based on what the item itself is — the same place can "
-        "sell items across several categories in one purchase (e.g. a minimarket "
-        "receipt where rice is groceries but toothpaste from the same receipt is "
-        "health, not groceries), so don't assume every item from a given place shares "
-        "one category. Reply with only the category word, nothing else."
+        f"{ctx.history_text}\n\n"
+        f"{_MATCHING_RULES} Reply with only the category word, nothing else."
     )
     try:
         resp = await _get_client().chat.completions.create(
-            model=model,
+            model=CATEGORIZE_MODEL,
             messages=[{"role": "user", "content": prompt}],
             temperature=0,
             max_tokens=10,
         )
-        guess = (resp.choices[0].message.content or "").strip().lower()
-        if guess in custom_category_map:
-            return custom_category_map[guess]
-        return guess if guess in allowed else "other"
+        _log_usage("categorize", resp)
+        return _resolve(resp.choices[0].message.content or "", ctx)
     except Exception:
         return "other"
+
+
+async def categorize_many(conn: asyncpg.Connection, uid: str, descriptions: list[str]) -> list[str]:
+    """Categorizes several expense descriptions (a receipt's items) with at most ONE
+    model call: exact corrections are applied first, and everything left goes into a
+    single prompt instead of one call per item, so the category definitions and
+    correction history are sent once."""
+    keys = [normalize_item(d) for d in descriptions]
+    rows = await conn.fetch(
+        "SELECT item_key, category FROM category_corrections WHERE uid=$1 AND item_key = ANY($2::text[])",
+        uid,
+        [k for k in keys if k],
+    )
+    corrected = {r["item_key"]: r["category"] for r in rows}
+    results: list[str | None] = [corrected.get(k) if k else None for k in keys]
+    pending = [i for i, r in enumerate(results) if r is None]
+    if not pending:
+        return [r or "other" for r in results]
+
+    ctx = await _classification_context(conn, uid)
+    numbered = "\n".join(f"{n + 1}. {descriptions[i]}" for n, i in enumerate(pending))
+    prompt = (
+        "Classify each of these line items into exactly one of these categories:\n"
+        f"{ctx.category_list}\n\n"
+        f"Items:\n{numbered}\n\n"
+        "The user has previously corrected these categorizations:\n"
+        f"{ctx.history_text}\n\n"
+        f"{_MATCHING_RULES} Reply with JSON only, in this shape: "
+        '{"categories": ["<category word for item 1>", "<category word for item 2>", ...]} '
+        "— exactly one entry per item, in the same order."
+    )
+    try:
+        resp = await _get_client().chat.completions.create(
+            model=CATEGORIZE_MODEL,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0,
+            max_tokens=12 * len(pending) + 20,
+            response_format={"type": "json_object"},
+        )
+        _log_usage("categorize_batch", resp)
+        guesses = json.loads(resp.choices[0].message.content or "{}").get("categories", [])
+    except Exception:
+        guesses = []
+    for n, i in enumerate(pending):
+        results[i] = _resolve(guesses[n], ctx) if n < len(guesses) and isinstance(guesses[n], str) else "other"
+    return [r or "other" for r in results]

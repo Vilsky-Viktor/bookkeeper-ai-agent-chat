@@ -123,8 +123,9 @@ yet.
 - **CSV export.** "Export this view" builds a CSV client-side from the table's current
   filter and drops it into the chat as a clickable file attachment.
 - **Voice input.** Record a message with the mic button; it's transcribed
-  (Whisper) server-side and dropped into the message box for you to review or edit
-  before sending — same as typing it, nothing is sent automatically.
+  server-side (`gpt-4o-mini-transcribe` by default) and dropped into the message box
+  for you to review or edit before sending — same as typing it, nothing is sent
+  automatically.
 - **Receipts.** Upload a photo or PDF; the configured vision model (`gpt-4o` by
   default — see "Swapping the LLM provider") reads the receipt's grand total, date and
   merchant, plus a short summary and the names of the items bought. That becomes ONE
@@ -136,6 +137,10 @@ yet.
   edited, removed, or added before confirming. Each row's category is a dropdown
   built from the same built-in list the backend categorizer uses. There's no separate
   merchant field: a merchant name, when identifiable, is folded into the description.
+  A plain upload (no typed text) skips the chat model entirely: the receipt tool runs
+  directly and the reply is a fixed, translated sentence, since the outcome is fully
+  determined; an upload with text still goes through the model so instructions are
+  honored. Images are downscaled (1600px long side, JPEG) before the vision call.
   Category corrections (made via chat or by editing a proposed row) are learned per
   normalized description and reused on future similar purchases, with an LLM
   fallback that recognizes near-duplicate wording it doesn't match exactly.
@@ -295,11 +300,12 @@ styled `window.confirm()` stand-in, used by the delete button above).
 |---|---|---|
 | `LLM_API_KEY` | yes | API key for the selected provider |
 | `LLM_PROVIDER` | no | default `openai` — see "Swapping the LLM provider" below |
-| `LLM_MODEL` | no | default `gpt-4o` — main chat/tool-calling loop |
-| `LLM_FALLBACK_MODEL` | no | default `gpt-4o-mini` |
+| `LLM_MODEL` | no | default `gpt-4o-mini` — main chat/tool-calling loop (matched `gpt-4o` on the model eval at ~14x lower cost) |
+| `LLM_FALLBACK_MODEL` | no | default `gpt-4o` — used only when a primary call errors or times out |
 | `LLM_SUMMARY_MODEL` | no | default `gpt-4o-mini` — rolling chat summary |
-| `LLM_VISION_MODEL` | no | default: same as `LLM_MODEL` — receipt image extraction |
-| `TRANSCRIBE_MODEL` | no | default `whisper-1` — voice-input transcription |
+| `LLM_VISION_MODEL` | no | default `gpt-4o` — receipt image extraction (not tied to `LLM_MODEL`: `gpt-4o-mini` bills images at a large multiplier and reads receipts less reliably) |
+| `TRANSCRIBE_MODEL` | no | default `gpt-4o-mini-transcribe` — voice-input transcription |
+| `LLM_CATEGORIZE_MODEL` | no | default `gpt-4o` — transactions service's categorizer (`gpt-4o-mini` is ~16x cheaper but misfiles brand-only item names more often) |
 | `LANGSMITH_TRACING` / `LANGSMITH_API_KEY` / `LANGSMITH_PROJECT` / `LANGSMITH_ENDPOINT` | no | tracing no-ops if unset |
 
 `DAILY_TURN_LIMIT` (default 200) and `DAILY_RECEIPT_LIMIT` (default 50) are also
@@ -318,7 +324,9 @@ OpenAI client); it goes through the same factory as everything else, just with
 
 Supported today: `openai` (default), `anthropic`, `google`. Switching is `LLM_PROVIDER`
 + matching `LLM_API_KEY` + a model name that provider recognizes (e.g. `LLM_MODEL=
-claude-haiku-4-5` or `LLM_MODEL=gemini-2.5-flash`) — no code change. The receipt-vision
+claude-haiku-4-5` or `LLM_MODEL=gemini-2.5-flash`) — no code change. Also set
+`LLM_FALLBACK_MODEL` and `LLM_VISION_MODEL` for the new provider, since their
+defaults are OpenAI model names. The receipt-vision
 call's multimodal message (`tools/receipts.py`'s `HumanMessage` with an `image_url`
 content block) works unchanged across all three; `langchain-anthropic` and
 `langchain-google-genai` both translate that OpenAI-shaped block internally. The one
@@ -339,6 +347,24 @@ abstraction the way it does `BaseChatModel`. It's centralized the same way, just
 its own registry: `transcribe_client()` and `_TRANSCRIBE_CLIENT_BUILDERS` in
 `app/llm.py`, also keyed on `LLM_PROVIDER`. Adding a provider that supports
 transcription means a builder in that registry too.
+
+### Evaluating a cheaper chat model
+
+Before changing `LLM_MODEL`, run `services/agent/evals/chat_model_eval.py`. It replays
+the agent's known failure modes (the ones the system prompt's rules exist for: skipped
+tool calls on a `[transaction: …]` marker, invented "not found" replies, bulk deletes
+without confirmation, totals quoted from the summary, receipt replies that restate the
+card, …) plus core behaviors (parsing an add, filters, reply language). It uses the
+production context builder, system prompt and tool schemas, with canned tool results,
+so no real data is touched. It reports pass rates and API cost per model:
+
+```bash
+docker cp services/agent/evals bookkeeper-chat-agent-1:/app/
+docker exec bookkeeper-chat-agent-1 uv run python -m evals.chat_model_eval \
+  --models gpt-4o gpt-4.1-mini --runs 3
+```
+
+Keep `--concurrency` low on low OpenAI rate-limit tiers (the eval retries 429s).
 
 ## Layout
 

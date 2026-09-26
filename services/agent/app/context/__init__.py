@@ -1,7 +1,7 @@
-"""Token-budgeted prompt assembly (architecture doc, Chat memory > Context-window
-handling, p. 9). Priority order: system+tools (handled by tool binding in graph.py),
-preferences, working set, current message, recent messages newest-first until the
-budget is spent (never splitting a tool call from its result), rolling summary."""
+"""Prompt assembly (architecture doc, Chat memory > Context-window handling, p. 9):
+system prompt + preferences + working set + rolling summary, then the thread's
+unsummarized messages newest-first within HISTORY_TOKEN_BUDGET (never splitting a
+tool call from its result), then the current message."""
 
 import datetime
 import json
@@ -15,19 +15,44 @@ from .messages import TRANSACTION_MARKER_RE, compact_tool_result
 from .prompts import SYSTEM_PROMPT
 from .tokens import count_tokens
 
-__all__ = ["build_context", "count_tokens", "compact_tool_result", "TRANSACTION_MARKER_RE"]
+__all__ = ["build_context", "first_kept_seq", "count_tokens", "compact_tool_result", "TRANSACTION_MARKER_RE"]
+
+
+def _select_turns(recent_rows: list) -> list[tuple[list, list]]:
+    """The history that goes into the prompt: whole turns, newest first, until
+    HISTORY_TOKEN_BUDGET is spent (a tool call never gets separated from its result).
+    The newest turn is always kept, even alone over budget — dropping the exchange
+    the user is replying to would break the conversation. Returns (rows, rendered
+    messages) per turn, oldest-first."""
+    turns = messages._group_into_turns(recent_rows)
+    selected: list[tuple[list, list]] = []
+    used = 0
+    for i, turn in enumerate(reversed(turns)):
+        full_detail = i < messages.FULL_DETAIL_TURNS
+        rendered = [messages._row_to_message(row, full_detail) for row in turn]
+        turn_tokens = sum(count_tokens(str(m.content)) for m in rendered)
+        if selected and used + turn_tokens > tokens.HISTORY_TOKEN_BUDGET:
+            break
+        selected.append((turn, rendered))
+        used += turn_tokens
+    selected.reverse()
+    return selected
+
+
+def first_kept_seq(recent_rows: list) -> int | None:
+    """seq of the oldest row build_context() keeps from recent_rows — anything older
+    was trimmed by the token budget and must be folded into the summary."""
+    selected = _select_turns(recent_rows)
+    return selected[0][0][0]["seq"] if selected else None
 
 
 def build_context(
     thread: dict,
     preferences: dict | None,
-    recent_rows: list,  # oldest-first, from chat_db.recent_messages
+    recent_rows: list,  # oldest-first, from chat_db.unsummarized_messages
     current_user_text: str,
     current_images: list[str] | None = None,
 ) -> list[AnyMessage]:
-    budget = int(tokens.CONTEXT_WINDOW * (1 - tokens.OUTPUT_RESERVE_FRACTION))
-    used = 0
-
     sys_text = (
         SYSTEM_PROMPT + f'\nToday\'s date is {datetime.date.today().isoformat()}. Resolve "today",'
         ' "yesterday", "last month" etc. against this date, not your training cutoff.'
@@ -67,28 +92,9 @@ def build_context(
     if thread.get("summary"):
         sys_text += f"\nSummary of earlier conversation: {thread['summary']}"
 
-    used += count_tokens(sys_text)
-    used += count_tokens(current_user_text)
-
-    turns = messages._group_into_turns(recent_rows)
-    selected: list[list] = []
-    for i, turn in enumerate(reversed(turns)):
-        full_detail = i < messages.FULL_DETAIL_TURNS
-        turn_tokens = 0
-        rendered = []
-        for row in turn:
-            msg = messages._row_to_message(row, full_detail)
-            rendered.append(msg)
-            turn_tokens += count_tokens(str(msg.content))
-        if used + turn_tokens > budget:
-            break
-        selected.append(rendered)
-        used += turn_tokens
-    selected.reverse()
-
     result: list[AnyMessage] = [SystemMessage(content=sys_text)]
-    for turn in selected:
-        result.extend(turn)
+    for _, rendered in _select_turns(recent_rows):
+        result.extend(rendered)
 
     if current_images:
         content_blocks: list[str | dict[str, Any]] = [{"type": "text", "text": current_user_text}]

@@ -300,7 +300,9 @@ const ChatPanel = forwardRef<ChatPanelHandle, Props>(function ChatPanel(
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file) return;
-    const caption = input.trim() || t("extractReceiptCaption");
+    // Sent as typed, possibly empty: an upload with no text skips the chat model on
+    // the server (see services/agent/app/chat/receipt_turn.py), so don't pad it.
+    const caption = input.trim();
     setInput("");
     setProposed(null); // clear any unconfirmed card from a previous upload
     const target = await requestUploadTarget();
@@ -446,15 +448,17 @@ const ChatPanel = forwardRef<ChatPanelHandle, Props>(function ChatPanel(
             key={i}
             className={`flex max-w-[90%] flex-col gap-1.5 ${m.role === "user" ? "self-end items-end" : "self-start items-start"}`}
           >
-            <div
-              className={`whitespace-pre-wrap rounded-xl px-3 py-2 text-sm leading-relaxed ${
-                m.role === "user"
-                  ? "bg-sky-200 text-sky-900 dark:bg-sky-900/70 dark:text-sky-100"
-                  : "bg-zinc-100 text-zinc-900 dark:bg-zinc-800/80 dark:text-zinc-100"
-              }`}
-            >
-              {m.text}
-            </div>
+            {m.text && (
+              <div
+                className={`whitespace-pre-wrap rounded-xl px-3 py-2 text-sm leading-relaxed ${
+                  m.role === "user"
+                    ? "bg-sky-200 text-sky-900 dark:bg-sky-900/70 dark:text-sky-100"
+                    : "bg-zinc-100 text-zinc-900 dark:bg-zinc-800/80 dark:text-zinc-100"
+                }`}
+              >
+                {m.text}
+              </div>
+            )}
             {m.imageUrl && (
               <ReceiptThumb
                 url={m.imageUrl}

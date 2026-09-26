@@ -213,8 +213,7 @@ class TestBuildContext:
 
     def test_turns_beyond_budget_are_dropped_oldest_first(self, monkeypatch):
         # Force a tiny budget so only the newest turn fits.
-        monkeypatch.setattr(tokens_module, "CONTEXT_WINDOW", 200)
-        monkeypatch.setattr(tokens_module, "OUTPUT_RESERVE_FRACTION", 0.0)
+        monkeypatch.setattr(tokens_module, "HISTORY_TOKEN_BUDGET", 200)
         rows = []
         for i in range(20):
             rows.append(_user_row(f"message number {i} " + "padding " * 20))
@@ -224,3 +223,26 @@ class TestBuildContext:
         # The oldest turn ("message number 0") should have been trimmed out; the most
         # recent one should have survived.
         assert not any("message number 0 " in t for t in human_texts if t != "current question")
+
+    def test_newest_turn_is_kept_even_when_it_alone_exceeds_the_budget(self, monkeypatch):
+        monkeypatch.setattr(tokens_module, "HISTORY_TOKEN_BUDGET", 10)
+        rows = [_user_row("old question"), _assistant_row("old answer"), _user_row("big " * 100), _assistant_row("ok")]
+        messages = context.build_context({}, None, rows, "next")
+        human_texts = [m.content for m in messages if isinstance(m, HumanMessage)]
+        assert any(t.startswith("big") for t in human_texts)
+        assert "old question" not in human_texts
+
+
+class TestFirstKeptSeq:
+    def test_is_the_oldest_row_that_fit_the_budget(self, monkeypatch):
+        monkeypatch.setattr(tokens_module, "HISTORY_TOKEN_BUDGET", 60)
+        rows = []
+        for i in range(6):
+            rows.append({**_user_row(f"question {i} " + "pad " * 10), "seq": 2 * i + 1})
+            rows.append({**_assistant_row(f"answer {i} " + "pad " * 10), "seq": 2 * i + 2})
+        kept = context.first_kept_seq(rows)
+        assert kept is not None and kept > 1  # older turns were trimmed
+        assert rows[kept - 1]["role"] == "user"  # starts on a turn boundary
+
+    def test_none_for_an_empty_history(self):
+        assert context.first_kept_seq([]) is None

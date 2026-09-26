@@ -4,6 +4,7 @@ vision-model call, and the extract_receipt tool itself."""
 import asyncio
 import base64
 import datetime
+import io
 import json
 import os
 from collections import Counter
@@ -15,6 +16,7 @@ from google.auth.transport import requests as google_auth_requests
 from google.oauth2 import id_token as google_id_token
 from langchain_core.messages import HumanMessage
 from langchain_core.tools import BaseTool, tool
+from PIL import Image, ImageOps
 
 from .. import llm, storage
 from ..languages import SUPPORTED_LANGUAGES
@@ -47,6 +49,11 @@ async def _categorize_service_token() -> str | None:
 
 
 PDF_RENDER_DPI = 200
+# Long-side cap for what's sent to the vision model. Phone photos are often 4000px+
+# and several MB of base64; OpenAI downsizes them anyway (to fit 2048px, then 768px
+# on the short side), so the extra pixels only cost upload size and latency — and on
+# patch-billed models (gpt-4.1 family) they cost tokens directly.
+MAX_IMAGE_SIDE = 1600
 
 
 def _pdf_first_page_to_png(pdf_bytes: bytes) -> bytes:
@@ -60,6 +67,24 @@ def _pdf_first_page_to_png(pdf_bytes: bytes) -> bytes:
         return pixmap.tobytes("png")
     finally:
         doc.close()
+
+
+def _shrink_for_vision(image_bytes: bytes, content_type: str) -> tuple[bytes, str]:
+    """Downscales to MAX_IMAGE_SIDE and re-encodes as JPEG. exif_transpose bakes in
+    a phone photo's orientation tag first — re-encoding drops the tag, so skipping
+    this would hand the model a sideways receipt. An image Pillow can't decode is
+    sent unchanged rather than failing the upload."""
+    try:
+        with Image.open(io.BytesIO(image_bytes)) as original:
+            img = ImageOps.exif_transpose(original)
+            img.thumbnail((MAX_IMAGE_SIDE, MAX_IMAGE_SIDE))
+            if img.mode != "RGB":
+                img = img.convert("RGB")
+            out = io.BytesIO()
+            img.save(out, format="JPEG", quality=85, optimize=True)
+    except OSError:
+        return image_bytes, content_type
+    return out.getvalue(), "image/jpeg"
 
 
 _UNKNOWN_MERCHANT_PLACEHOLDERS = {"unknown", "n/a", "na", "none", "store", "merchant", "-"}
@@ -97,7 +122,9 @@ async def _read_receipt(image_bytes: bytes, content_type: str, language: str) ->
             {"type": "image_url", "image_url": {"url": f"data:{content_type};base64,{b64}"}},
         ]
     )
-    response = await llm.vision_model().ainvoke([message])
+    response = await llm.vision_model().ainvoke(
+        [message], config={"run_name": "receipt-vision", "tags": ["receipt-vision"]}
+    )
     text = response.content if isinstance(response.content, str) else str(response.content)
     # Validated immediately after parsing so a malformed/off-spec vision response
     # raises a clear error here instead of an AttributeError several lines later.
@@ -117,17 +144,10 @@ def _majority_category(categories: list[str]) -> str:
 def build_receipt_tools(http_client: Callable[[], httpx.AsyncClient], language: str) -> list[BaseTool]:
     @tool
     async def extract_receipt(object_name: str) -> dict:
-        """Read an uploaded receipt (image or PDF) into ONE proposed transaction for
-        its total, with a summarized description and the category most of its items
-        fall in. object_name looks like receipts/<uid>/<id>.jpg and is given to you in
-        the user's message as '[uploaded receipt: <path>]' — use that exact path.
-        NEVER writes to the table; a card below your reply shows the proposed row for
-        the user to edit and confirm before anything is saved, so keep your own reply
-        to one short sentence (the date, plus something like "edit or confirm below")
-        instead of re-describing it yourself. If the result says not_a_receipt,
-        tell the user plainly that the file doesn't look like a receipt and ask them
-        to upload an actual receipt (photo or PDF) — don't imply anything was saved or
-        proposed."""
+        """Read an uploaded receipt, given in the user's message as '[uploaded
+        receipt: <path>]' (pass that exact path), into one proposed transaction that
+        the user confirms in a card below your reply; nothing is saved. If the result
+        says not_a_receipt, ask the user to upload an actual receipt photo or PDF."""
         image_bytes, content_type = storage.read_bytes(object_name)
 
         if content_type == "application/pdf":
@@ -141,6 +161,7 @@ def build_receipt_tools(http_client: Callable[[], httpx.AsyncClient], language: 
                 )
             ).model_dump()
 
+        image_bytes, content_type = _shrink_for_vision(image_bytes, content_type)
         extracted = await _read_receipt(image_bytes, content_type, language)
 
         if not extracted.is_receipt or not extracted.total_paid:
@@ -157,28 +178,25 @@ def build_receipt_tools(http_client: Callable[[], httpx.AsyncClient], language: 
         service_token = await _categorize_service_token()
         service_headers = {"X-Serverless-Authorization": f"Bearer {service_token}"} if service_token else {}
 
-        async def categorize_one(c: httpx.AsyncClient, name: str) -> str | None:
-            try:
-                resp = await c.post(
-                    "/api/transactions/categorize",
-                    json={"description": name, "amount": extracted.total_paid, "currency": currency, "type": "expense"},
-                    headers=service_headers,
-                )
-            except httpx.HTTPError:
-                return None
-            return resp.json().get("category") if resp.status_code == 200 else None
-
-        # Categorized per item (so past corrections and the categorizer's definitions
-        # apply to each product), then the receipt takes the majority category.
-        # The merchant rides along with each name: "Nasi goreng - Warung Jakarta"
-        # categorizes far better than a bare "Nasi goreng", and matches how the saved
-        # description (and so the user's corrections) is worded.
+        # Every item is categorized (so past corrections and the categorizer's
+        # definitions apply per product) in ONE batch call, then the receipt takes the
+        # majority category. The merchant rides along with each name: "Nasi goreng -
+        # Warung Jakarta" categorizes far better than a bare "Nasi goreng", and matches
+        # how the saved description (and so the user's corrections) is worded.
         names = [
             _fold_merchant(n, extracted.merchant) or "" for n in (extracted.items or [extracted.description or ""])
-        ]
-        async with http_client() as c:
-            results = await asyncio.gather(*(categorize_one(c, n) for n in names))
-        category = _majority_category([r for r in results if r])
+        ][:100]
+        categories: list[str] = []
+        try:
+            async with http_client() as c:
+                resp = await c.post(
+                    "/api/transactions/categorize/batch", json={"descriptions": names}, headers=service_headers
+                )
+            if resp.status_code == 200:
+                categories = resp.json().get("categories", [])
+        except httpx.HTTPError:
+            pass
+        category = _majority_category([c for c in categories if c])
 
         proposed = ReceiptProposedItem(
             occurred_on=extracted.occurred_on,

@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class CategorizeRequest(BaseModel):
@@ -10,3 +10,12 @@ class CategorizeRequest(BaseModel):
 
 class CategorizeResponse(BaseModel):
     category: str
+
+
+class CategorizeBatchRequest(BaseModel):
+    # Bounded so one request can't turn into an unbounded prompt.
+    descriptions: list[str] = Field(min_length=1, max_length=100)
+
+
+class CategorizeBatchResponse(BaseModel):
+    categories: list[str]
