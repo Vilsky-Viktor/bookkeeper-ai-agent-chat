@@ -6,6 +6,7 @@ import httpx
 import pytest
 from PIL import Image
 
+from app import categorize as categorize_module
 from app import tools as tools_module
 from app.models.tool_results import ReceiptExtraction
 from app.tools import receipts as receipts_module
@@ -36,12 +37,29 @@ def build(monkeypatch):
     return _build
 
 
+def _stub_categorize(monkeypatch, categories: dict[str, str]) -> list:
+    """Replaces the model-backed categorizer; returns the recorded (descriptions,
+    corrections) calls."""
+    calls: list = []
+
+    async def fake(descriptions, corrections):
+        calls.append((descriptions, corrections))
+        return [categories.get(d, "other") for d in descriptions]
+
+    monkeypatch.setattr(categorize_module, "categorize", fake)
+    return calls
+
+
 class TestAddTransaction:
-    async def test_success_returns_created_item_with_ui_event(self, build):
+    async def test_categorizes_then_creates_with_the_category(self, build, monkeypatch):
+        calls = _stub_categorize(monkeypatch, {"coffee": "dining"})
+        created = []
+
         def handler(request: httpx.Request) -> httpx.Response:
             assert request.headers["authorization"] == "Bearer test-jwt"
-            body = json.loads(request.content)
-            assert body["transactions"][0]["amount"] == "12.50"
+            if request.url.path == "/api/transactions/corrections":
+                return httpx.Response(200, json={"items": [{"item_key": "tea", "category": "dining"}]})
+            created.append(json.loads(request.content)["transactions"][0])
             return httpx.Response(201, json={"items": [{"id": "txn-1", "amount": "12.50"}]})
 
         add_transaction = _tool_by_name(build(handler), "add_transaction")
@@ -53,9 +71,35 @@ class TestAddTransaction:
             tool_call_id="call-1",
             description="coffee",
         )
-        assert result == {"ui_event": "table_changed", "id": "txn-1", "amount": "12.50"}
 
-    async def test_server_error_raises(self, build):
+        assert result == {"ui_event": "table_changed", "id": "txn-1", "amount": "12.50"}
+        assert created[0]["category"] == "dining" and created[0]["amount"] == "12.50"
+        assert [c.item_key for c in calls[0][1]] == ["tea"]  # the user's corrections were used
+
+    async def test_income_is_not_categorized(self, build, monkeypatch):
+        calls = _stub_categorize(monkeypatch, {})
+        created = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            created.append(json.loads(request.content)["transactions"][0])
+            return httpx.Response(201, json={"items": [{"id": "txn-1"}]})
+
+        add_transaction = _tool_by_name(build(handler), "add_transaction")
+        await add_transaction.coroutine(
+            occurred_on="2026-01-01",
+            type="income",
+            amount="100",
+            currency="USD",
+            tool_call_id="c",
+            description="salary",
+        )
+
+        assert created[0]["category"] == "income"
+        assert calls == []
+
+    async def test_server_error_raises(self, build, monkeypatch):
+        _stub_categorize(monkeypatch, {})
+
         def handler(request: httpx.Request) -> httpx.Response:
             return httpx.Response(500, json={"detail": "boom"})
 
@@ -406,21 +450,21 @@ class TestExtractReceipt:
             "Eggs - Alfamart": "groceries",
             "Shampoo - Alfamart": "health",
         }
-        seen = []
+        calls = _stub_categorize(monkeypatch, categories)
 
         def handler(request: httpx.Request) -> httpx.Response:
-            # One batch request for the whole receipt, not one per item.
-            assert request.url.path == "/api/transactions/categorize/batch"
-            names = json.loads(request.content)["descriptions"]
-            seen.append(names)
-            return httpx.Response(200, json={"categories": [categories[n] for n in names]})
+            assert request.url.path == "/api/transactions/corrections"
+            return httpx.Response(200, json={"items": [{"item_key": "eggs - alfamart", "category": "groceries"}]})
 
         tool = _tool_by_name(build(handler), "extract_receipt")
         result = await tool.coroutine(object_name="receipts/u1/x.jpg")
 
         assert result["ui_event"] == "receipt_proposed"
-        # Each item is categorized with the merchant attached, for context.
-        assert seen == [["Rice 1kg - Alfamart", "Eggs - Alfamart", "Shampoo - Alfamart"]]
+        # One categorize call for the whole receipt, each item with the merchant
+        # attached (for context), with the user's corrections.
+        ((names, corrections),) = calls
+        assert names == ["Rice 1kg - Alfamart", "Eggs - Alfamart", "Shampoo - Alfamart"]
+        assert [c.item_key for c in corrections] == ["eggs - alfamart"]
         assert len(result["items"]) == 1
         item = result["items"][0]
         assert item["amount"] == "164100"
@@ -439,17 +483,15 @@ class TestExtractReceipt:
                 )
             ),
         )
+        calls = _stub_categorize(monkeypatch, {"Dinner for two": "dining"})
 
-        def handler(request: httpx.Request) -> httpx.Response:
-            assert json.loads(request.content)["descriptions"] == ["Dinner for two"]
-            return httpx.Response(200, json={"categories": ["dining"]})
-
-        tool = _tool_by_name(build(handler), "extract_receipt")
+        tool = _tool_by_name(build(lambda r: httpx.Response(200, json={"items": []})), "extract_receipt")
         result = await tool.coroutine(object_name="receipts/u1/x.jpg")
 
+        assert calls[0][0] == ["Dinner for two"]
         assert result["items"][0]["category"] == "dining"
 
-    async def test_categorize_call_failure_defaults_to_other(self, build, monkeypatch):
+    async def test_unavailable_corrections_still_categorize(self, build, monkeypatch):
         monkeypatch.setattr(receipts_module.storage, "read_bytes", lambda name: (b"imgdata", "image/jpeg"))
         monkeypatch.setattr(
             receipts_module,
@@ -458,11 +500,13 @@ class TestExtractReceipt:
                 return_value=ReceiptExtraction(is_receipt=True, currency="usd", total_paid="5.00", items=["widget"])
             ),
         )
+        calls = _stub_categorize(monkeypatch, {"widget": "shopping"})
 
         tool = _tool_by_name(build(lambda r: httpx.Response(500)), "extract_receipt")
         result = await tool.coroutine(object_name="receipts/u1/x.jpg")
 
-        assert result["items"][0]["category"] == "other"
+        assert calls[0][1] == []  # no history, but still categorized
+        assert result["items"][0]["category"] == "shopping"
 
 
 class TestMajorityCategory:

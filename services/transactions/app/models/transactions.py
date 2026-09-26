@@ -9,7 +9,7 @@ class TransactionIn(BaseModel):
     type: Literal["expense", "income"]
     amount: str  # decimal string, e.g. "12.50"
     currency: str
-    category: Optional[str] = None
+    category: str  # the agent categorizes before creating (app/categorize.py there)
     description: Optional[str] = None
     receipt_uri: Optional[str] = None
     batch_id: Optional[str] = None

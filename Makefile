@@ -53,7 +53,7 @@ eval-chat: ## Chat-model eval; pass options with args="--models gpt-4o-mini --ru
 	$(COMPOSE) exec agent uv run python -m evals.chat_model_eval $(args)
 
 eval-categorize: ## Categorizer eval; pass options with args="--models gpt-4o gpt-4o-mini"
-	$(COMPOSE) exec transactions uv run python -m evals.categorize_eval $(args)
+	$(COMPOSE) exec agent uv run python -m evals.categorize_eval $(args)
 
 reset: ## Delete ALL local data (database, test accounts, receipts), after confirming
 	@printf "This deletes the local database, emulator accounts and receipts. Type 'yes' to continue: "; \

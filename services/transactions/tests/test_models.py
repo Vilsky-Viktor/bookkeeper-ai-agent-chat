@@ -6,7 +6,7 @@ from app.models.transactions import BulkDeleteFilterPayload, CreateBatchRequest,
 
 class TestTransactionIn:
     def test_valid_transaction(self):
-        t = TransactionIn(occurred_on="2026-01-01", type="expense", amount="12.50", currency="usd")
+        t = TransactionIn(occurred_on="2026-01-01", type="expense", amount="12.50", currency="usd", category="dining")
         assert t.currency == "USD"  # uppercased by the validator
 
     def test_currency_wrong_length_rejected(self):
@@ -21,9 +21,12 @@ class TestTransactionIn:
         with pytest.raises(ValidationError):
             TransactionIn(occurred_on="not-a-date", type="expense", amount="12.50", currency="USD")
 
+    def test_category_is_required(self):
+        with pytest.raises(ValidationError):
+            TransactionIn(occurred_on="2026-01-01", type="expense", amount="12.50", currency="USD")
+
     def test_optional_fields_default_to_none(self):
-        t = TransactionIn(occurred_on="2026-01-01", type="income", amount="100", currency="EUR")
-        assert t.category is None
+        t = TransactionIn(occurred_on="2026-01-01", type="income", amount="100", currency="EUR", category="income")
         assert t.description is None
         assert t.receipt_uri is None
         assert t.batch_id is None

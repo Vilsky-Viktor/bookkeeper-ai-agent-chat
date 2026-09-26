@@ -5,9 +5,7 @@ from fastapi import FastAPI
 
 from . import db
 from .models.api import HealthzResponse
-from .routers import aggregates
-from .routers import categorize as categorize_router
-from .routers import transactions
+from .routers import aggregates, corrections, transactions
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("transactions")
@@ -26,7 +24,7 @@ app = FastAPI(title="transactions-service", lifespan=lifespan)
 
 app.include_router(transactions.router, prefix="/api/transactions")
 app.include_router(aggregates.router, prefix="/api/transactions")
-app.include_router(categorize_router.router, prefix="/api/transactions")
+app.include_router(corrections.router, prefix="/api/transactions")
 
 
 @app.get("/healthz", response_model=HealthzResponse)

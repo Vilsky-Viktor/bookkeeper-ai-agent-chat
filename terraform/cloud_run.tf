@@ -3,15 +3,15 @@
 # (Caddyfile routes /api/transactions/* straight there, bypassing `agent`), so
 # Firebase Hosting rewrites need to reach both services directly, same shape as
 # Caddy locally. Cloud Run's own IAM is all-or-nothing per service, so it can't gate
-# just the internal routes (POST /categorize, POST /internal/summarize) — those are
-# gated in application code instead (require_service_caller).
+# just the internal route (agent's POST /internal/summarize) — that's gated in
+# application code instead (require_service_caller).
 #
 # Env vars below are docker-compose.yml's `environment:` blocks translated for
 # production: every `*_EMULATOR_HOST` / `STORAGE_MODE` / `TASKS_MODE` /
 # `SKIP_SERVICE_AUTH` local-only var is dropped entirely (their absence is what
 # selects each module's production branch), GOOGLE_CLOUD_PROJECT becomes
 # var.project_id, and DATABASE_URL/CHAT_DATABASE_URL/LLM_API_KEY/LANGSMITH_API_KEY
-# come from Secret Manager instead of being inlined.
+# come from Secret Manager instead of being inlined. Only the agent calls an LLM.
 
 resource "google_cloud_run_v2_service" "transactions" {
   project  = var.project_id
@@ -42,27 +42,8 @@ resource "google_cloud_run_v2_service" "transactions" {
         }
       }
       env {
-        name = "LLM_API_KEY"
-        value_source {
-          secret_key_ref {
-            secret  = google_secret_manager_secret.llm_api_key.secret_id
-            version = "latest"
-          }
-        }
-      }
-      env {
         name  = "GOOGLE_CLOUD_PROJECT"
         value = var.project_id
-      }
-      env {
-        name  = "LLM_MODEL"
-        value = var.llm_model
-      }
-      env {
-        # service_auth.py checks POST /categorize's caller's token email against
-        # this — only agent-sa is authorized to call that endpoint.
-        name  = "AGENT_SERVICE_ACCOUNT"
-        value = google_service_account.agent.email
       }
 
       volume_mounts {

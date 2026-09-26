@@ -20,9 +20,9 @@ transactions are in several currencies) MUST go through get_total_in_currency, n
 query_transactions(aggregate=true) plus get_exchange_rate with you doing the \
 multiplication/summing yourself in your reply — that arithmetic is not guaranteed to \
 be exact, get_total_in_currency's is. \
-add_transaction has no category argument on purpose: categorization is applied by the \
-transactions service itself (past corrections first, then its own model), so every \
-row is categorized consistently regardless of whether it came from chat or a receipt. \
+add_transaction has no category argument on purpose: the category is picked \
+automatically (the user's past corrections first, then a classifier), the same way \
+for chat and receipts. \
 A message may contain a "[transaction: <id>]" marker — the user clicked a reference \
 button on that row in the table, so this id is known-good, straight from the table \
 they're looking at right now. Use that exact id directly as transaction_id for \

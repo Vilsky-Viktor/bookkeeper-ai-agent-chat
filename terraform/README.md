@@ -33,14 +33,12 @@ reasoning behind that piece.
 
 ## Service-to-service auth
 
-`services/agent/app/service_auth.py` and
-`services/transactions/app/service_auth.py`'s `require_service_caller` verify a
-Google-signed OIDC ID token in `X-Serverless-Authorization` — signature/expiry via
-Google's public certs, a fixed `AUDIENCE` string both the minting side and the
-verifying side agree on (not a real URL — see each file's docstring), and that the
-signer is the one specific service account expected to be calling
-(`AGENT_SERVICE_ACCOUNT` for `POST /categorize`, `TASKS_INVOKER_SERVICE_ACCOUNT` for
-`POST /internal/summarize`), both wired in as env vars by `cloud_run.tf`. Locally
+`services/agent/app/service_auth.py`'s `require_service_caller` verifies a
+Google-signed OIDC ID token in `X-Serverless-Authorization` on the one internal route,
+`POST /internal/summarize` — signature/expiry via Google's public certs, a fixed
+`AUDIENCE` string the minting and verifying sides agree on (not a real URL — see the
+file's docstring), and that the signer is `TASKS_INVOKER_SERVICE_ACCOUNT` (an env var
+set by `cloud_run.tf`). Locally
 it's skipped entirely via `SKIP_SERVICE_AUTH=true`.
 
 `services/agent/app/tasks.py`'s `enqueue_summarize()` mints the Cloud Tasks side of
@@ -54,10 +52,8 @@ next unrelated `terraform apply` (the `env` block is a list Terraform treats as
 authoritative; `lifecycle.ignore_changes` can't target one entry within it).
 Instead, `main.py`'s `chat()` derives it per-request from the triggering request's
 `Host` header — always correct, no bootstrap step, no env var to keep in sync.
-`receipts.py`'s `extract_receipt` tool mints its own token the same way on the
-`agent` → `transactions` side, as whatever identity `agent`'s own Cloud Run
-revision runs as (`agent-sa`, via Application Default Credentials — no explicit
-credential file).
+`agent` → `transactions` calls need no service identity: they forward the user's own
+JWT, so row-level security applies exactly as for the web app's calls.
 
 ## Usage
 

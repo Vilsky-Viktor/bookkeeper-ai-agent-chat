@@ -6,7 +6,7 @@ from fastapi.responses import JSONResponse
 
 from ... import db, signal
 from ...auth import require_uid
-from ...categorize import categorize, save_correction
+from ...corrections import save_correction
 from ...idempotency import run_idempotent
 from ...models.transactions import CreateBatchRequest, TransactionsListResponse
 from ...money import InvalidAmount, to_minor
@@ -35,7 +35,6 @@ async def create_transactions(
                     amount_minor = to_minor(t.amount, t.currency)
                 except InvalidAmount as e:
                     raise HTTPException(status_code=400, detail=str(e)) from e
-                category = t.category or await categorize(conn, uid, t.description, amount_minor, t.currency, t.type)
                 row = await conn.fetchrow(
                     """
                     INSERT INTO transactions
@@ -49,7 +48,7 @@ async def create_transactions(
                     t.type,
                     amount_minor,
                     t.currency,
-                    category,
+                    t.category,
                     t.description,
                     t.receipt_uri,
                     t.batch_id,
@@ -62,7 +61,7 @@ async def create_transactions(
                 # with one-off receipt summaries that crowd out real corrections in
                 # the categorizer's prompt.
                 if t.receipt_uri and t.category and t.category != t.suggested_category:
-                    await save_correction(conn, uid, t.description, category)
+                    await save_correction(conn, uid, t.description, t.category)
             return 201, {"items": created}
 
         status, response, replayed = await run_idempotent(conn, uid, idempotency_key, payload, handler)

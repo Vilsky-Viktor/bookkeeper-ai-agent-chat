@@ -66,8 +66,8 @@ services:
     # Source is bind-mounted and uvicorn reloads on change, like web's Vite server —
     # only dependency (pyproject.toml/uv.lock) changes need a rebuild.
     command: ["uv", "run", "poe", "dev"]
-    volumes: ["./services/transactions/app:/app/app", "./services/transactions/evals:/app/evals"]
-    env_file: .env
+    volumes: ["./services/transactions/app:/app/app"]
+    # No env_file: this service calls no LLM, so it never sees the API key.
     environment:
       # Bytecode lives in the container only: never written into the mounted source,
       # and never read from it (host test runs write __pycache__ there too, and a
@@ -77,7 +77,6 @@ services:
       FIREBASE_AUTH_EMULATOR_HOST: firebase:9099
       FIRESTORE_EMULATOR_HOST: firebase:8081
       GOOGLE_CLOUD_PROJECT: demo-bookkeeping
-      SKIP_SERVICE_AUTH: "true"
     depends_on:
       migrate: { condition: service_completed_successfully }
       firebase: { condition: service_started }

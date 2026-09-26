@@ -63,14 +63,12 @@ def client(patch_uid_conn, patch_signal):
     from fastapi.testclient import TestClient
 
     from app.auth import require_uid
-    from app.routers import aggregates
-    from app.routers import categorize as categorize_router
-    from app.routers import transactions
+    from app.routers import aggregates, corrections, transactions
 
     app = FastAPI()
     app.include_router(transactions.router, prefix="/api/transactions")
     app.include_router(aggregates.router, prefix="/api/transactions")
-    app.include_router(categorize_router.router, prefix="/api/transactions")
+    app.include_router(corrections.router, prefix="/api/transactions")
     app.dependency_overrides[require_uid] = lambda: "test-uid"
 
     return TestClient(app)

@@ -7,8 +7,8 @@
 # binding exists here on purpose: both Cloud Run services are public (see
 # cloud_run.tf) because the web frontend calls `transactions` directly, bypassing
 # `agent` (see the Caddyfile's routing) — Cloud Run's own IAM is all-or-nothing per
-# service, so it can't gate just the internal routes. Those (`POST /categorize`,
-# `POST /internal/summarize`) are gated in application code instead
+# service, so it can't gate just the internal route. That one (agent's
+# `POST /internal/summarize`) is gated in application code instead
 # (`require_service_caller`), which is what actually needs the OIDC token
 # tasks-invoker-sa mints — no Cloud Run IAM grant required for that token to exist.
 

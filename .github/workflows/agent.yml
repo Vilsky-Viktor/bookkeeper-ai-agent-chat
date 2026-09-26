@@ -19,6 +19,7 @@ on:
       # Read by tests/test_contracts.py (lists this service keeps copies of).
       - "services/transactions/app/money.py"
       - "web/src/lib/i18n/languages.ts"
+      - "web/src/lib/i18n/locales/en.ts"
   push:
     branches: [main]
     tags: ["agent-v*"]

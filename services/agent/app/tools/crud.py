@@ -6,6 +6,7 @@ from typing import Annotated, Callable, Optional
 import httpx
 from langchain_core.tools import BaseTool, InjectedToolCallId, tool
 
+from .. import categorize as categorizer
 from ..models.tool_results import TableChangedResult, ToolError
 from .filters import filter_params
 
@@ -22,13 +23,18 @@ def build_crud_tools(http_client: Callable[[], httpx.AsyncClient]) -> list[BaseT
     ) -> dict:
         """Add one transaction. occurred_on is YYYY-MM-DD, amount a decimal string
         like '12.50', currency a 3-letter ISO 4217 code, type 'expense' or 'income'.
-        There's no category argument: the transactions service categorizes each row
-        itself. description is a short, human-readable phrase naming what it was for,
+        There's no category argument: it's picked automatically (the user's past
+        corrections first). description is a short, human-readable phrase naming what it was for,
         plus the merchant/service when identifiable (e.g. "noodles purchased at
         7-Eleven", "Claude subscription payment"), not just the bare item. Past
         category corrections match on this text, so reuse the same wording for the
         same recurring purchase every time."""
         async with http_client() as c:
+            if type == "income":
+                category = "income"
+            else:
+                corrections = await categorizer.fetch_corrections(c)
+                (category,) = await categorizer.categorize([description or ""], corrections)
             resp = await c.post(
                 "/api/transactions/transactions",
                 json={
@@ -38,6 +44,7 @@ def build_crud_tools(http_client: Callable[[], httpx.AsyncClient]) -> list[BaseT
                             "type": type,
                             "amount": amount,
                             "currency": currency,
+                            "category": category,
                             "description": description,
                         }
                     ]

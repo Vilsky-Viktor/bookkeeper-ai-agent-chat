@@ -6,6 +6,7 @@ import ast
 import re
 from pathlib import Path
 
+from app.categorize import CATEGORIES, CATEGORY_DEFINITIONS
 from app.chat.receipt_turn import _REPLIES
 from app.languages import SUPPORTED_LANGUAGES
 from app.models.tool_results import _ZERO_DECIMAL_CURRENCIES
@@ -32,3 +33,14 @@ def test_every_supported_language_has_receipt_replies():
 def test_supported_languages_match_the_web_app():
     web = (REPO / "web/src/lib/i18n/languages.ts").read_text()
     assert set(re.findall(r'code: "([a-z]{2})"', web)) == set(SUPPORTED_LANGUAGES)
+
+
+def test_categories_match_the_web_apps_category_labels():
+    en = (REPO / "web/src/lib/i18n/locales/en.ts").read_text()
+    block = re.search(r"categories: \{(.*?)\}", en, re.S)
+    assert block, "categories block not found in en.ts"
+    assert set(re.findall(r"^\s*(\w+):", block.group(1), re.M)) == set(CATEGORIES)
+
+
+def test_every_category_except_income_has_a_definition_for_the_model():
+    assert set(CATEGORY_DEFINITIONS) == set(CATEGORIES) - {"income"}

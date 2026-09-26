@@ -154,12 +154,22 @@ class TestCreateTransactions:
                         "type": "expense",
                         "amount": "not-a-number",
                         "currency": "USD",
+                        "category": "dining",
                     }
                 ]
             },
             headers={"Idempotency-Key": "key-1"},
         )
         assert res.status_code == 400
+
+    def test_category_is_required(self, client):
+        # The agent categorizes before creating; this service no longer does.
+        res = client.post(
+            "/api/transactions/transactions",
+            json={"transactions": [{"occurred_on": "2026-01-15", "type": "expense", "amount": "1", "currency": "USD"}]},
+            headers={"Idempotency-Key": "key-1"},
+        )
+        assert res.status_code == 422
 
     def test_missing_idempotency_key_returns_422(self, client):
         res = client.post(
@@ -179,7 +189,7 @@ class TestCreateTransactions:
                 "type": "expense",
                 "amount": "12.50",
                 "currency": "USD",
-                "category": None,
+                "category": "dining",
                 "description": "coffee",
                 "receipt_uri": None,
                 "batch_id": None,
@@ -201,6 +211,7 @@ class TestCreateTransactions:
                         "type": "expense",
                         "amount": "12.50",
                         "currency": "USD",
+                        "category": "dining",
                         "description": "coffee",
                     }
                 ]

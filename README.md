@@ -82,9 +82,9 @@ categorization, context assembly, tool HTTP calls, quotas, pagination, etc.) wit
 mocked DB connections and HTTP transports — no live Postgres or network access needed
 to run them — plus a handful of endpoint-level tests via FastAPI's `TestClient`,
 covering both success and error paths (400/401/404/409/429/501 as appropriate).
-Each service also has a `tests/test_contracts.py` that reads the other side's source
-file and fails if a list copied across services drifts (categories, supported
-languages, zero-decimal currencies) — the services share no code on purpose, so this
+The agent also has a `tests/test_contracts.py` that reads the other side's source file
+and fails if a list it keeps a copy of drifts (categories and supported languages vs
+the web app, zero-decimal currencies vs the transactions service) — the services share no code on purpose, so this
 is what keeps those copies honest. The pull-request workflows also run on changes to
 those other files.
 
@@ -125,7 +125,7 @@ boundary rather than hitting a network). The chat pane is covered through its pa
   or, unambiguously, from an explicit `#` reference button on any table row, which
   drops a `[transaction: <id>]` marker into the message box.
 - **Directly editable table.** Every column (date via a native date picker, category
-  via a dropdown built from the same list the backend categorizer uses, amount,
+  via a dropdown built from the same list the categorizer uses, amount,
   currency, description — full text on hover via a tooltip once it's truncated) is
   also editable in place, and each row has its own delete button, gated behind a
   custom confirmation dialog (`ConfirmDialog.tsx`, styled to match the rest of the
@@ -148,18 +148,18 @@ boundary rather than hitting a network). The chat pane is covered through its pa
   merchant, plus a short summary and the names of the items bought. That becomes ONE
   proposed transaction for the total (per-item price splitting proved unreliable
   across real receipts). Its category is the one most of the items fall into: each
-  item name goes through the same backend categorizer, and the majority wins (a tie
+  item name goes through the same categorizer as chat adds, and the majority wins (a tie
   goes to whichever category appears first on the receipt). The UI shows the proposal
   as an editable row (description on its own line; category, amount and currency
   below) — nothing is written until you confirm. The category is a dropdown built
-  from the same built-in list the backend categorizer uses. There's no separate
+  from the same built-in list the categorizer uses. There's no separate
   merchant field: a merchant name, when identifiable, is folded into the description.
   A plain upload (no typed text) skips the chat model entirely: the receipt tool runs
   directly and the reply is a fixed, translated sentence, since the outcome is fully
   determined; an upload with text still goes through the model so instructions are
   honored. Photos are downscaled in the browser before upload (1600px long side,
   JPEG, phone rotation applied), so that's also what's stored; PDFs upload as-is. All
-  of a receipt's items are categorized in a single batch request.
+  of a receipt's items are categorized in a single model call.
   Category corrections (made via chat or by editing a proposed row) are learned per
   normalized description and reused on future similar purchases, with an LLM
   fallback that recognizes near-duplicate wording it doesn't match exactly.
@@ -205,7 +205,6 @@ agent ──LLM provider (chat + vision)──► primary model, with a fallback
 agent ──Firebase Auth emulator──► verify_id_token (never skipped, even locally)
 agent ──Firestore emulator──► sync/{uid} live-update signal
 agent ──currency-api (jsdelivr CDN)──► exchange-rate lookups (no key, free)
-transactions ──LLM provider──► categorizer (per-row, or one batch call per receipt)
 ```
 
 The agent never impersonates a user: every call it makes to the transactions service
@@ -228,10 +227,10 @@ the agent has no elevated identity of its own.
   - `filters.py` — the filter-clause builder shared by `list.py`, `delete.py`, and
     `aggregates.py` (currency/category/type/date range/amount range/description →
     SQL `WHERE` clause), so the three don't drift out of sync with each other.
-  - `categorize.py` — corrections-first, LLM-fallback categorization, keyed on the
-    normalized transaction description (no merchant field). `categorize()` handles
-    one row; `categorize_many()` (behind `POST /categorize/batch`) handles a whole
-    receipt with at most one model call.
+  - `corrections.py` — the user's category corrections, keyed on the normalized
+    description (no merchant field): saved when the user changes a category (table
+    edit, or a receipt's proposed one), listed via `GET /corrections` for the agent's
+    categorizer. This service calls no LLM.
   - `money.py` — amounts are stored as integer minor units (`amount_minor`), scaled
     by each currency's ISO 4217 exponent (most currencies 2 decimals, some 0 or 3),
     so aggregation never touches floating point.
@@ -239,7 +238,7 @@ the agent has no elevated identity of its own.
     the same key with the same request body replays the stored response, a different
     body gets a 409.
   - `models/` — Pydantic request/response models, organized by domain
-    (`transactions.py`, `aggregates.py`, `categorize.py`, `api.py`) — every FastAPI
+    (`transactions.py`, `aggregates.py`, `corrections.py`, `api.py`) — every FastAPI
     endpoint validates through one of these via `response_model=` rather than
     returning a plain dict.
 - **`services/agent`** — a LangGraph `StateGraph` (not `langgraph.prebuilt`'s agent,
@@ -286,7 +285,7 @@ the agent has no elevated identity of its own.
 
 | Tool | Purpose |
 |---|---|
-| `add_transaction` | Add an expense or income. No category argument — the transactions service categorizes it. |
+| `add_transaction` | Add an expense or income. No category argument — it's categorized automatically (corrections first, then the categorizer). |
 | `edit_transaction` | Edit fields on an existing transaction by id. Resolves an explicit `[transaction: <id>]` marker with priority. |
 | `delete_transaction` | Delete one transaction by id. |
 | `delete_transactions_matching` | Delete every transaction matching a filter (or all of them) in one server-side operation. |
@@ -356,7 +355,7 @@ database, twice, on each PR that touches `db/`.
 | `LLM_SUMMARY_MODEL` | no | default `gpt-4o-mini` — rolling chat summary |
 | `LLM_VISION_MODEL` | no | default `gpt-4o` — receipt image extraction (not tied to `LLM_MODEL`: `gpt-4o-mini` bills images at a large multiplier and reads receipts less reliably) |
 | `TRANSCRIBE_MODEL` | no | default `gpt-4o-mini-transcribe` — voice-input transcription |
-| `LLM_CATEGORIZE_MODEL` | no | default `gpt-4o` — transactions service's categorizer (`gpt-4o-mini` is ~16x cheaper but misfiles brand-only item names more often) |
+| `LLM_CATEGORIZE_MODEL` | no | default `gpt-4o` — the categorizer (`gpt-4.1-mini` is ~6x cheaper for a small accuracy cost; `gpt-4o-mini` ~16x but misfiles brand-only names more often — see `make eval-categorize`) |
 | `LLM_HISTORY_TOKEN_BUDGET` | no | default `6000` — max tokens of conversation history per model call; anything trimmed is folded into the summary |
 | `LANGSMITH_TRACING` / `LANGSMITH_API_KEY` / `LANGSMITH_PROJECT` / `LANGSMITH_ENDPOINT` | no | tracing no-ops if unset |
 
@@ -419,8 +418,7 @@ LangSmith's per-run token counts):
 - **Batching and smaller inputs.** One categorize call per receipt, not per item;
   images are downscaled before the vision call.
 - **Visibility.** LangSmith tags per purpose (`turn`, `receipt-direct`,
-  `receipt-vision`, `summarize`); the transactions service logs its categorizer's
-  token usage.
+  `receipt-vision`, `categorize`, `summarize`).
 
 ### Evaluating a cheaper chat model
 
@@ -439,13 +437,12 @@ docker compose exec agent uv run python -m evals.chat_model_eval \
 
 Keep `--concurrency` low on low OpenAI rate-limit tiers (the eval retries 429s).
 
-The categorizer has the same kind of eval, `services/transactions/evals/categorize_eval.py`:
+The categorizer has the same kind of eval, `services/agent/evals/categorize_eval.py`:
 labeled items (brands, several languages, tobacco/alcohol, ambiguous ones) plus items
-judged against a correction history, run through the real `categorize()` and
-`categorize_many()` with the database mocked:
+judged against a correction history, run through the real `classify()`:
 
 ```bash
-docker compose exec transactions uv run python -m evals.categorize_eval \
+docker compose exec agent uv run python -m evals.categorize_eval \
   --models gpt-4o gpt-4o-mini --runs 3
 ```
 
@@ -460,10 +457,10 @@ firebase/                    Auth + Firestore emulator container; emulator-data/
                                holds its persisted state (gitignored)
 gcs/                         local receipt storage (fake-gcs, one folder per bucket; gitignored)
 Makefile                     common tasks — `make` lists them
-services/transactions/       FastAPI — owns Postgres, CRUD, categorization, idempotency
+services/transactions/       FastAPI — owns Postgres, CRUD, category corrections, idempotency
   pyproject.toml / uv.lock own uv project — deps, black/isort/mypy, poe tasks
   app/filters.py                shared filter-clause builder (list/delete/aggregates)
-  app/categorize.py             corrections-first, LLM-fallback categorization
+  app/corrections.py            category corrections (saved on edits, listed for the agent)
   app/money.py                  decimal string <-> integer minor-unit conversion
   app/models/                   Pydantic request/response models, by domain
   app/routers/aggregates.py     sums by currency/category/month
@@ -484,8 +481,9 @@ services/agent/               FastAPI + LangGraph — owns chat DB, SSE chat, to
                                  api, tool_results)
   app/languages.py              supported chat/receipt-translation languages
   app/graph.py                  the LangGraph StateGraph (model ⇄ tools loop)
-  evals/chat_model_eval.py      model comparison on known failure modes (not shipped)
-services/transactions/evals/  categorize_eval.py — categorizer model comparison
+  app/categorize.py             categorization: corrections first, then one model call
+  evals/                        chat_model_eval.py, categorize_eval.py — model
+                                 comparisons (not shipped)
 web/                          React + Vite + TypeScript — chat pane + transactions table
   eslint.config.js / .prettierrc.json  lint + format config
   src/lib/i18n/                  locales/<lang>.ts (typed against en.ts), LanguageProvider,
@@ -516,12 +514,10 @@ Firebase Auth's Google sign-in provider (enabled once by hand in the console).
 The schema is applied by the `migrate` Cloud Run Job, run by
 `.github/workflows/db.yml` on a `db-v*` tag (push it before the service tags of a
 release that needs a schema change).
-Service-to-service calls (`transactions`'s `POST /categorize` and
-`/categorize/batch`, `agent`'s
-`POST /internal/summarize`) are authenticated with real Google-signed OIDC tokens,
-not a stub — `service_auth.py` verifies signature, a fixed audience, and the
-specific expected caller identity; `tasks.py` and `receipts.py` are the two
-minters. `agent`'s own callback URL (where Cloud Tasks POSTs back to) is derived
+The one service-to-service call, Cloud Tasks → `agent`'s `POST /internal/summarize`,
+is authenticated with a real Google-signed OIDC token, not a stub — `service_auth.py`
+verifies signature, a fixed audience, and the expected caller identity; `tasks.py` is
+the minter. (`agent` → `transactions` calls just forward the user's own JWT.) `agent`'s own callback URL (where Cloud Tasks POSTs back to) is derived
 per-request from the triggering request's `Host` header rather than an env var —
 no manual bootstrap step needed, see `terraform/README.md`'s "Service-to-service
 auth" for why. See `terraform/README.md` for the full walkthrough.

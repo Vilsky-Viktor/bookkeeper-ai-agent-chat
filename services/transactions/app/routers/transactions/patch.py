@@ -6,7 +6,7 @@ from fastapi.responses import JSONResponse
 
 from ... import db, signal
 from ...auth import require_uid
-from ...categorize import save_correction
+from ...corrections import save_correction
 from ...idempotency import run_idempotent
 from ...models.transactions import PatchIdempotencyPayload, TransactionOut, TransactionPatch
 from ...money import InvalidAmount, to_decimal_string, to_minor
@@ -74,7 +74,7 @@ async def patch_transaction(
                 transaction_id,
             )
 
-            # See categorize.py's save_correction: keyed purely on the normalized
+            # See corrections.py's save_correction: keyed purely on the normalized
             # description, so this correction only reliably reapplies to a
             # near-identical description in the future (the LLM fallback path handles
             # near-duplicates that don't match exactly).

@@ -56,15 +56,6 @@ resource "google_secret_manager_secret_iam_member" "llm_api_key_agent" {
   member    = "serviceAccount:${google_service_account.agent.email}"
 }
 
-# transactions doesn't call an LLM directly for chat, but categorize.py's LLM
-# fallback (services/transactions/app/categorize.py) does.
-resource "google_secret_manager_secret_iam_member" "llm_api_key_transactions" {
-  project   = var.project_id
-  secret_id = google_secret_manager_secret.llm_api_key.secret_id
-  role      = "roles/secretmanager.secretAccessor"
-  member    = "serviceAccount:${google_service_account.transactions.email}"
-}
-
 resource "google_secret_manager_secret_iam_member" "langsmith_api_key_agent" {
   project   = var.project_id
   secret_id = google_secret_manager_secret.langsmith_api_key.secret_id

@@ -10,8 +10,6 @@ dependencies = [
     "pydantic==2.9.2",
     "firebase-admin==6.5.0",
     "google-cloud-firestore==2.18.0",
-    "google-auth==2.58.0",
-    "openai==3.17.0",
     "python-multipart==0.0.9",
 ]
 
@@ -32,19 +30,19 @@ package = false
 [tool.poe.tasks]
 start = "uvicorn app.main:app --host 0.0.0.0 --port 8000"
 dev = "uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir app"
-lint = "mypy app evals"
+lint = "mypy app"
 test = "pytest"
 
 # Plain-string tasks run via exec (no shell), so `&&` chains need the explicit shell
 # task type instead.
 [tool.poe.tasks.format]
-shell = "black app tests evals && isort app tests evals"
+shell = "black app tests && isort app tests"
 
 [tool.poe.tasks."format:check"]
-shell = "black --check app tests evals && isort --check app tests evals"
+shell = "black --check app tests && isort --check app tests"
 
 [tool.poe.tasks.check]
-shell = "black --check app tests evals && isort --check app tests evals && mypy app evals && pytest"
+shell = "black --check app tests && isort --check app tests && mypy app && pytest"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
