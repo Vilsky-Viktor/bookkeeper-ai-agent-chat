@@ -1,4 +1,5 @@
 import { CLIENT_ID, auth } from "./firebase";
+import type { ReceiptContentType } from "./receiptUpload";
 
 export async function authHeaders(extra?: Record<string, string>): Promise<Record<string, string>> {
   const user = auth.currentUser;
@@ -158,16 +159,26 @@ export interface UploadTarget {
   url: string;
 }
 
-export async function requestUploadTarget(): Promise<UploadTarget> {
-  const res = await fetch(`/api/chat/uploads`, { method: "POST", headers: await authHeaders() });
+// The upload URL is only valid for this Content-Type (a signed URL in production), so
+// the same type must be sent to both calls.
+export async function requestUploadTarget(contentType: ReceiptContentType): Promise<UploadTarget> {
+  const res = await fetch(`/api/chat/uploads`, {
+    method: "POST",
+    headers: await authHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify({ content_type: contentType }),
+  });
   return unwrap(res, "request upload target");
 }
 
-export async function uploadReceiptImage(target: UploadTarget, file: File): Promise<void> {
+export async function uploadReceiptImage(
+  target: UploadTarget,
+  body: Blob,
+  contentType: ReceiptContentType,
+): Promise<void> {
   const res = await fetch(target.url, {
     method: target.method,
-    headers: { "Content-Type": file.type || "image/jpeg" },
-    body: file,
+    headers: { "Content-Type": contentType },
+    body,
   });
   if (!res.ok) throw new Error(`upload failed: ${res.status}`);
 }

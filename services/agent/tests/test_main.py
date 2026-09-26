@@ -145,3 +145,34 @@ class TestMarkerCallMissing:
     def test_false_when_any_of_multiple_marker_ids_matches(self):
         tool_calls = [ToolCallRecord(name="edit_transaction", args={"transaction_id": "id-2", "amount": "5"})]
         assert turns.marker_call_missing(tool_calls, ["id-1", "id-2"]) is False
+
+
+class TestUploadTargetEndpoint:
+    def _client(self, monkeypatch):
+        from fastapi.testclient import TestClient
+
+        from app import main
+        from app.auth import require_uid
+
+        calls = []
+        monkeypatch.setattr(
+            main.storage,
+            "upload_target",
+            lambda uid, obj, ct: calls.append(ct) or {"method": "POST", "object": "o", "url": "u"},
+        )
+        monkeypatch.setitem(main.app.dependency_overrides, require_uid, lambda: "uid-1")
+        return TestClient(main.app), calls
+
+    def test_defaults_to_jpeg_when_no_body_is_sent(self, monkeypatch):
+        client, calls = self._client(monkeypatch)
+        assert client.post("/api/chat/uploads").status_code == 200
+        assert calls == ["image/jpeg"]
+
+    def test_pdf_is_signed_as_pdf(self, monkeypatch):
+        client, calls = self._client(monkeypatch)
+        assert client.post("/api/chat/uploads", json={"content_type": "application/pdf"}).status_code == 200
+        assert calls == ["application/pdf"]
+
+    def test_other_types_are_rejected(self, monkeypatch):
+        client, _ = self._client(monkeypatch)
+        assert client.post("/api/chat/uploads", json={"content_type": "text/html"}).status_code == 422

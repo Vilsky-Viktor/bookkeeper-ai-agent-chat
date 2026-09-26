@@ -47,7 +47,7 @@ services:
     # Source is bind-mounted and uvicorn reloads on change, like web's Vite server —
     # only dependency (pyproject.toml/uv.lock) changes need a rebuild.
     command: ["uv", "run", "poe", "dev"]
-    volumes: ["./services/transactions/app:/app/app"]
+    volumes: ["./services/transactions/app:/app/app", "./services/transactions/evals:/app/evals"]
     env_file: .env
     environment:
       # Bytecode lives in the container only: never written into the mounted source,

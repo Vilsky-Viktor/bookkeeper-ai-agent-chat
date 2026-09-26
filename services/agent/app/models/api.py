@@ -74,6 +74,12 @@ class PreferencesOut(BaseModel):
     default_currency: str | None
 
 
+class UploadTargetRequest(BaseModel):
+    # The browser converts photos to JPEG before uploading; PDFs go as-is. The signed
+    # URL is only valid for this exact Content-Type.
+    content_type: Literal["image/jpeg", "application/pdf"] = "image/jpeg"
+
+
 class UploadTargetOut(BaseModel):
     method: Literal["POST", "PUT"]
     object: str

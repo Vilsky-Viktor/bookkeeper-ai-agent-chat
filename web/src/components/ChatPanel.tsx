@@ -7,6 +7,7 @@ import { errorDetail } from "../lib/chat";
 import type { ProposedItem, ReceiptProposal } from "../lib/chat";
 import { useTranslation } from "../lib/i18n";
 import { receiptViewUrlFromObject } from "../lib/receipts";
+import { prepareReceiptUpload } from "../lib/receiptUpload";
 import { useChatStream } from "../lib/useChatStream";
 import { useThreadMessages } from "../lib/useThreadMessages";
 import { useVoiceRecorder } from "../lib/useVoiceRecorder";
@@ -100,8 +101,9 @@ const ChatPanel = forwardRef<ChatPanelHandle, Props>(function ChatPanel(
     const caption = input.trim();
     setInput("");
     setProposal(null); // clear any unconfirmed card from a previous upload
-    const target = await requestUploadTarget();
-    await uploadReceiptImage(target, file);
+    const upload = await prepareReceiptUpload(file);
+    const target = await requestUploadTarget(upload.contentType);
+    await uploadReceiptImage(target, upload.body, upload.contentType);
     await send(caption, target.object, receiptViewUrlFromObject(target.object) ?? undefined);
   }
 

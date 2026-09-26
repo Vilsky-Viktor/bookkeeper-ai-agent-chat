@@ -12,7 +12,7 @@ from .models.api import UploadTargetOut
 BUCKET = os.environ["RECEIPTS_BUCKET"]
 
 
-def upload_target(uid: str, object_id: str) -> UploadTargetOut:
+def upload_target(uid: str, object_id: str, content_type: str = "image/jpeg") -> UploadTargetOut:
     name = f"receipts/{uid}/{object_id}.jpg"
     if os.getenv("STORAGE_MODE") == "local":
         base = os.environ["PUBLIC_UPLOAD_BASE"]
@@ -22,8 +22,9 @@ def upload_target(uid: str, object_id: str) -> UploadTargetOut:
             url=f"{base}/upload/storage/v1/b/{BUCKET}/o?uploadType=media&name={name}",
         )
     blob = storage.Client().bucket(BUCKET).blob(name)
+    # A V4 signed PUT is bound to one Content-Type: the upload must send exactly this.
     url = blob.generate_signed_url(
-        version="v4", method="PUT", expiration=datetime.timedelta(minutes=5), content_type="image/jpeg"
+        version="v4", method="PUT", expiration=datetime.timedelta(minutes=5), content_type=content_type
     )
     return UploadTargetOut(method="PUT", object=name, url=url)
 

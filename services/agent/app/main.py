@@ -23,6 +23,7 @@ from .models.api import (
     ThreadSummary,
     TranscribeResponse,
     UploadTargetOut,
+    UploadTargetRequest,
 )
 from .service_auth import require_service_caller
 from .summarize import run_summarize
@@ -128,12 +129,12 @@ async def update_preferences_endpoint(body: PreferencesUpdate, uid: str = Depend
 
 
 @app.post("/api/chat/uploads", response_model=UploadTargetOut)
-async def create_upload_target(uid: str = Depends(require_uid)):
+async def create_upload_target(body: UploadTargetRequest | None = None, uid: str = Depends(require_uid)):
     """Returns a signed GCS URL in production, a direct fake-gcs URL locally. The
-    frontend PUTs/POSTs the image there, then sends the returned `object` path back as
+    frontend PUTs/POSTs the file there, then sends the returned `object` path back as
     `receipt_object` on the next /api/chat/chat call."""
-    object_id = str(uuid.uuid4())
-    return storage.upload_target(uid, object_id)
+    content_type = body.content_type if body else "image/jpeg"
+    return storage.upload_target(uid, str(uuid.uuid4()), content_type)
 
 
 # --- voice input -----------------------------------------------------------------------

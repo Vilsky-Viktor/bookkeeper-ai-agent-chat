@@ -153,9 +153,9 @@ boundary rather than hitting a network). The chat pane is covered through its pa
   A plain upload (no typed text) skips the chat model entirely: the receipt tool runs
   directly and the reply is a fixed, translated sentence, since the outcome is fully
   determined; an upload with text still goes through the model so instructions are
-  honored. Images are downscaled (1600px long side, JPEG, phone rotation applied)
-  before the vision call, and all of a receipt's items are categorized in a single
-  batch request.
+  honored. Photos are downscaled in the browser before upload (1600px long side,
+  JPEG, phone rotation applied), so that's also what's stored; PDFs upload as-is. All
+  of a receipt's items are categorized in a single batch request.
   Category corrections (made via chat or by editing a proposed row) are learned per
   normalized description and reused on future similar purchases, with an LLM
   fallback that recognizes near-duplicate wording it doesn't match exactly.
@@ -423,6 +423,16 @@ docker compose exec agent uv run python -m evals.chat_model_eval \
 
 Keep `--concurrency` low on low OpenAI rate-limit tiers (the eval retries 429s).
 
+The categorizer has the same kind of eval, `services/transactions/evals/categorize_eval.py`:
+labeled items (brands, several languages, tobacco/alcohol, ambiguous ones) plus items
+judged against a correction history, run through the real `categorize()` and
+`categorize_many()` with the database mocked:
+
+```bash
+docker compose exec transactions uv run python -m evals.categorize_eval \
+  --models gpt-4o gpt-4o-mini --runs 3
+```
+
 ## Layout
 
 ```
@@ -455,6 +465,7 @@ services/agent/               FastAPI + LangGraph — owns chat DB, SSE chat, to
   app/languages.py              supported chat/receipt-translation languages
   app/graph.py                  the LangGraph StateGraph (model ⇄ tools loop)
   evals/chat_model_eval.py      model comparison on known failure modes (not shipped)
+services/transactions/evals/  categorize_eval.py — categorizer model comparison
 web/                          React + Vite + TypeScript — chat pane + transactions table
   eslint.config.js / .prettierrc.json  lint + format config
   src/lib/i18n/                  locales/<lang>.ts (typed against en.ts), LanguageProvider,
