@@ -1,17 +1,9 @@
 name: web
 
-# PR -> checks only. Push to main -> checks + a production build, uploaded as a
-# workflow artifact (the static-site analog of "push an image" — there's no
-# container/registry involved for a Firebase Hosting site). Push of a tag
-# (web-v*) -> checks + build + firebase deploy --only hosting, reusing that same
-# build artifact rather than rebuilding, same "build once, deploy that exact
-# build" shape as agent/transactions. See terraform/README.md's "GitHub Actions
-# setup" for the required repo variables (all via Workload Identity Federation for
-# GCP auth — no long-lived key stored here; VITE_FIREBASE_* aren't secrets, a
-# Firebase web API key is meant to be public/embedded client-side).
-#
-# No `paths` filter on `push` (only on `pull_request`) — see agent.yml's comment;
-# the same tag-push path-diff gotcha applies here.
+# PR -> checks. Push to main (and release.yml) -> checks + a production build,
+# uploaded as the `web-dist` artifact — the static-site analog of pushing an image;
+# release.yml deploys that exact build to Firebase Hosting. VITE_FIREBASE_* are repo
+# variables, not secrets: a Firebase web API key is meant to be public.
 
 on:
   pull_request:
@@ -20,11 +12,13 @@ on:
       - ".github/workflows/web.yml"
   push:
     branches: [main]
-    tags: ["web-v*"]
+    paths:
+      - "web/**"
+      - ".github/workflows/web.yml"
+  workflow_call:
 
 permissions:
   contents: read
-  id-token: write # Workload Identity Federation — no GCP key stored in this repo
 
 jobs:
   checks:
@@ -47,7 +41,7 @@ jobs:
       - run: pnpm run build # tsc -b + vite build — catches type/build errors on every PR too
 
   build:
-    if: github.event_name == 'push'
+    if: github.event_name != 'pull_request'
     needs: checks
     runs-on: ubuntu-latest
     defaults:
@@ -73,22 +67,3 @@ jobs:
           name: web-dist
           path: web/dist
           retention-days: 30
-
-  deploy:
-    if: github.ref_type == 'tag'
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4 # for the root firebase.json
-
-      - uses: actions/download-artifact@v4
-        with:
-          name: web-dist
-          path: web/dist
-
-      - uses: google-github-actions/auth@v2
-        with:
-          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ vars.GCP_CI_CD_SERVICE_ACCOUNT }}
-
-      - run: npx firebase-tools@13 deploy --only hosting --project "${{ vars.GCP_PROJECT_ID }}" --non-interactive

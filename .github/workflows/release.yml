@@ -1,0 +1,100 @@
+name: release
+
+# Tag v* (e.g. git tag v1.4.0 && git push --tags) releases everything at that commit:
+# check and build all four pieces, and only if every one passes, deploy in dependency
+# order — schema migrations, then transactions, then agent, then web — so a schema
+# change lands before the code that needs it, and an API before its callers. This is
+# the only workflow that deploys.
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+  id-token: write # Workload Identity Federation — no GCP key stored in this repo
+
+# One release at a time; a newer tag waits rather than racing an older one.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  transactions:
+    uses: ./.github/workflows/python-service.yml
+    with:
+      service: transactions
+      push_image: true
+      image_tag: ${{ github.ref_name }}
+
+  agent:
+    uses: ./.github/workflows/python-service.yml
+    with:
+      service: agent
+      push_image: true
+      image_tag: ${{ github.ref_name }}
+
+  db:
+    uses: ./.github/workflows/db.yml
+    with:
+      image_tag: ${{ github.ref_name }}
+
+  web:
+    uses: ./.github/workflows/web.yml
+
+  migrate:
+    needs: [transactions, agent, db, web]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_CI_CD_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v2
+      # prod-migrate must match terraform's "${var.environment}-migrate".
+      - run: |
+          gcloud run jobs update prod-migrate --region "${{ vars.GCP_REGION }}" --image "${{ needs.db.outputs.image }}"
+          gcloud run jobs execute prod-migrate --region "${{ vars.GCP_REGION }}" --wait
+
+  deploy-transactions:
+    needs: [migrate, transactions]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_CI_CD_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          service: prod-transactions # must match terraform's "${var.environment}-transactions"
+          region: ${{ vars.GCP_REGION }}
+          image: ${{ needs.transactions.outputs.image }}
+
+  deploy-agent:
+    needs: [deploy-transactions, agent]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_CI_CD_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          service: prod-agent # must match terraform's "${var.environment}-agent"
+          region: ${{ vars.GCP_REGION }}
+          image: ${{ needs.agent.outputs.image }}
+
+  deploy-web:
+    needs: deploy-agent
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4 # for the root firebase.json
+      - uses: actions/download-artifact@v4
+        with:
+          name: web-dist # built by web.yml in this same run
+          path: web/dist
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_CI_CD_SERVICE_ACCOUNT }}
+      - run: npx firebase-tools@13 deploy --only hosting --project "${{ vars.GCP_PROJECT_ID }}" --non-interactive

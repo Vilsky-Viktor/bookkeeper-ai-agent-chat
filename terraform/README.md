@@ -11,7 +11,8 @@ reasoning behind that piece.
 
 - **Running the schema migrations.** `migrations.tf` provisions the `migrate` Cloud
   Run Job (dbmate + `db/migrations/`, as a dedicated `migrator` database user), but
-  running it is CI's job: `.github/workflows/db.yml` on a `db-v*` tag. Verify on the
+  running it is CI's job: `.github/workflows/release.yml`, before the services
+  deploy. Verify on the
   first run that `migrator` can connect after the baseline revokes `CONNECT` from
   `PUBLIC` (it relies on Cloud SQL users inheriting `cloudsqlsuperuser`, the
   databases' owner).
@@ -26,8 +27,8 @@ reasoning behind that piece.
   covers this as of this module's writing.
 - **Building/pushing container images**, beyond providing the identity/permissions
   for it. `agent_image`/`transactions_image` default to a public placeholder so
-  `apply` succeeds on a brand new project; `.github/workflows/{agent,transactions}.yml`
-  push real images to the Artifact Registry repo this module creates and deploy them
+  `apply` succeeds on a brand new project; CI pushes real images to the Artifact
+  Registry repo this module creates, and `.github/workflows/release.yml` deploys them
   directly via `gcloud`/`deploy-cloudrun` (not by changing these variables — see
   `cloud_run.tf`'s `lifecycle.ignore_changes` and "GitHub Actions setup" below).
 
@@ -73,9 +74,8 @@ terraform apply
 1. `terraform apply`.
 2. Add real secret values (see below).
 3. Copy the CI/CD outputs into GitHub repo variables (see "GitHub Actions setup"
-   below), then push `git tag db-v0.1.0 && git push --tags` to create the schema,
-   then the service tags (`agent-v0.1.0`, `transactions-v0.1.0`, `web-v0.1.0`) to
-   trigger a real first deploy — from here on, CI owns
+   below), then push a release tag (`git tag v0.1.0 && git push --tags`): it creates
+   the schema and deploys everything — from here on, CI owns
    the deployed image, not `terraform.tfvars`'s `agent_image`/`transactions_image`.
 
 ### Adding real secret values
@@ -96,7 +96,7 @@ actually picks it up.
 
 ### GitHub Actions setup
 
-`.github/workflows/{agent,transactions,web}.yml` authenticate to GCP via Workload
+The workflows in `.github/workflows/` authenticate to GCP via Workload
 Identity Federation — no long-lived key ever leaves GCP or sits in a GitHub secret.
 After `terraform apply`, copy six outputs into the repo's **Settings > Secrets and
 variables > Actions > Variables** tab (repository *variables*, not secrets — none of

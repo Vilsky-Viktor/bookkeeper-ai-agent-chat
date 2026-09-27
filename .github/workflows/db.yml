@@ -1,10 +1,9 @@
 name: db
 
 # PR -> apply every migration to a fresh Postgres, twice (catches broken SQL and
-# migrations that can't be re-run). Push to main -> also build/push the migration
-# image. Tag db-v* -> also run it in production (the Cloud Run Job from
-# terraform/migrations.tf). Tag db-v* before the service tags of a release that
-# needs a schema change.
+# migrations that can't be re-run). Push to main (and release.yml) -> also build and
+# push the migration image; release.yml runs it in production (the Cloud Run Job
+# from terraform/migrations.tf) before deploying the services.
 
 on:
   pull_request:
@@ -13,7 +12,19 @@ on:
       - ".github/workflows/db.yml"
   push:
     branches: [main]
-    tags: ["db-v*"]
+    paths:
+      - "db/**"
+      - ".github/workflows/db.yml"
+  workflow_call:
+    inputs:
+      image_tag:
+        description: Defaults to sha-<short commit>.
+        type: string
+        default: ""
+    outputs:
+      image:
+        description: The pushed migration image, repository:tag.
+        value: ${{ jobs.build-and-push.outputs.image }}
 
 permissions:
   contents: read
@@ -53,21 +64,18 @@ jobs:
           done
 
   build-and-push:
-    if: github.event_name == 'push'
+    if: github.event_name != 'pull_request'
     needs: test
     runs-on: ubuntu-latest
     outputs:
-      image_tag: ${{ steps.tag.outputs.value }}
+      image: ${{ steps.tag.outputs.image }}
     steps:
       - uses: actions/checkout@v4
 
       - id: tag
-        run: |
-          if [ "${{ github.ref_type }}" = "tag" ]; then
-            echo "value=${GITHUB_REF_NAME#db-}" >> "$GITHUB_OUTPUT"
-          else
-            echo "value=sha-$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
-          fi
+        env:
+          TAG: ${{ inputs.image_tag }}
+        run: echo "image=${IMAGE}:${TAG:-sha-$(git rev-parse --short HEAD)}" >> "$GITHUB_OUTPUT"
 
       - id: auth
         uses: google-github-actions/auth@v2
@@ -86,22 +94,4 @@ jobs:
         with:
           context: db
           push: true
-          tags: ${{ env.IMAGE }}:${{ steps.tag.outputs.value }}
-
-  migrate:
-    if: github.ref_type == 'tag'
-    needs: build-and-push
-    runs-on: ubuntu-latest
-    steps:
-      - uses: google-github-actions/auth@v2
-        with:
-          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ vars.GCP_CI_CD_SERVICE_ACCOUNT }}
-
-      - uses: google-github-actions/setup-gcloud@v2
-
-      # prod-migrate must match terraform's "${var.environment}-migrate".
-      - run: |
-          gcloud run jobs update prod-migrate --region "${{ vars.GCP_REGION }}" \
-            --image "${{ env.IMAGE }}:${{ needs.build-and-push.outputs.image_tag }}"
-          gcloud run jobs execute prod-migrate --region "${{ vars.GCP_REGION }}" --wait
+          tags: ${{ steps.tag.outputs.image }}

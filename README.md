@@ -45,13 +45,11 @@ The Firebase emulator keeps its accounts and Firestore data in
 container stops, so test users survive restarts and rebuilds. Delete the folder to
 start clean.
 
-Each of `services/agent`/`services/transactions` has two Dockerfiles:
-`Dockerfile.dev` is what `docker-compose.yml` builds (matches this section — full
-`uv sync` including dev tools, hardcoded port 8000 matching the `Caddyfile`'s
-internal routing); `Dockerfile` is the lean, multi-stage production image
-`.github/workflows/{agent,transactions}.yml` build and deploy to Cloud Run (no dev
-tools, non-root user, listens on Cloud Run's injected `$PORT` instead of a
-hardcoded one — see "Deploying to GCP" below).
+Both Python services build from one shared `services/Dockerfile`: its `dev` target
+is what `docker-compose.yml` uses (every dependency including dev tools, port 8000
+matching the `Caddyfile`'s internal routing), and its final stage is the lean
+production image CI builds for Cloud Run (no dev tools, non-root user, listens on
+Cloud Run's injected `$PORT` — see "Deploying to GCP" below).
 
 ## Code quality tooling
 
@@ -496,7 +494,9 @@ web/                          React + Vite + TypeScript — chat pane + transact
 Caddyfile                     Reverse proxy — same routing shape as Firebase Hosting rewrites
 docker-compose.yml
 terraform/                    GCP infrastructure as code — see "Deploying to GCP" below
-.github/workflows/             CI/CD, one workflow per service — see "Deploying to GCP" below
+.github/workflows/             CI per part (PRs, main) + release.yml (tag v*: deploy all) —
+                                see "Deploying to GCP" below
+services/Dockerfile          shared image for both Python services (`dev` target + prod)
 firebase.json                  Firebase Hosting config (rewrites to the two Cloud Run
                                 services) — distinct from firebase/firebase.json, which
                                 is local-emulator-only
@@ -511,23 +511,25 @@ project link + Firestore database + a Web App, and a Workload Identity Federatio
 setup for CI/CD (no long-lived GCP key stored anywhere). It does *not* cover:
 Firestore rules content (still `firebase deploy`), or
 Firebase Auth's Google sign-in provider (enabled once by hand in the console).
-The schema is applied by the `migrate` Cloud Run Job, run by
-`.github/workflows/db.yml` on a `db-v*` tag (push it before the service tags of a
-release that needs a schema change).
+The schema is applied by the `migrate` Cloud Run Job, which every release runs
+before deploying the services.
 The one service-to-service call, Cloud Tasks → `agent`'s `POST /internal/summarize`,
 is authenticated with a real Google-signed OIDC token, not a stub — `service_auth.py`
 verifies signature, a fixed audience, and the expected caller identity; `tasks.py` is
-the minter. (`agent` → `transactions` calls just forward the user's own JWT.) `agent`'s own callback URL (where Cloud Tasks POSTs back to) is derived
+the minter. (`agent` → `transactions` calls just forward the user's own JWT.)
+`agent`'s own callback URL (where Cloud Tasks POSTs back to) is derived
 per-request from the triggering request's `Host` header rather than an env var —
 no manual bootstrap step needed, see `terraform/README.md`'s "Service-to-service
 auth" for why. See `terraform/README.md` for the full walkthrough.
 
-`.github/workflows/{agent,transactions,web}.yml` — one independent pipeline per
-service: a pull request runs checks only (format/lint/test); a push to `main` also
-builds and pushes an image to Artifact Registry (agent/transactions) or a
-production build artifact (web), but doesn't deploy; pushing a version tag
-(`agent-v1.2.3`, `transactions-v1.2.3`, `web-v1.2.3`) builds, pushes, and deploys
-that exact build to Cloud Run or Firebase Hosting. One-time setup (copying
+CI/CD (`.github/workflows/`): a pull request runs the checks of whatever it touches
+(`agent.yml`, `transactions.yml` — both via the shared `python-service.yml` — plus
+`web.yml` and `db.yml`); a push to `main` also builds and pushes images (and the web
+build) without deploying. **Releases are one tag for everything:** `git tag v1.2.3 &&
+git push --tags` runs `release.yml`, which checks and builds all four pieces at that
+commit and, only if every one passes, deploys in dependency order — migrations,
+then `transactions`, then `agent`, then `web` — so a schema change lands before the
+code that needs it and an API before its callers. One-time setup (copying
 Terraform outputs into GitHub repo variables) is in `terraform/README.md`'s
 "GitHub Actions setup".
 
