@@ -154,10 +154,10 @@ boundary rather than hitting a network). The chat pane is covered through its pa
   below) — nothing is written until you confirm. The category is a dropdown built
   from the same built-in list the categorizer uses. There's no separate
   merchant field: a merchant name, when identifiable, is folded into the description.
-  A plain upload (no typed text) skips the chat model entirely: the receipt tool runs
-  directly and the reply is a fixed, translated sentence, since the outcome is fully
-  determined; an upload with text still goes through the model so instructions are
-  honored. Photos are downscaled in the browser before upload (1600px long side,
+  Text typed with the upload is a note to the receipt reader first ("this was
+  yesterday" sets the date), then a follow-up agent confirms the card and answers any
+  question in it. A plain upload (no typed text) skips the chat model entirely: the
+  reply is a fixed, translated sentence, since the outcome is fully determined. Photos are downscaled in the browser before upload (1600px long side,
   JPEG, phone rotation applied), so that's also what's stored; PDFs upload as-is. All
   of a receipt's items are categorized in a single model call.
   Category corrections (made via chat or by editing a proposed row) are learned per
@@ -240,37 +240,62 @@ the agent has no elevated identity of its own.
     (`transactions.py`, `aggregates.py`, `corrections.py`, `api.py`) — every FastAPI
     endpoint validates through one of these via `response_model=` rather than
     returning a plain dict.
-- **`services/agent`** — a LangGraph `StateGraph` (not `langgraph.prebuilt`'s agent,
-  so the emitted SSE event shape is fully controlled): a `call_model` node bound to
-  the tools below, conditionally routed to a `ToolNode`, looping back until the model
-  stops calling tools. No checkpointer — the graph runs once per HTTP request and
-  history lives in the chat DB, not graph state.
+- **`services/agent`** — a multi-agent LangGraph graph, built per request in
+  `workflows/` (no checkpointer: it runs once per HTTP request and history lives in
+  the chat DB, not graph state; hand-built `StateGraph`s rather than
+  `langgraph.prebuilt`, so the emitted SSE event shape is fully controlled):
+
+  ```
+  chat (main graph)
+  ├─ router ─ an upload? ──► receipt_workflow ── the user typed a note? ──► receipt_followup
+  │                            load → read → categorize → propose → report
+  └─ otherwise ───────────► assistant (call_model ⇄ tools)
+  categorize (shared subgraph): load_corrections → classify
+     used by receipt_workflow and by the assistant's add_transaction
+  ```
+
+  - `router` — plain code, no model call: routes on whether the turn has an upload.
+  - `receipt_workflow` — deterministic: download the image, read it with the vision
+    prompt (the user's note, e.g. "this was yesterday", goes into that prompt), run
+    the `categorize` subgraph, build the proposal and send the card. It records itself
+    in history as an `extract_receipt` tool call, so later turns can refer to it. With
+    no note, it also writes a fixed translated reply, so no chat model is called.
+  - `receipt_followup` — the assistant, specialized for the turn after a receipt:
+    its own instructions (confirm the card, answer the question) and **read-only**
+    tools. The receipt is saved only when the user confirms the card. With add/edit/
+    delete in reach, the model was seen saving it itself, then "editing" it.
+  - `assistant` — the general bookkeeping agent with every tool below.
+  - `categorize` — corrections first, then one model call for the rest (`categorize.py`).
   - `llm.py` — a primary model with a one-shot fallback to a secondary model on
     failure/timeout, a 60s overall call timeout, per-purpose output-token caps, and an
     in-process concurrency cap.
-  - `graph.py` — the `StateGraph`; also sends the model a compacted tool schema
-    (collapsed docstrings, plain optional params), since it's resent on every call.
-  - `context/` — prompt assembly: `prompts.py` (the system prompt), `tokens.py` (token
+  - `workflows/` — `main.py` (router and wiring), `receipt.py`, `categorize.py`,
+    `assistant.py` (the model ⇄ tools loop; it also sends the model a compacted tool
+    schema, with collapsed docstrings and plain optional params, since the schema is
+    resent on every call), `state.py`. The nodes talk to the outside through custom
+    events (`ui_event`, `tool_record`, `reply`) that `chat/streaming.py` turns into SSE.
+  - `prompts/` — `assistant.py` (the system prompt, plus the receipt follow-up's
+    instructions), `receipt.py` (the vision-extraction prompt).
+  - `receipts.py` — reading a receipt: image download and downscale, the vision call,
+    and parsing into one proposed row.
+  - `context/` — prompt assembly: `tokens.py` (token
     counting, `HISTORY_TOKEN_BUDGET`), `messages.py` (turn grouping + per-row
     rendering, older tool results compacted), and `__init__.py`'s `build_context()`
     (preferences, working set, rolling summary, then unsummarized turns newest-first
     within the budget, never splitting a tool call from its result) and
     `first_kept_seq()` (where the kept history starts, so trimmed rows get summarized).
   - `chat/` — `runner.py` runs one chat turn end to end (save the message, build
-    context, pick how to run it, persist, turn failures into error events), so
+    context, run the main graph, persist, turn failures into error events), so
     `main.py`'s `/api/chat/chat` is just the HTTP layer; `streaming.py` runs one graph
     turn via `astream_events` and translates it into the SSE wire format;
-    `receipt_turn.py` handles a plain receipt upload
-    without the model (runs `extract_receipt`, replies with a fixed translated
-    sentence); `turns.py` decides whether a `[transaction: <id>]` marker turn
+    `turns.py` decides whether a `[transaction: <id>]` marker turn
     actually called the tool it claimed to, records a fallback assistant message when
     a turn fails outright (so the thread never ends up with an unanswered user message
     poisoning the next turn's context), persists a completed turn (assistant message,
     tool results, working set, quota), and triggers summarization by message count.
-  - `tools/` — see the table below; `crud.py`/`currency.py`/`utility.py`/
-    `receipts.py` each build one group of tools, `prompts.py` holds the
-    receipt-extraction vision prompt, `__init__.py`'s `build_tools()` composes all of
-    them per-request.
+  - `tools/` — see the table below; `crud.py`/`currency.py`/`utility.py` each build
+    one group of tools, `__init__.py`'s `build_tools()` composes them per request
+    (and `MUTATING_TOOLS` names the ones the follow-up agent doesn't get).
   - `quotas.py` / `summarize.py` / `tasks.py` — daily usage limits, the rolling
     summary job, and the in-process stand-in for Cloud Tasks (`TASKS_MODE=local`).
   - `models/` — Pydantic models by domain (`turns.py` — per-turn state shared
@@ -293,7 +318,10 @@ the agent has no elevated identity of its own.
 | `get_total_in_currency` | Sum transactions (optionally filtered) and convert the result into one target currency — the multiply-and-sum happens in code, never left to the model to compute in its reply. |
 | `set_filter` | Drive the transactions table's filter from chat. |
 | `export_transactions` | Signal the UI to build and attach a CSV of the table's current view. |
-| `extract_receipt` | Vision-read an uploaded receipt image/PDF into one proposed (never written) row: its total, a summarized description, and the majority category of its items. |
+
+Receipts aren't a tool: the `receipt_workflow` reads an upload into one proposed (never
+written) row, with its total, a summarized description and the majority category of
+its items.
 
 ### Frontend
 React 19 + Vite 6 + TypeScript. TanStack Query for server cache, invalidated by the
@@ -377,7 +405,7 @@ Supported today: `openai` (default), `anthropic`, `google`. Switching is `LLM_PR
 claude-haiku-4-5` or `LLM_MODEL=gemini-2.5-flash`) — no code change. Also set
 `LLM_FALLBACK_MODEL` and `LLM_VISION_MODEL` for the new provider, since their
 defaults are OpenAI model names. The receipt-vision
-call's multimodal message (`tools/receipts.py`'s `HumanMessage` with an `image_url`
+call's multimodal message (`receipts.py`'s `HumanMessage` with an `image_url`
 content block) works unchanged across all three; `langchain-anthropic` and
 `langchain-google-genai` both translate that OpenAI-shaped block internally. The one
 real difference between providers is JSON-only output: OpenAI's `response_format`
@@ -406,18 +434,19 @@ LangSmith's per-run token counts):
 - **Cheap chat model, strong where it matters.** Chat runs on `gpt-4o-mini`; receipt
   reading and categorization stay on `gpt-4o`, where the mini models were measurably
   worse (see the env var table).
-- **No model call when the outcome is fixed.** A plain receipt upload runs the tool
-  directly (`chat/receipt_turn.py`).
+- **No model call when the outcome is fixed.** Routing is plain code, and a receipt
+  upload without a note is handled by the deterministic receipt workflow alone, with
+  no chat model call.
 - **Small fixed overhead, cached.** Tool descriptions hold only what each tool does
   (behavior rules live once, in the system prompt), schemas are compacted
-  (`graph.py`), and the static prefix (tools + system prompt) comes first so
+  (`workflows/assistant.py`), and the static prefix (tools + system prompt) comes first so
   OpenAI's automatic prompt caching bills it at a discount on repeat calls.
 - **Bounded history and output.** The summary window and `LLM_HISTORY_TOKEN_BUDGET`
   (see "Chat memory" above), plus `max_tokens` caps per purpose in `llm.py`.
 - **Batching and smaller inputs.** One categorize call per receipt, not per item;
   images are downscaled before the vision call.
-- **Visibility.** LangSmith tags per purpose (`turn`, `receipt-direct`,
-  `receipt-vision`, `categorize`, `summarize`).
+- **Visibility.** LangSmith tags per purpose (`turn`, `receipt-vision`, `categorize`,
+  `summarize`), and each subgraph shows as its own named run in a turn's trace.
 
 ### Evaluating a cheaper chat model
 
@@ -466,20 +495,20 @@ services/transactions/       FastAPI — owns Postgres, CRUD, category correctio
   app/routers/transactions/     list.py, create.py, patch.py, delete.py, serializers.py
 services/agent/               FastAPI + LangGraph — owns chat DB, SSE chat, tools
   pyproject.toml / uv.lock own uv project — deps, black/isort/mypy, poe tasks
-  app/tools/                    crud.py, currency.py, utility.py, receipts.py,
-                                 prompts.py (receipt-extraction prompt), __init__.py's
+  app/workflows/                main.py (router + main graph), receipt.py,
+                                 categorize.py, assistant.py, state.py
+  app/prompts/                  assistant.py (system prompt), receipt.py (vision prompt)
+  app/receipts.py               receipt reading (download, vision call, parsing)
+  app/tools/                    crud.py, currency.py, utility.py, __init__.py's
                                  build_tools()
-  app/context/                  prompts.py (system prompt), tokens.py, messages.py,
-                                 __init__.py's build_context()
+  app/context/                  tokens.py, messages.py, __init__.py's build_context()
   app/chat/                     runner.py (one chat turn end to end),
                                  streaming.py (runs one graph turn -> SSE),
-                                 receipt_turn.py (model-free plain receipt upload),
                                  turns.py (marker-retry decision, failure recording,
                                  persisting a turn, summarization trigger)
   app/models/                   Pydantic models, by domain (turns, message_content,
                                  api, tool_results)
   app/languages.py              supported chat/receipt-translation languages
-  app/graph.py                  the LangGraph StateGraph (model ⇄ tools loop)
   app/categorize.py             categorization: corrections first, then one model call
   evals/                        chat_model_eval.py, categorize_eval.py — model
                                  comparisons (not shipped)

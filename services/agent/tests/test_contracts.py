@@ -7,9 +7,9 @@ import re
 from pathlib import Path
 
 from app.categorize import CATEGORIES, CATEGORY_DEFINITIONS
-from app.chat.receipt_turn import _REPLIES
 from app.languages import SUPPORTED_LANGUAGES
 from app.models.tool_results import _ZERO_DECIMAL_CURRENCIES
+from app.workflows.receipt import REPLIES
 
 REPO = Path(__file__).resolve().parents[3]
 
@@ -27,7 +27,7 @@ def test_zero_decimal_currencies_match_the_transactions_service():
 
 
 def test_every_supported_language_has_receipt_replies():
-    assert set(_REPLIES) == set(SUPPORTED_LANGUAGES)
+    assert set(REPLIES) == set(SUPPORTED_LANGUAGES)
 
 
 def test_supported_languages_match_the_web_app():

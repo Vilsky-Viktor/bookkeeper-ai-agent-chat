@@ -77,7 +77,7 @@ class TableChangedResult(BaseModel):
     ui_event: Literal["table_changed"] = "table_changed"
 
 
-# --- tools/receipts.py ---------------------------------------------------------------
+# --- receipts / workflows/receipt.py ---------------------------------------------------------------
 
 
 class NotAReceiptResult(BaseModel):

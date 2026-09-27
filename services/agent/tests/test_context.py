@@ -27,26 +27,20 @@ class TestSystemPrompt:
     """Regression guards for specific anti-hallucination rules added after real
     failures — not exhaustive prompt coverage, just the ones that broke in practice."""
 
-    def test_requires_calling_extract_receipt_every_upload(self):
-        # Observed: the model described a fully-detailed "proposed transaction" for 3
-        # different receipt uploads in a row while its stored tool_calls was empty —
-        # it copied an earlier successful extraction's numbers instead of actually
-        # calling extract_receipt again, so no UI event fired and no card ever showed.
-        assert "MUST call extract_receipt" in context.SYSTEM_PROMPT
-        assert "every single time" in context.SYSTEM_PROMPT
+    def test_receipts_are_the_workflows_job_not_a_tool(self):
+        # The receipt workflow reads uploads before the assistant runs. The old
+        # failure — describing a "proposed transaction" without ever calling the
+        # extraction tool, so no card showed — can't happen: there's no such tool.
+        assert "Receipts are read by a separate workflow" in context.SYSTEM_PROMPT
+        assert "you can't change it" in context.SYSTEM_PROMPT
+        assert "extract_receipt)" not in context.SYSTEM_PROMPT  # not in the tool list
 
-    def test_forbids_describing_a_proposal_without_a_real_tool_call(self):
-        assert "without having actually called extract_receipt" in context.SYSTEM_PROMPT
-
-    def test_requires_short_reply_after_receipt_extraction(self):
+    def test_requires_short_reply_after_a_receipt(self):
         # Observed twice: after a successful extraction, the model fully re-narrated
         # every item/amount/category in prose immediately above the proposed-items
-        # card, which already shows all of that — pure duplication. A first, softer
-        # instruction ("keep your reply to one short sentence") didn't stop it; this
-        # guards the stronger, example-anchored version instead. Also guards against
-        # "in the UI" wording, since the card renders inline in the same chat, not in
-        # some other UI surface.
-        assert "reply with ONLY one short" in context.SYSTEM_PROMPT
+        # card, which already shows all of that — pure duplication. Also guards against
+        # "in the UI" wording, since the card renders inline in the same chat.
+        assert "ONLY one short sentence" in context.SYSTEM_PROMPT
         assert "Do NOT add a numbered or bulleted list" in context.SYSTEM_PROMPT
         assert "in the UI" not in context.SYSTEM_PROMPT
 

@@ -21,12 +21,13 @@ from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation
 from typing import Callable
 
-from langchain_core.messages import AIMessage, ToolMessage
+from langchain_core.messages import AIMessage, SystemMessage, ToolMessage
 
 from app import llm
 from app.context import build_context
-from app.graph import compact_tool_schema
-from app.tools import build_tools
+from app.prompts.assistant import RECEIPT_FOLLOWUP_PROMPT
+from app.tools import MUTATING_TOOLS, build_tools, transactions_client
+from app.workflows.assistant import compact_tool_schema
 
 TODAY = datetime.date.today()
 YESTERDAY = TODAY - datetime.timedelta(days=1)
@@ -181,6 +182,9 @@ class Case:
     message: str
     check: Callable[[Run], str | None]  # None = pass, else the failure reason
     history: list[dict] = field(default_factory=list)
+    # Messages added after the user's message by a workflow that ran before the
+    # assistant this turn (e.g. the receipt workflow's extract_receipt result).
+    workflow_messages: list = field(default_factory=list)
     working_set: dict = field(default_factory=dict)
     summary: str | None = None
     language: str = "en"
@@ -239,17 +243,18 @@ def _check_filter(r: Run) -> str | None:
     return expect(not wrong, f"wrong filter fields {wrong}")
 
 
-def _check_receipt_reply(path: str) -> Callable[[Run], str | None]:
-    def check(r: Run) -> str | None:
-        paths = [a.get("object_name") for a in r.called("extract_receipt")]
-        if path not in paths:
-            return f"didn't call extract_receipt({path}); calls={r.calls}"
-        return expect(
-            "12.40" not in r.text and "\n" not in r.text.strip(),
-            f"reply restates the card instead of one short sentence: {r.text!r}",
-        )
-
-    return check
+def _check_receipt_note_reply(r: Run) -> str | None:
+    # The receipt workflow already read the receipt; the assistant must not restate
+    # it (the card shows it), and must still answer the question asked with it.
+    mutations = [n for n, _ in r.calls if n in MUTATING_TOOLS]
+    if mutations:
+        return f"changed data instead of leaving the receipt to its card: {mutations}"
+    if "12.40" in r.text:
+        return f"reply restates the card: {r.text!r}"
+    return expect(
+        bool(r.called("query_transactions") or r.called("get_total_in_currency")),
+        f"didn't answer the question asked with the upload; calls={r.calls}",
+    )
 
 
 EXPORT_HISTORY = [
@@ -257,13 +262,16 @@ EXPORT_HISTORY = [
     assistant(f"Here's your export. {DOWNLOAD_SENTENCE}", (("call_exp1", "export_transactions", {}),)),
     tool("call_exp1", "export_transactions", {}),
 ]
-RECEIPT_HISTORY = [
-    user("Here's my receipt\n\n[uploaded receipt: receipts/u1/r1.jpg]"),
-    assistant(
-        f"Extracted your receipt from {TODAY} — you can edit or confirm it below.",
-        (("call_r1", "extract_receipt", {"object_name": "receipts/u1/r1.jpg"}),),
+RECEIPT_WORKFLOW_RESULT = [
+    AIMessage(
+        content="",
+        tool_calls=[{"id": "call_r2", "name": "extract_receipt", "args": {"object_name": "receipts/u1/r2.jpg"}}],
     ),
-    tool("call_r1", "extract_receipt", fake_result("extract_receipt", {})),
+    ToolMessage(
+        content=json.dumps({k: v for k, v in fake_result("extract_receipt", {}).items() if k != "ui_event"}),
+        tool_call_id="call_r2",
+        name="extract_receipt",
+    ),
 ]
 
 CASES = [
@@ -383,15 +391,10 @@ CASES = [
     ),
     Case("filter_parsing", "Show my USD expenses over 100 from last month", _check_filter),
     Case(
-        "receipt_with_text",
-        "This one is from yesterday\n\n[uploaded receipt: receipts/u1/r2.jpg]",
-        _check_receipt_reply("receipts/u1/r2.jpg"),
-    ),
-    Case(
-        "receipt_again_calls_tool",
-        "Here's another one\n\n[uploaded receipt: receipts/u1/r3.jpg]",
-        _check_receipt_reply("receipts/u1/r3.jpg"),
-        history=RECEIPT_HISTORY,
+        "receipt_note_reply",
+        "This one is from yesterday. Also, how much did I spend on dining?\n\n[uploaded receipt: receipts/u1/r2.jpg]",
+        _check_receipt_note_reply,
+        workflow_messages=RECEIPT_WORKFLOW_RESULT,
     ),
     Case(
         "replies_in_user_language",
@@ -420,10 +423,16 @@ async def _invoke_with_rate_limit_retry(model, messages) -> AIMessage:
 
 
 async def run_case(model_name: str, case: Case) -> Run:
-    tools = build_tools("eval-jwt", case.language)
+    # Only the tool schemas are used (results are canned), so no categorize graph.
+    tools = build_tools(transactions_client("eval-jwt"), None)
+    if case.workflow_messages:  # runs as receipt_followup does (workflows/main.py)
+        tools = [t for t in tools if t.name not in MUTATING_TOOLS]
     model = llm.build_chat_model(model_name).bind_tools([compact_tool_schema(t) for t in tools])
     thread = {"working_set": case.working_set, "summary": case.summary}
     messages = build_context(thread, {"language": case.language}, case.history, case.message)
+    messages += case.workflow_messages
+    if case.workflow_messages:
+        messages.append(SystemMessage(content=RECEIPT_FOLLOWUP_PROMPT))
     run = Run(calls=[], text="")
     for _ in range(6):
         ai = await _invoke_with_rate_limit_retry(model, messages)

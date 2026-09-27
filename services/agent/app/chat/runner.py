@@ -1,6 +1,6 @@
 """One chat turn end to end, as a stream of SSE chunks: save the user's message,
-build the model's context, run the turn (one of three ways, see stream_chat_turn),
-save the result, and turn any failure into a user-facing error event."""
+build the context, run the main graph (workflows/main.py routes it), save the
+result, and turn any failure into a user-facing error event."""
 
 import datetime
 import logging
@@ -12,13 +12,12 @@ from langchain_core.messages import AnyMessage
 
 from .. import chat_db, context, quotas
 from ..dates import user_today
-from ..graph import build_graph
 from ..langsmith_obs import traced_turn
 from ..models.api import ChatRequest
 from ..models.message_content import UserMessageContent
 from ..models.turns import TurnState
-from ..tools import build_tools
-from . import receipt_turn, streaming, turns
+from ..workflows import build_main_graph
+from . import streaming, turns
 from .streaming import sse
 
 log = logging.getLogger("agent")
@@ -94,7 +93,7 @@ async def _prepare_turn(conn, uid: str, thread: dict, body: ChatRequest, today: 
 
 
 async def _run_marker_turn(
-    compiled_graph, messages: list[AnyMessage], marker_ids: list[str], uid: str, thread_id: str, request_id: str
+    compiled_graph, inputs: dict, marker_ids: list[str], uid: str, thread_id: str, request_id: str
 ) -> tuple[list[bytes], TurnState]:
     """A "[transaction: <id>]" marker turn must end in an edit/delete call for that id
     (it comes straight from a table row the user clicked, so it's always valid). The
@@ -103,19 +102,19 @@ async def _run_marker_turn(
     retried once from scratch if that happens (nothing to undo: no tool was called)."""
     state = TurnState()
     with traced_turn(uid, thread_id, request_id, tags=["turn"]) as run_config:
-        chunks = [c async for c in streaming.run_graph_turn(compiled_graph, messages, run_config, state)]
+        chunks = [c async for c in streaming.run_graph_turn(compiled_graph, inputs, run_config, state)]
     if turns.marker_call_missing(state.tool_calls_made, marker_ids):
         log.warning("transaction-marker turn made no matching tool call, retrying once")
         state = TurnState()
         with traced_turn(uid, thread_id, request_id, tags=["turn", "retry"]) as run_config:
-            chunks = [c async for c in streaming.run_graph_turn(compiled_graph, messages, run_config, state)]
+            chunks = [c async for c in streaming.run_graph_turn(compiled_graph, inputs, run_config, state)]
     return chunks, state
 
 
 async def stream_chat_turn(body: ChatRequest, uid: str, jwt: str, agent_base_url: str):
-    """The turn runs one of three ways: a receipt upload with no text skips the model
-    (receipt_turn.py); a transaction-marker turn is buffered and checked
-    (_run_marker_turn); anything else streams the graph's output live."""
+    """A transaction-marker turn is buffered and checked (_run_marker_turn); every
+    other turn streams live. Where it goes — receipt workflow, assistant, or both —
+    is the main graph's router's call."""
     request_id = str(uuid.uuid4())
     thread_id: str | None = None
     today = user_today(body.timezone)
@@ -128,25 +127,18 @@ async def stream_chat_turn(body: ChatRequest, uid: str, jwt: str, agent_base_url
             yield sse("error", {"message": ALREADY_SENT})
             return
 
-        tools = build_tools(jwt, turn.language, today)
+        graph = build_main_graph(jwt, turn.language, today)
+        inputs = {"messages": turn.messages, "receipt_object": body.receipt_object, "note": body.message.strip()}
         marker_ids = context.TRANSACTION_MARKER_RE.findall(turn.user_text)
         state = TurnState()
 
-        if body.receipt_object and not body.message.strip():
-            with traced_turn(uid, thread_id, request_id, tags=["turn", "receipt-direct"]) as run_config:
-                async for chunk in receipt_turn.run_receipt_turn(
-                    tools, body.receipt_object, turn.language, run_config, state
-                ):
-                    yield chunk
-        elif marker_ids:
-            chunks, state = await _run_marker_turn(
-                build_graph(tools), turn.messages, marker_ids, uid, thread_id, request_id
-            )
+        if marker_ids and not body.receipt_object:
+            chunks, state = await _run_marker_turn(graph, inputs, marker_ids, uid, thread_id, request_id)
             for chunk in chunks:
                 yield chunk
         else:
             with traced_turn(uid, thread_id, request_id, tags=["turn"]) as run_config:
-                async for chunk in streaming.run_graph_turn(build_graph(tools), turn.messages, run_config, state):
+                async for chunk in streaming.run_graph_turn(graph, inputs, run_config, state):
                     yield chunk
 
         await turns.finalize_turn(

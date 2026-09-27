@@ -34,18 +34,17 @@ def seams(monkeypatch, patch_chat_uid_conn):
     graph_runs: list[str] = []
     graph_tool_calls: list[list[ToolCallRecord]] = []  # per graph run, consumed in order
 
-    async def fake_graph_turn(compiled_graph, messages, run_config, state):
+    graph_inputs: list[dict] = []
+
+    async def fake_graph_turn(compiled_graph, inputs, run_config, state):
         graph_runs.append(compiled_graph)
+        graph_inputs.append(inputs)
         calls = graph_tool_calls.pop(0) if graph_tool_calls else []
         state.tool_calls_made.extend(calls)
         state.assistant_text_parts.append(f"graph reply {len(graph_runs)}")
         yield runner.sse(None, {"type": "token", "text": f"graph reply {len(graph_runs)}"})
 
-    async def fake_receipt_turn(tools, object_name, language, run_config, state):
-        state.assistant_text_parts.append("receipt reply")
-        yield runner.sse(None, {"type": "token", "text": "receipt reply"})
-
-    built_tools_with: list = []
+    built_graph_with: list = []
 
     @contextmanager
     def fake_traced_turn(*args, **kwargs):
@@ -58,15 +57,14 @@ def seams(monkeypatch, patch_chat_uid_conn):
         "record_failure": AsyncMock(),
         "graph_runs": graph_runs,
         "graph_tool_calls": graph_tool_calls,
-        "built_tools_with": built_tools_with,
+        "graph_inputs": graph_inputs,
+        "built_graph_with": built_graph_with,
     }
     monkeypatch.setattr(runner, "_open_thread", s["open_thread"])
     monkeypatch.setattr(runner, "_prepare_turn", s["prepare"])
-    monkeypatch.setattr(runner, "build_tools", lambda *a: built_tools_with.append(a) or [])
-    monkeypatch.setattr(runner, "build_graph", lambda tools: "graph")
+    monkeypatch.setattr(runner, "build_main_graph", lambda *a: built_graph_with.append(a) or "graph")
     monkeypatch.setattr(runner, "traced_turn", fake_traced_turn)
     monkeypatch.setattr(runner.streaming, "run_graph_turn", fake_graph_turn)
-    monkeypatch.setattr(runner.receipt_turn, "run_receipt_turn", fake_receipt_turn)
     monkeypatch.setattr(runner.turns, "finalize_turn", s["finalize"])
     monkeypatch.setattr(runner.turns, "record_turn_failure", s["record_failure"])
     return s
@@ -86,20 +84,23 @@ class TestStreamChatTurn:
         assert events == [(None, {"type": "token", "text": "graph reply 1"}), ("done", {"thread_id": "thread-1"})]
         seams["finalize"].assert_awaited_once()
 
-    async def test_bare_receipt_upload_skips_the_model(self, seams):
-        seams["prepare"].return_value = _prepared("\n\n[uploaded receipt: receipts/u/r.jpg]")
-
-        events = await _run("", receipt_object="receipts/u/r.jpg")
-
-        assert events[0] == (None, {"type": "token", "text": "receipt reply"})
-        assert seams["graph_runs"] == []
-
-    async def test_receipt_with_typed_text_goes_through_the_model(self, seams):
+    async def test_an_upload_goes_to_the_graph_with_its_receipt_and_note(self, seams):
+        # Routing (receipt workflow and/or assistant) is the main graph's job; the
+        # runner hands it everything it needs to decide.
         seams["prepare"].return_value = _prepared("from yesterday\n\n[uploaded receipt: receipts/u/r.jpg]")
 
         await _run("from yesterday", receipt_object="receipts/u/r.jpg")
 
-        assert seams["graph_runs"] == ["graph"]
+        (inputs,) = seams["graph_inputs"]
+        assert inputs["receipt_object"] == "receipts/u/r.jpg"
+        assert inputs["note"] == "from yesterday"
+
+    async def test_a_marker_with_an_upload_is_not_treated_as_a_marker_turn(self, seams):
+        seams["prepare"].return_value = _prepared("[transaction: t-1]\n\n[uploaded receipt: receipts/u/r.jpg]")
+
+        await _run("[transaction: t-1]", receipt_object="receipts/u/r.jpg")
+
+        assert len(seams["graph_runs"]) == 1  # streamed once, no marker retry
 
     async def test_marker_turn_without_the_matching_call_is_retried_once_silently(self, seams):
         seams["prepare"].return_value = _prepared("[transaction: t-1] delete this")
@@ -171,4 +172,4 @@ class TestStreamChatTurn:
         await _run("what did I spend today?", timezone="Asia/Makassar")
 
         assert seams["prepare"].await_args.args[4] == datetime.date(2026, 9, 27)
-        assert seams["built_tools_with"][0][2] == datetime.date(2026, 9, 27)
+        assert seams["built_graph_with"][0][2] == datetime.date(2026, 9, 27)

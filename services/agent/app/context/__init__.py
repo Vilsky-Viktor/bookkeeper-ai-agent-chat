@@ -9,9 +9,9 @@ from typing import Any
 from langchain_core.messages import AnyMessage, HumanMessage, SystemMessage
 
 from ..languages import SUPPORTED_LANGUAGES
+from ..prompts.assistant import SYSTEM_PROMPT
 from . import messages, tokens
 from .messages import TRANSACTION_MARKER_RE, compact_tool_result
-from .prompts import SYSTEM_PROMPT
 from .tokens import count_tokens
 
 __all__ = ["build_context", "first_kept_seq", "count_tokens", "compact_tool_result", "TRANSACTION_MARKER_RE"]

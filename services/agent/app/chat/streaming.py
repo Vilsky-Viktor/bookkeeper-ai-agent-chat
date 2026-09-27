@@ -1,9 +1,8 @@
-"""Runs one LangGraph turn end-to-end via astream_events, translating graph events
-into the chat SSE wire format."""
+"""Runs one turn of the main graph (workflows/main.py) via astream_events,
+translating graph events into the chat SSE wire format."""
 
 import json
 
-from ..graph import initial_state
 from ..models.turns import ToolCallRecord, ToolResult, TurnState
 
 
@@ -13,7 +12,7 @@ def sse(event: str | None, data: dict) -> bytes:
     return ("\n".join(lines) + "\n\n").encode()
 
 
-async def run_graph_turn(compiled_graph, messages: list, run_config: dict, state: TurnState):
+async def run_graph_turn(compiled_graph, inputs: dict, run_config: dict, state: TurnState):
     """Runs the graph once, yielding each SSE chunk as it's produced and writing the
     turn's outcome into `state` (assistant_text_parts/tool_calls_made/tool_results/
     total_tokens_used) as it goes. The caller either forwards each yielded chunk to
@@ -26,7 +25,7 @@ async def run_graph_turn(compiled_graph, messages: list, run_config: dict, state
     run_config carries the LangSmith tags/metadata built by langsmith_obs.traced_turn
     — LangSmith attaches its own tracer from environment variables, so there's no
     callback handler to pass here."""
-    async for event in compiled_graph.astream_events(initial_state(messages), config=run_config, version="v2"):
+    async for event in compiled_graph.astream_events(inputs, config=run_config, version="v2"):
         kind = event["event"]
         # Some tools (extract_receipt's vision call) make their own, separate LLM
         # call from inside a tool function while the graph's ToolNode runs.
@@ -96,3 +95,16 @@ async def run_graph_turn(compiled_graph, messages: list, run_config: dict, state
                 payload = None
             if payload:
                 yield sse(ui_event, payload)
+
+        # Workflows that don't go through the assistant's model (receipt.py) report
+        # through custom events: a UI event, a record for the chat history, a reply.
+        elif kind == "on_custom_event":
+            data = event["data"]
+            if event["name"] == "ui_event":
+                yield sse(data["event"], data["payload"])
+            elif event["name"] == "tool_record":
+                state.tool_calls_made.append(ToolCallRecord(id=data["id"], name=data["name"], args=data["args"]))
+                state.tool_results.append(ToolResult(name=data["name"], tool_call_id=data["id"], result=data["result"]))
+            elif event["name"] == "reply":
+                state.assistant_text_parts.append(data["text"])
+                yield sse(None, {"type": "token", "text": data["text"]})

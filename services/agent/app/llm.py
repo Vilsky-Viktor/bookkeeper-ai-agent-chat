@@ -3,7 +3,7 @@ backoff+jitter is handled by the provider SDK's own max_retries; we add an overa
 timeout, an in-process concurrency cap, and a one-shot fallback to a secondary model.
 
 Every chat model in the app — including the one-shot receipt-vision call in
-tools/receipts.py — is built through build_chat_model() below instead of importing a
+receipts.py — is built through build_chat_model() below instead of importing a
 provider's LangChain integration at each call site, so swapping providers means adding
 one builder function (and its package) here and setting LLM_PROVIDER."""
 
@@ -120,7 +120,7 @@ def summary_model() -> BaseChatModel:
 
 
 def vision_model() -> BaseChatModel:
-    """Used for receipt image extraction (see tools/receipts.py) — a one-shot structured-JSON
+    """Used for receipt image extraction (see receipts.py) — a one-shot structured-JSON
     call outside the main chat graph, so it's built directly rather than bound with
     tools."""
     return build_chat_model(VISION_MODEL, temperature=0, json_mode=True, max_tokens=600)

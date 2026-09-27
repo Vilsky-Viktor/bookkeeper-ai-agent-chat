@@ -1,3 +1,5 @@
+import datetime
+
 import httpx
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
@@ -7,8 +9,8 @@ from app import context
 from app import llm as llm_module
 from app import tools as tools_module
 from app.chat import streaming, turns
-from app.graph import build_graph
 from app.models.turns import ToolCallRecord, TurnState
+from app.workflows import build_main_graph
 
 _RealAsyncClient = httpx.AsyncClient  # captured before any monkeypatching below
 
@@ -53,7 +55,6 @@ class TestRunTurnAgainstARealGraph:
             return _RealAsyncClient(*args, **kwargs)
 
         monkeypatch.setattr(tools_module.httpx, "AsyncClient", factory)
-        tools = tools_module.build_tools("test-jwt", "en")
 
         tool_call_msg = AIMessage(
             content="",
@@ -64,11 +65,15 @@ class TestRunTurnAgainstARealGraph:
         monkeypatch.setattr(llm_module, "primary_model", lambda: scripted)
         monkeypatch.setattr(llm_module, "fallback_model", lambda: scripted)
 
-        compiled_graph = build_graph(tools)
+        # The full main graph: router -> assistant subgraph -> tools -> model. This also
+        # checks streaming still recognizes the assistant's model calls now that they
+        # run inside a subgraph.
+        compiled_graph = build_main_graph("test-jwt", "en", datetime.date(2026, 9, 27))
         messages = [SystemMessage(content="you are a test agent"), HumanMessage(content="show my transactions")]
+        inputs = {"messages": messages, "receipt_object": None, "note": "show my transactions"}
         state = TurnState()
 
-        chunks = [c async for c in streaming.run_graph_turn(compiled_graph, messages, {}, state)]
+        chunks = [c async for c in streaming.run_graph_turn(compiled_graph, inputs, {}, state)]
 
         assert chunks  # some SSE bytes were actually produced
         # The real regression-guard: the graph ran end to end (through ToolNode and
