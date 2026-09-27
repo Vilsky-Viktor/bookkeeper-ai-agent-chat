@@ -4,7 +4,7 @@ Provisions the real GCP resources the root `docker-compose.yml` stack stands in 
 locally: two Cloud Run services (`agent`, `transactions`), a Cloud SQL Postgres
 instance (`bookkeeping` + `chat` databases), a Cloud Storage bucket for receipts, a
 Cloud Tasks queue, Secret Manager secrets, Artifact Registry, and the Firebase
-project link + Firestore database. See each `.tf` file's header comment for the
+project link (for Firebase Auth) + a Hosting site. See each `.tf` file's header comment for the
 reasoning behind that piece.
 
 ## What this does NOT cover
@@ -16,12 +16,10 @@ reasoning behind that piece.
   first run that `migrator` can connect after the baseline revokes `CONNECT` from
   `PUBLIC` (it relies on Cloud SQL users inheriting `cloudsqlsuperuser`, the
   databases' owner).
-- **Firestore security rules / Hosting rewrites.** `firebase/firestore.rules` and a
-  Hosting `firebase.json` rewrite config (routing `/api/chat/*` → the `agent` Cloud
-  Run URL, `/api/transactions/*` → `transactions`, same shape as the local
-  `Caddyfile`) deploy via `firebase deploy --only firestore:rules,hosting` with
-  `firebase-tools`, not Terraform — this module only provisions the Firestore
-  database and the Hosting site container.
+- **Hosting rewrites.** The root `firebase.json` (routing `/api/chat/*` → the `agent`
+  Cloud Run URL, `/api/transactions/*` → `transactions`, same shape as the local
+  `Caddyfile`) deploys via `firebase deploy --only hosting` in `release.yml`, not
+  Terraform — this module only provisions the Hosting site container.
 - **Firebase Auth's Google sign-in provider** — enable it once by hand in the
   Firebase console (Authentication > Sign-in method). No stable Terraform resource
   covers this as of this module's writing.

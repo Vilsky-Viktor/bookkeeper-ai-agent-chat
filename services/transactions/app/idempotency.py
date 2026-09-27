@@ -22,9 +22,8 @@ async def run_idempotent(
     key: str,
     payload: Any,
     handler: Callable[[], Awaitable[tuple[int, Any]]],
-) -> tuple[int, Any, bool]:
-    """Returns (status, response, replayed). `replayed=True` means the write did not
-    happen this call — callers should skip side effects like the Firestore bump."""
+) -> tuple[int, Any]:
+    """Returns (status, response): the stored ones when this key was already used."""
     h = _hash(payload)
     existing = await conn.fetchrow(
         "SELECT request_hash, status, response FROM idempotency_keys WHERE uid=$1 AND key=$2",
@@ -34,7 +33,7 @@ async def run_idempotent(
     if existing:
         if existing["request_hash"] != h:
             raise HTTPException(status_code=409, detail="Idempotency-Key reused with a different request")
-        return existing["status"], json.loads(existing["response"]), True
+        return existing["status"], json.loads(existing["response"])
 
     status, response = await handler()
     await conn.execute(
@@ -49,4 +48,4 @@ async def run_idempotent(
     # it with the app's own role, and it needs no scheduler (which a scale-to-zero
     # Cloud Run service couldn't run reliably anyway).
     await conn.execute(f"DELETE FROM idempotency_keys WHERE uid=$1 AND created_at < now() - interval '{KEY_TTL}'", uid)
-    return status, response, False
+    return status, response

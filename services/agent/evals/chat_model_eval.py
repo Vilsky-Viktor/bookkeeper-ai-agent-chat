@@ -420,7 +420,7 @@ async def _invoke_with_rate_limit_retry(model, messages) -> AIMessage:
 
 
 async def run_case(model_name: str, case: Case) -> Run:
-    tools = build_tools("eval-jwt", None, case.language)
+    tools = build_tools("eval-jwt", case.language)
     model = llm.build_chat_model(model_name).bind_tools([compact_tool_schema(t) for t in tools])
     thread = {"working_set": case.working_set, "summary": case.summary}
     messages = build_context(thread, {"language": case.language}, case.history, case.message)

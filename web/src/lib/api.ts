@@ -1,4 +1,4 @@
-import { CLIENT_ID, auth } from "./firebase";
+import { auth } from "./firebase";
 import type { ReceiptContentType } from "./receiptUpload";
 
 export async function authHeaders(extra?: Record<string, string>): Promise<Record<string, string>> {
@@ -6,7 +6,6 @@ export async function authHeaders(extra?: Record<string, string>): Promise<Recor
   const token = user ? await user.getIdToken() : "";
   return {
     Authorization: `Bearer ${token}`,
-    "X-Client-Id": CLIENT_ID,
     ...extra,
   };
 }

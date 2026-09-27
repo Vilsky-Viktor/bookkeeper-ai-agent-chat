@@ -33,7 +33,7 @@ def build(monkeypatch):
             return _RealAsyncClient(*args, **kwargs)
 
         monkeypatch.setattr(tools_module.httpx, "AsyncClient", factory)
-        return tools_module.build_tools("test-jwt", "client-1", language)
+        return tools_module.build_tools("test-jwt", language)
 
     return _build
 

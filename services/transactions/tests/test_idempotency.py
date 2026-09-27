@@ -12,11 +12,10 @@ class TestRunIdempotent:
         mock_conn.fetchrow.return_value = None
         handler = AsyncMock(return_value=(201, {"id": "abc"}))
 
-        status, response, replayed = await run_idempotent(mock_conn, "uid-1", "key-1", {"a": 1}, handler)
+        status, response = await run_idempotent(mock_conn, "uid-1", "key-1", {"a": 1}, handler)
 
         assert status == 201
         assert response == {"id": "abc"}
-        assert replayed is False
         handler.assert_awaited_once()
         # The result gets persisted so a retry with the same key replays it.
         insert_call, purge_call = mock_conn.execute.call_args_list
@@ -40,11 +39,10 @@ class TestRunIdempotent:
         }
         handler = AsyncMock()
 
-        status, response, replayed = await run_idempotent(mock_conn, "uid-1", "key-1", payload, handler)
+        status, response = await run_idempotent(mock_conn, "uid-1", "key-1", payload, handler)
 
         assert status == 201
         assert response == {"id": "abc"}
-        assert replayed is True
         handler.assert_not_awaited()
         # No new row written on a replay.
         mock_conn.execute.assert_not_awaited()

@@ -10,7 +10,6 @@ dependencies = [
     "httpx==0.28.1",
     "pydantic==2.12.5",
     "firebase-admin==6.5.0",
-    "google-cloud-firestore==2.18.0",
     "google-cloud-storage==2.18.2",
     "google-cloud-tasks==2.23.0",
     "google-auth==2.58.0",

@@ -1,4 +1,3 @@
-import { useQueryClient } from "@tanstack/react-query";
 import type { User } from "firebase/auth";
 import { onAuthStateChanged } from "firebase/auth";
 import { Coins, LogOut, Moon, Sun } from "lucide-react";
@@ -13,7 +12,6 @@ import type { TransactionFilter } from "./lib/api";
 import { defaultFilter } from "./lib/filters";
 import { auth, signIn, signOut } from "./lib/firebase";
 import { LanguageProvider, SUPPORTED_LANGUAGES, useTranslation } from "./lib/i18n";
-import { watchSync } from "./lib/sync";
 import { useTheme } from "./lib/theme";
 import { useMediaQuery } from "./lib/useMediaQuery";
 import { useResizable } from "./lib/useResizable";
@@ -48,7 +46,6 @@ function AppContent({ user }: { user: User | null }) {
   const menuRef = useRef<HTMLDivElement>(null);
   const chatPanelRef = useRef<ChatPanelHandle>(null);
   const [theme, toggleTheme] = useTheme();
-  const queryClient = useQueryClient();
   const { t, language, setLanguage } = useTranslation();
 
   // Desktop: a vertical handle resizes the chat pane's width (left/right split).
@@ -70,21 +67,6 @@ function AppContent({ user }: { user: User | null }) {
       if (res.items.length > 0) setThreadId(res.items[0].id);
     });
   }, [user]);
-
-  useEffect(() => {
-    if (!user) return;
-    return watchSync(user.uid, (d, prev) => {
-      if (d.transactions_version !== prev.transactions_version) {
-        queryClient.invalidateQueries({ queryKey: ["transactions"] });
-      }
-      if (threadId && d.thread_versions?.[threadId] !== prev.thread_versions?.[threadId]) {
-        queryClient.invalidateQueries({ queryKey: ["thread-messages", threadId] });
-      }
-      if (d.threads_version !== prev.threads_version) {
-        queryClient.invalidateQueries({ queryKey: ["threads"] });
-      }
-    });
-  }, [user, threadId, queryClient]);
 
   useEffect(() => {
     if (!menuOpen) return;

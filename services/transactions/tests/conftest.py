@@ -1,5 +1,5 @@
 """Env vars must be set before any `app.*` module is imported, since a few of them
-(auth.py's firebase_admin.initialize_app(), db.py/signal.py reading os.environ at call
+(auth.py's firebase_admin.initialize_app(), db.py reading os.environ at call
 time) touch the environment at import or call time. pytest imports conftest.py before
 collecting test modules, so this runs first."""
 
@@ -44,21 +44,11 @@ def patch_uid_conn(monkeypatch, mock_conn: AsyncMock):
 
 
 @pytest.fixture
-def patch_signal(monkeypatch):
-    """Avoids real Firestore calls from signal.bump_async during router tests."""
-    from app import signal
-
-    mock = AsyncMock()
-    monkeypatch.setattr(signal, "bump_async", mock)
-    return mock
-
-
-@pytest.fixture
-def client(patch_uid_conn, patch_signal):
+def client(patch_uid_conn):
     """A TestClient wired to a fresh FastAPI app mounting every router — built without
     main.py's lifespan (which opens a real Postgres pool on startup) and with
     require_uid overridden to a fixed test uid, so requests never touch a real DB,
-    Firestore, or Firebase Auth."""
+    or Firebase Auth."""
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
 

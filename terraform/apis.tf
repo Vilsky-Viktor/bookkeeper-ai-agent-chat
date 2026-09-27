@@ -8,7 +8,6 @@ locals {
     "sqladmin.googleapis.com",             # Cloud SQL
     "secretmanager.googleapis.com",        # Secret Manager
     "cloudtasks.googleapis.com",           # Cloud Tasks
-    "firestore.googleapis.com",            # Firestore (sync/{uid} live-update signal)
     "storage.googleapis.com",              # Cloud Storage (receipts bucket)
     "artifactregistry.googleapis.com",     # Artifact Registry (Cloud Run images)
     "identitytoolkit.googleapis.com",      # Firebase Auth

@@ -66,7 +66,7 @@ class TestListTransactions:
 
 
 class TestCreateTransactions:
-    def test_success_creates_and_returns_item(self, client, mock_conn: AsyncMock, patch_signal: AsyncMock):
+    def test_success_creates_and_returns_item(self, client, mock_conn: AsyncMock):
         mock_conn.fetchrow.side_effect = [None, _row()]  # idempotency miss, then INSERT...RETURNING
 
         res = client.post(
@@ -88,7 +88,6 @@ class TestCreateTransactions:
 
         assert res.status_code == 201
         assert res.json()["items"][0]["amount"] == "12.50"
-        patch_signal.assert_awaited_once()
 
     def _confirm_receipt(self, client, mock_conn: AsyncMock, category: str, suggested: str):
         mock_conn.fetchrow.side_effect = [None, _row(receipt_uri="gs://b/r.jpg", category=category)]
@@ -112,7 +111,7 @@ class TestCreateTransactions:
         )
 
     def test_confirmed_receipt_with_unchanged_category_saves_no_correction(
-        self, client, mock_conn: AsyncMock, patch_signal: AsyncMock, monkeypatch
+        self, client, mock_conn: AsyncMock, monkeypatch
     ):
         save = AsyncMock()
         monkeypatch.setattr("app.routers.transactions.create.save_correction", save)
@@ -123,7 +122,7 @@ class TestCreateTransactions:
         save.assert_not_awaited()
 
     def test_confirmed_receipt_with_changed_category_saves_a_correction(
-        self, client, mock_conn: AsyncMock, patch_signal: AsyncMock, monkeypatch
+        self, client, mock_conn: AsyncMock, monkeypatch
     ):
         save = AsyncMock()
         monkeypatch.setattr("app.routers.transactions.create.save_correction", save)
@@ -178,9 +177,7 @@ class TestCreateTransactions:
         )
         assert res.status_code == 422
 
-    def test_replayed_idempotent_request_does_not_bump_signal(
-        self, client, mock_conn: AsyncMock, patch_signal: AsyncMock
-    ):
+    def test_replayed_idempotent_request_returns_the_stored_response(self, client, mock_conn: AsyncMock):
         from app.idempotency import _hash
 
         payload = [
@@ -220,11 +217,11 @@ class TestCreateTransactions:
         )
 
         assert res.status_code == 201
-        patch_signal.assert_not_awaited()
+        assert res.json() == {"items": []}  # the stored response, not a new write
 
 
 class TestPatchTransaction:
-    def test_success(self, client, mock_conn: AsyncMock, patch_signal: AsyncMock):
+    def test_success(self, client, mock_conn: AsyncMock):
         mock_conn.fetchrow.side_effect = [None, _row(), _row(category="groceries")]
 
         res = client.patch(
@@ -235,7 +232,6 @@ class TestPatchTransaction:
 
         assert res.status_code == 200
         assert res.json()["category"] == "groceries"
-        patch_signal.assert_awaited_once()
 
     def test_not_found_returns_404(self, client, mock_conn: AsyncMock):
         mock_conn.fetchrow.side_effect = [None, None]  # idempotency miss, then no existing row
@@ -259,7 +255,7 @@ class TestPatchTransaction:
 
         assert res.status_code == 400
 
-    def test_currency_change_without_amount_rescales_amount_minor(self, client, mock_conn: AsyncMock, patch_signal):
+    def test_currency_change_without_amount_rescales_amount_minor(self, client, mock_conn: AsyncMock):
         # Regression: currency changed alone (no new "amount") used to leave
         # amount_minor untouched, so the old currency's minor units got read back
         # under the new currency's exponent — a JPY (0-decimal) amount_minor of 1500
@@ -291,9 +287,7 @@ class TestPatchTransaction:
 
         assert res.status_code == 400
 
-    def test_currency_change_with_explicit_amount_uses_new_amount_not_rescaling(
-        self, client, mock_conn: AsyncMock, patch_signal
-    ):
+    def test_currency_change_with_explicit_amount_uses_new_amount_not_rescaling(self, client, mock_conn: AsyncMock):
         mock_conn.fetchrow.side_effect = [None, _row(currency="JPY", amount_minor=1500), _row()]
 
         res = client.patch(
@@ -307,7 +301,7 @@ class TestPatchTransaction:
         assert update_call.args[3] == 2000
         assert update_call.args[4] == "USD"
 
-    def test_same_currency_keeps_amount_minor_unchanged(self, client, mock_conn: AsyncMock, patch_signal):
+    def test_same_currency_keeps_amount_minor_unchanged(self, client, mock_conn: AsyncMock):
         mock_conn.fetchrow.side_effect = [None, _row(currency="USD", amount_minor=1250), _row()]
 
         res = client.patch(
@@ -322,7 +316,7 @@ class TestPatchTransaction:
 
 
 class TestDeleteTransaction:
-    def test_success(self, client, mock_conn: AsyncMock, patch_signal: AsyncMock):
+    def test_success(self, client, mock_conn: AsyncMock):
         mock_conn.fetchrow.return_value = None  # idempotency miss
         mock_conn.execute.return_value = "DELETE 1"
 
@@ -330,7 +324,6 @@ class TestDeleteTransaction:
 
         assert res.status_code == 200
         assert res.json()["deleted"] == TXN_ID
-        patch_signal.assert_awaited_once()
 
     def test_not_found_returns_404(self, client, mock_conn: AsyncMock):
         mock_conn.fetchrow.return_value = None
@@ -342,7 +335,7 @@ class TestDeleteTransaction:
 
 
 class TestDeleteTransactionsBulk:
-    def test_success_reports_deleted_count(self, client, mock_conn: AsyncMock, patch_signal: AsyncMock):
+    def test_success_reports_deleted_count(self, client, mock_conn: AsyncMock):
         mock_conn.fetchrow.return_value = None
         mock_conn.execute.return_value = "DELETE 7"
 
@@ -350,7 +343,6 @@ class TestDeleteTransactionsBulk:
 
         assert res.status_code == 200
         assert res.json()["deleted_count"] == 7
-        patch_signal.assert_awaited_once()
 
     def test_invalid_amount_filter_returns_400(self, client):
         res = client.delete("/api/transactions/transactions?min_amount=garbage", headers={"Idempotency-Key": "key-1"})

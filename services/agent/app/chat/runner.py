@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from fastapi import HTTPException
 from langchain_core.messages import AnyMessage
 
-from .. import chat_db, context, quotas, signal
+from .. import chat_db, context, quotas
 from ..dates import user_today
 from ..graph import build_graph
 from ..langsmith_obs import traced_turn
@@ -112,7 +112,7 @@ async def _run_marker_turn(
     return chunks, state
 
 
-async def stream_chat_turn(body: ChatRequest, uid: str, jwt: str, x_client_id: str | None, agent_base_url: str):
+async def stream_chat_turn(body: ChatRequest, uid: str, jwt: str, agent_base_url: str):
     """The turn runs one of three ways: a receipt upload with no text skips the model
     (receipt_turn.py); a transaction-marker turn is buffered and checked
     (_run_marker_turn); anything else streams the graph's output live."""
@@ -128,7 +128,7 @@ async def stream_chat_turn(body: ChatRequest, uid: str, jwt: str, x_client_id: s
             yield sse("error", {"message": ALREADY_SENT})
             return
 
-        tools = build_tools(jwt, x_client_id, turn.language, today)
+        tools = build_tools(jwt, turn.language, today)
         marker_ids = context.TRANSACTION_MARKER_RE.findall(turn.user_text)
         state = TurnState()
 
@@ -158,7 +158,6 @@ async def stream_chat_turn(body: ChatRequest, uid: str, jwt: str, x_client_id: s
             agent_base_url,
             trimmed_before_seq=turn.trimmed_before_seq,
         )
-        await signal.bump_async(uid, [f"thread_versions.{thread_id}"], x_client_id)
         yield sse("done", {"thread_id": thread_id})
 
     except HTTPException as e:

@@ -67,8 +67,7 @@ export function useChatStream(threadId: string | null, filterRef: RefObject<Tran
             assistantText = "";
             setPendingText("");
           } else if (kind === "table_changed") {
-            // The Firestore signal skips the tab that made the change, so this SSE
-            // event is what refreshes the table here.
+            // The agent changed the table: refresh it now, not at the next refetch.
             queryClient.invalidateQueries({ queryKey: ["transactions"] });
           } else if (kind === "filter_set") {
             // An empty filter from set_filter means "clear" — back to the default view.

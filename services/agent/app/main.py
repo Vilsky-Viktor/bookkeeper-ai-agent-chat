@@ -3,10 +3,10 @@ import logging
 import uuid
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI, File, Header, HTTPException, Query, Request, UploadFile
+from fastapi import Depends, FastAPI, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import StreamingResponse
 
-from . import chat_db, llm, signal, storage
+from . import chat_db, llm, storage
 from .auth import bearer_token, require_uid
 from .chat import runner
 from .languages import SUPPORTED_LANGUAGES
@@ -61,13 +61,9 @@ async def list_threads(uid: str = Depends(require_uid)):
 
 
 @app.post("/api/chat/threads", status_code=201, response_model=ThreadOut)
-async def create_thread_endpoint(
-    uid: str = Depends(require_uid),
-    x_client_id: str | None = Header(default=None, alias="X-Client-Id"),
-):
+async def create_thread_endpoint(uid: str = Depends(require_uid)):
     async with chat_db.uid_conn(uid) as conn:
         thread = await chat_db.create_thread(conn, uid)
-    await signal.bump_async(uid, ["threads_version"], x_client_id)
     # asyncpg doesn't decode jsonb columns on its own — working_set comes back as the
     # raw JSON text, same as context/__init__.py's build_context() already has to
     # handle defensively.
@@ -178,16 +174,13 @@ async def chat(
     request: Request,
     uid: str = Depends(require_uid),
     jwt: str = Depends(bearer_token),
-    x_client_id: str | None = Header(default=None, alias="X-Client-Id"),
 ):
     # This service's own public origin, for Cloud Tasks to POST summaries back to.
     # Cloud Run terminates TLS at its edge and preserves the external Host header, so
     # Host plus a hardcoded https is reliable — and avoids an AGENT_URL env var, which
     # Terraform can't set (a Cloud Run service can't reference its own URL).
     agent_base_url = f"https://{request.headers.get('host', '')}"
-    return StreamingResponse(
-        runner.stream_chat_turn(body, uid, jwt, x_client_id, agent_base_url), media_type="text/event-stream"
-    )
+    return StreamingResponse(runner.stream_chat_turn(body, uid, jwt, agent_base_url), media_type="text/event-stream")
 
 
 # --- internal ------------------------------------------------------------------------

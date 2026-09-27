@@ -3,7 +3,7 @@
 A B2C bookkeeping app: a chat pane driven by a LangGraph agent sits next to a
 transactions table. Two independent FastAPI services front two Postgres databases; a
 local Docker Compose stack stands in for every GCP piece the design targets (Firebase
-Auth/Firestore, Cloud Storage, Cloud Tasks, Cloud Run, Hosting rewrites), so the only
+Auth, Cloud Storage, Cloud Tasks, Cloud Run, Hosting rewrites), so the only
 thing that talks to the real internet is the LLM provider's API (OpenAI by default —
 see "Swapping the LLM provider") and a free public exchange-rate lookup.
 
@@ -26,8 +26,8 @@ projects), `logs`, `rebuild s=<service>`, `migrate`, `migration db=… name=…`
 volume, emulator accounts in `firebase/emulator-data/`, receipts in `gcs/`.
 
 **First boot is slow to become responsive (15–30s):** the `agent` container imports the
-full LangGraph/LangChain/LangSmith stack at startup, and `firebase-tools`
-downloads the Firestore emulator JAR on first run. Watch `docker compose logs -f` for
+full LangGraph/LangChain/LangSmith stack at startup, and `firebase-tools` needs a
+moment on first run. Watch `docker compose logs -f` for
 "Uvicorn running" (both FastAPI services) and "All emulators ready" (Firebase).
 
 Useful side doors while it's running:
@@ -40,7 +40,7 @@ server; `agent` and `transactions` bind-mount their `app/` folders and run uvico
 dependency change (`pyproject.toml`/`uv.lock`) needs `docker compose up -d --build
 --no-deps <service>`.
 
-The Firebase emulator keeps its accounts and Firestore data in
+The Firebase Auth emulator keeps its test accounts in
 `firebase/emulator-data/` (gitignored): imported on start, exported when the
 container stops, so test users survive restarts and rebuilds. Delete the folder to
 start clean.
@@ -106,8 +106,8 @@ packages here with native postinstall scripts (`esbuild`, `@firebase/util`,
 guard; everything else installs with no scripts run at all.
 
 Tests run in `jsdom` with no real network/DOM: pure logic (`src/lib/*.test.ts` — CSV
-building, the default filter's rolling date window, translation lookups, the
-Firestore cross-tab dedup logic) plus component tests (`src/components/*.test.tsx` —
+building, the default filter's rolling date window, translation lookups, receipt
+upload preparation) plus component tests (`src/components/*.test.tsx` —
 `@testing-library/react`, mocking `lib/api.ts`/Firebase/`fetch` at the module
 boundary rather than hitting a network). The chat pane is covered through its parts
 — `useChatStream` (SSE events → UI state, with `fetchEventSource` mocked),
@@ -167,9 +167,9 @@ boundary rather than hitting a network). The chat pane is covered through its pa
   rate covering 300+ currencies — explicitly a reference rate, never used to silently
   convert or alter a transaction's actual stated
   amount/currency.
-- **Live updates.** A same-tab SSE event updates the table instantly; a Firestore
-  `sync/{uid}` document signals other open tabs/devices to refetch (each client tags
-  its own writes with a client ID so it doesn't re-trigger itself).
+- **Live updates.** The tab you're using updates the table instantly (an SSE event
+  from the agent, or its own edit). Other tabs and devices refetch when their window
+  regains focus, and every 60 seconds while focused — no separate sync service.
 - **Chat memory.** Threads persist in Postgres and survive reloads/devices. The model
   sees a rolling per-thread summary plus the messages it doesn't cover yet: once a
   thread has more than 24 unsummarized messages, everything but the newest ~12 (cut
@@ -203,7 +203,6 @@ agent ──HTTP, forwards caller's own JWT──► transactions ──► Post
 agent ──asyncpg───────────────────────────────────────────► Postgres "chat" (RLS)
 agent ──LLM provider (chat + vision)──► primary model, with a fallback model on failure
 agent ──Firebase Auth emulator──► verify_id_token (never skipped, even locally)
-agent ──Firestore emulator──► sync/{uid} live-update signal
 agent ──currency-api (jsdelivr CDN)──► exchange-rate lookups (no key, free)
 ```
 
@@ -298,14 +297,15 @@ the agent has no elevated identity of its own.
 
 ### Frontend
 React 19 + Vite 6 + TypeScript. TanStack Query for server cache, invalidated by the
-same-tab SSE `table_changed` event or the cross-tab Firestore signal. Tailwind CSS v4
+SSE `table_changed` event, and refetched on window focus and every 60 s while focused
+(how other tabs' and devices' changes show up). Tailwind CSS v4
 for styling (dark mode via a class toggle + `@custom-variant`, RTL via logical
 properties), `lucide-react` for icons, `@microsoft/fetch-event-source` for SSE (plain
 `EventSource` can't send an auth header or a POST body).
 
 Key files: `src/lib/i18n/` (`locales/<lang>.ts` — one file per language, typed
 against `en.ts` so a missing key is a compile error; `LanguageProvider`, RTL/`dir`
-handling, `useTranslation()`), `src/lib/sync.ts` (the Firestore live-update listener),
+handling, `useTranslation()`),
 `src/components/ChatPanel.tsx` (the chat pane — composes the pieces below, and exposes
 an imperative `insertReference` handle so the table's `#` button can drop a marker
 into the chat input), `src/lib/useChatStream.ts` (sends a turn and turns its SSE
@@ -319,9 +319,8 @@ in place — date/category/amount/currency/description — via `lib/api.ts`'s
 styled `window.confirm()` stand-in, used by the delete button above).
 
 ### Local infrastructure
-- **`firebase/`** — a container running the Auth and Firestore emulators plus the
-  Emulator UI (`firebase-tools`), so sign-in and the live-update signal work with zero
-  real Google Cloud project.
+- **`firebase/`** — a container running the Firebase Auth emulator plus the Emulator
+  UI (`firebase-tools`), so sign-in works with zero real Google Cloud project.
 - **`fake-gcs-server`** — an in-memory GCS-compatible server for receipt storage;
   `services/agent/app/storage.py` returns a signed GCS URL in production or a direct
   local upload URL here, and the frontend can't tell the difference.
@@ -453,7 +452,7 @@ db/init/                     first-boot setup: the chat database and the app rol
 db/migrations/               schema + RLS policies, per database (dbmate)
 db/Dockerfile, migrate.sh    the migration runner (Compose `migrate`, Cloud Run Job)
 docs/improvement-plan.md     process improvement plan and its status
-firebase/                    Auth + Firestore emulator container; emulator-data/
+firebase/                    Firebase Auth emulator container; emulator-data/
                                holds its persisted state (gitignored)
 gcs/                         local receipt storage (fake-gcs, one folder per bucket; gitignored)
 Makefile                     common tasks — `make` lists them
@@ -488,7 +487,6 @@ web/                          React + Vite + TypeScript — chat pane + transact
   eslint.config.js / .prettierrc.json  lint + format config
   src/lib/i18n/                  locales/<lang>.ts (typed against en.ts), LanguageProvider,
                                  useTranslation(), supported languages
-  src/lib/sync.ts                Firestore cross-tab live-update listener
   src/lib/useChatStream.ts, useThreadMessages.ts, useVoiceRecorder.ts, chat.ts
                                  chat pane logic (streaming, history, voice, types)
   src/components/                ChatPanel (+ ChatComposer, ReceiptProposalCard),
@@ -509,10 +507,9 @@ firebase.json                  Firebase Hosting config (rewrites to the two Clou
 `terraform/` provisions the real GCP resources this local stack stands in for: two
 Cloud Run services, Cloud SQL (the same `bookkeeping`/`chat` databases), the receipts
 bucket, a Cloud Tasks queue, Secret Manager secrets, Artifact Registry, the Firebase
-project link + Firestore database + a Web App, and a Workload Identity Federation
-setup for CI/CD (no long-lived GCP key stored anywhere). It does *not* cover:
-Firestore rules content (still `firebase deploy`), or
-Firebase Auth's Google sign-in provider (enabled once by hand in the console).
+project link + a Web App, and a Workload Identity Federation setup for CI/CD (no
+long-lived GCP key stored anywhere). It does *not* cover Firebase Auth's Google
+sign-in provider (enabled once by hand in the console).
 The schema is applied by the `migrate` Cloud Run Job, which every release runs
 before deploying the services.
 The one service-to-service call, Cloud Tasks → `agent`'s `POST /internal/summarize`,

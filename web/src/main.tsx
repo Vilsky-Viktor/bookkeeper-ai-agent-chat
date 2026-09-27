@@ -7,7 +7,7 @@ import "./index.css";
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      refetchOnWindowFocus: true, // covers the rare missed Firestore signal bump
+      refetchOnWindowFocus: true, // how other tabs/devices' changes show up here
       retry: 1,
     },
   },

@@ -53,7 +53,7 @@ class TestRunTurnAgainstARealGraph:
             return _RealAsyncClient(*args, **kwargs)
 
         monkeypatch.setattr(tools_module.httpx, "AsyncClient", factory)
-        tools = tools_module.build_tools("test-jwt", None, "en")
+        tools = tools_module.build_tools("test-jwt", "en")
 
         tool_call_msg = AIMessage(
             content="",

@@ -1,7 +1,6 @@
 """Tools the agent calls. Every tool forwards the user's JWT to the transactions service
 — the agent never asserts "act as uid X" with its own identity. Built per-request via
-build_tools() so each closure carries this turn's JWT/X-Client-Id without leaking across
-requests."""
+build_tools() so each closure carries this turn's JWT without leaking across requests."""
 
 import datetime
 import os
@@ -16,12 +15,8 @@ TRANSACTIONS_URL = os.environ["TRANSACTIONS_URL"]
 __all__ = ["build_tools"]
 
 
-def build_tools(
-    jwt: str, x_client_id: str | None, language: str = "en", today: datetime.date | None = None
-) -> list[BaseTool]:
+def build_tools(jwt: str, language: str = "en", today: datetime.date | None = None) -> list[BaseTool]:
     headers = {"Authorization": f"Bearer {jwt}"}
-    if x_client_id:
-        headers["X-Client-Id"] = x_client_id
 
     def http_client() -> httpx.AsyncClient:
         return httpx.AsyncClient(base_url=TRANSACTIONS_URL, headers=headers, timeout=30)

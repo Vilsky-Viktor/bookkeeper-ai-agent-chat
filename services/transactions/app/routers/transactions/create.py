@@ -4,7 +4,7 @@ confirmation."""
 from fastapi import Depends, Header, HTTPException
 from fastapi.responses import JSONResponse
 
-from ... import db, signal
+from ... import db
 from ...auth import require_uid
 from ...corrections import save_correction
 from ...idempotency import run_idempotent
@@ -18,7 +18,6 @@ from .serializers import row_to_out
 async def create_transactions(
     body: CreateBatchRequest,
     idempotency_key: str = Header(..., alias="Idempotency-Key"),
-    x_client_id: str | None = Header(default=None, alias="X-Client-Id"),
     uid: str = Depends(require_uid),
 ):
     if not body.transactions:
@@ -64,10 +63,8 @@ async def create_transactions(
                     await save_correction(conn, uid, t.description, t.category)
             return 201, {"items": created}
 
-        status, response, replayed = await run_idempotent(conn, uid, idempotency_key, payload, handler)
+        status, response = await run_idempotent(conn, uid, idempotency_key, payload, handler)
 
-    if not replayed and status < 300:
-        await signal.bump_async(uid, ["transactions_version"], x_client_id)
     # This endpoint's status code is dynamic (200 on idempotency replay, 201 on a
     # fresh create), so it returns a raw JSONResponse instead of relying on FastAPI's
     # response_model machinery to serialize it — response_model above is doc-only

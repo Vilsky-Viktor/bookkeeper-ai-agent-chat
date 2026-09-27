@@ -5,7 +5,7 @@ from datetime import date
 from fastapi import Depends, Header, HTTPException, Query
 from fastapi.responses import JSONResponse
 
-from ... import db, signal
+from ... import db
 from ...auth import require_uid
 from ...filters import build_filter_clauses
 from ...idempotency import run_idempotent
@@ -24,7 +24,6 @@ async def delete_transactions_bulk(
     max_amount: str | None = None,
     description: str | None = None,
     idempotency_key: str = Header(..., alias="Idempotency-Key"),
-    x_client_id: str | None = Header(default=None, alias="X-Client-Id"),
     uid: str = Depends(require_uid),
 ):
     # Deletes every transaction matching the given filters in one statement — no
@@ -66,10 +65,8 @@ async def delete_transactions_bulk(
             deleted_count = int(result.split(" ")[1]) if result.startswith("DELETE") else 0
             return 200, BulkDeleteResponse(deleted_count=deleted_count).model_dump()
 
-        status, response, replayed = await run_idempotent(conn, uid, idempotency_key, payload, handler)
+        status, response = await run_idempotent(conn, uid, idempotency_key, payload, handler)
 
-    if not replayed and status < 300:
-        await signal.bump_async(uid, ["transactions_version"], x_client_id)
     # Dynamic status code means a raw JSONResponse, same as create/patch —
     # response_model above is doc-only; the .model_dump() calls are what actually
     # guarantee the wire shape.
@@ -80,7 +77,6 @@ async def delete_transactions_bulk(
 async def delete_transaction(
     transaction_id: str,
     idempotency_key: str = Header(..., alias="Idempotency-Key"),
-    x_client_id: str | None = Header(default=None, alias="X-Client-Id"),
     uid: str = Depends(require_uid),
 ):
     payload = {"id": transaction_id}
@@ -93,8 +89,6 @@ async def delete_transaction(
                 raise HTTPException(status_code=404, detail="transaction not found")
             return 200, DeleteResponse(deleted=transaction_id).model_dump()
 
-        status, response, replayed = await run_idempotent(conn, uid, idempotency_key, payload, handler)
+        status, response = await run_idempotent(conn, uid, idempotency_key, payload, handler)
 
-    if not replayed and status < 300:
-        await signal.bump_async(uid, ["transactions_version"], x_client_id)
     return JSONResponse(status_code=status, content=response)

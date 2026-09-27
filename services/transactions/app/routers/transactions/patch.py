@@ -4,7 +4,7 @@ handling when currency changes without an explicit new amount."""
 from fastapi import Depends, Header, HTTPException
 from fastapi.responses import JSONResponse
 
-from ... import db, signal
+from ... import db
 from ...auth import require_uid
 from ...corrections import save_correction
 from ...idempotency import run_idempotent
@@ -19,7 +19,6 @@ async def patch_transaction(
     transaction_id: str,
     body: TransactionPatch,
     idempotency_key: str = Header(..., alias="Idempotency-Key"),
-    x_client_id: str | None = Header(default=None, alias="X-Client-Id"),
     uid: str = Depends(require_uid),
 ):
     fields = body.model_dump(exclude_unset=True)
@@ -82,10 +81,8 @@ async def patch_transaction(
                 await save_correction(conn, uid, description, category)
             return 200, row_to_out(row).model_dump(mode="json")
 
-        status, response, replayed = await run_idempotent(conn, uid, idempotency_key, payload, handler)
+        status, response = await run_idempotent(conn, uid, idempotency_key, payload, handler)
 
-    if not replayed and status < 300:
-        await signal.bump_async(uid, ["transactions_version"], x_client_id)
     # Dynamic status code (200 fresh vs. replayed) means this returns a raw
     # JSONResponse rather than relying on FastAPI's response_model machinery —
     # response_model above is doc-only here; the .model_dump(mode="json") above is

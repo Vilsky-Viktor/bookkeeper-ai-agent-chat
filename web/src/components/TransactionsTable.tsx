@@ -65,6 +65,10 @@ export default function TransactionsTable({ filter, onViewImage, onReferenceTran
     queryFn: ({ pageParam }: { pageParam: string | undefined }) => listTransactions(filter, pageParam),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
+    // Picks up changes made elsewhere (another tab or device). This tab's own changes
+    // refresh it immediately; React Query also refetches when the window regains
+    // focus, and runs this interval only while it's focused.
+    refetchInterval: 60_000,
   });
   const items = data?.pages.flatMap((p) => p.items);
   const { t, tCategory } = useTranslation();

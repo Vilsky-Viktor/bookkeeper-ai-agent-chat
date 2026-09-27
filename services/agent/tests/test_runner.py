@@ -69,7 +69,6 @@ def seams(monkeypatch, patch_chat_uid_conn):
     monkeypatch.setattr(runner.receipt_turn, "run_receipt_turn", fake_receipt_turn)
     monkeypatch.setattr(runner.turns, "finalize_turn", s["finalize"])
     monkeypatch.setattr(runner.turns, "record_turn_failure", s["record_failure"])
-    monkeypatch.setattr(runner.signal, "bump_async", AsyncMock())
     return s
 
 
@@ -77,7 +76,7 @@ async def _run(
     message: str = "hi", receipt_object: str | None = None, timezone: str | None = None
 ) -> list[tuple[str | None, dict]]:
     body = ChatRequest(message=message, receipt_object=receipt_object, thread_id=None, timezone=timezone)
-    return _events([c async for c in runner.stream_chat_turn(body, "uid-1", "jwt", None, "https://agent")])
+    return _events([c async for c in runner.stream_chat_turn(body, "uid-1", "jwt", "https://agent")])
 
 
 class TestStreamChatTurn:
@@ -172,4 +171,4 @@ class TestStreamChatTurn:
         await _run("what did I spend today?", timezone="Asia/Makassar")
 
         assert seams["prepare"].await_args.args[4] == datetime.date(2026, 9, 27)
-        assert seams["built_tools_with"][0][3] == datetime.date(2026, 9, 27)
+        assert seams["built_tools_with"][0][2] == datetime.date(2026, 9, 27)

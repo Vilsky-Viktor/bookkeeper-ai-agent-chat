@@ -14,7 +14,7 @@ services:
 
   firebase:
     build: ./firebase
-    ports: ["9099:9099", "8081:8081", "4000:4000"] # auth, firestore, emulator UI
+    ports: ["9099:9099", "4000:4000"] # auth, emulator UI
     # Emulator state survives restarts and recreation (see firebase/Dockerfile's CMD).
     # Delete this folder to start from a clean emulator.
     volumes: ["./firebase/emulator-data:/emulator/state"]
@@ -76,7 +76,6 @@ services:
       PYTHONPYCACHEPREFIX: /tmp/pycache
       DATABASE_URL: postgresql://app_user:app_pw@postgres:5432/bookkeeping
       FIREBASE_AUTH_EMULATOR_HOST: firebase:9099
-      FIRESTORE_EMULATOR_HOST: firebase:8081
       GOOGLE_CLOUD_PROJECT: demo-bookkeeping
     depends_on:
       migrate: { condition: service_completed_successfully }
@@ -95,7 +94,6 @@ services:
       CHAT_DATABASE_URL: postgresql://chat_user:chat_pw@postgres:5432/chat
       TRANSACTIONS_URL: http://transactions:8000
       FIREBASE_AUTH_EMULATOR_HOST: firebase:9099
-      FIRESTORE_EMULATOR_HOST: firebase:8081
       GOOGLE_CLOUD_PROJECT: demo-bookkeeping
       STORAGE_MODE: local
       TASKS_MODE: local
