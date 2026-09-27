@@ -12,6 +12,7 @@ function readCachedLanguage(): Language {
   } catch {
     // ignore — localStorage can throw in private/blocked-storage contexts
   }
+
   return "en";
 }
 
@@ -62,6 +63,7 @@ export function LanguageProvider({ userId, children }: { userId: string | null; 
 
   function tCategory(category: string): string {
     const labels: Record<string, string> = LOCALES[language].categories;
+
     return labels[category.toLowerCase()] ?? category;
   }
 

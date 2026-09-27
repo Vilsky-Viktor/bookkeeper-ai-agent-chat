@@ -13,6 +13,7 @@ let workerConfigured = false;
 // automatically, unlike a static top-level import.
 export async function renderPdfFirstPageToDataUrl(url: string): Promise<string> {
   const { GlobalWorkerOptions, getDocument } = await import("pdfjs-dist");
+
   if (!workerConfigured) {
     // Same Vite-specific pattern as the dynamic import above: bundles the worker as
     // its own asset with a correct hashed URL, in both dev and a production build.
@@ -33,5 +34,6 @@ export async function renderPdfFirstPageToDataUrl(url: string): Promise<string> 
   if (!canvasContext) throw new Error("2D canvas context unavailable");
 
   await page.render({ canvas, canvasContext, viewport }).promise;
+
   return canvas.toDataURL("image/png");
 }

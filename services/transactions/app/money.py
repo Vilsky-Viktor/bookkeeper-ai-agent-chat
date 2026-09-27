@@ -42,11 +42,13 @@ def to_minor(amount: str, currency: str) -> int:
     function has no way to guess which one a lone "." means from the string alone, so
     it treats every "." as a real decimal point and just enforces precision."""
     exp = exponent_for(currency)
+
     try:
         d = Decimal(amount)
     except InvalidOperation as e:
         raise InvalidAmount(f"not a valid decimal amount: {amount!r}") from e
     _, _, e_exp = d.as_tuple()
+
     if isinstance(e_exp, int) and -e_exp > exp:
         raise InvalidAmount(
             f"{currency} allows at most {exp} decimal place(s) — got {amount!r}. If this "
@@ -55,15 +57,19 @@ def to_minor(amount: str, currency: str) -> int:
             "precision here — re-check the intended amount."
         )
     minor = int((d * (10**exp)).to_integral_exact(rounding=ROUND_HALF_UP))
+
     if minor <= 0:
         raise InvalidAmount("amount must be positive")
+
     return minor
 
 
 def to_decimal_string(amount_minor: int, currency: str) -> str:
     """Integer minor units -> decimal string for API responses."""
     exp = exponent_for(currency)
+
     if exp == 0:
         return str(amount_minor)
     d = Decimal(amount_minor).scaleb(-exp)
+
     return format(d, f".{exp}f")

@@ -47,7 +47,7 @@ check-web: ## Checks for web (lint, format, tests, production build)
 format: ## Auto-format all three projects
 	cd services/agent && uv run poe format
 	cd services/transactions && uv run poe format
-	$(COMPOSE) exec -T web pnpm run format
+	$(COMPOSE) exec -T web sh -c "pnpm exec eslint . --fix && pnpm run format"
 
 eval-chat: ## Chat-model eval; pass options with args="--models gpt-4o-mini --runs 3"
 	$(COMPOSE) exec agent uv run python -m evals.chat_model_eval $(args)

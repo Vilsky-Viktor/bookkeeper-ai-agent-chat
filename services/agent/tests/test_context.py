@@ -218,6 +218,7 @@ class TestBuildContext:
         # Force a tiny budget so only the newest turn fits.
         monkeypatch.setattr(tokens_module, "HISTORY_TOKEN_BUDGET", 200)
         rows = []
+
         for i in range(20):
             rows.append(_user_row(f"message number {i} " + "padding " * 20))
             rows.append(_assistant_row(f"reply {i} " + "padding " * 20))
@@ -240,6 +241,7 @@ class TestFirstKeptSeq:
     def test_is_the_oldest_row_that_fit_the_budget(self, monkeypatch):
         monkeypatch.setattr(tokens_module, "HISTORY_TOKEN_BUDGET", 60)
         rows = []
+
         for i in range(6):
             rows.append({**_user_row(f"question {i} " + "pad " * 10), "seq": 2 * i + 1})
             rows.append({**_assistant_row(f"answer {i} " + "pad " * 10), "seq": 2 * i + 2})

@@ -25,6 +25,7 @@ def mock_conn() -> AsyncMock:
     conn.fetchrow.return_value = None
     conn.fetch.return_value = []
     conn.execute.return_value = ""
+
     return conn
 
 
@@ -40,6 +41,7 @@ def patch_uid_conn(monkeypatch, mock_conn: AsyncMock):
         yield mock_conn
 
     monkeypatch.setattr(db, "uid_conn", _fake_uid_conn)
+
     return mock_conn
 
 

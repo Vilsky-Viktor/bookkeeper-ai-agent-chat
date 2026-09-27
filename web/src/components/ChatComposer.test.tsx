@@ -23,6 +23,7 @@ function renderComposer(overrides: Partial<Parameters<typeof ChatComposer>[0]> =
     ...overrides,
   };
   const { container } = render(<ChatComposer {...props} />, { wrapper });
+
   return { props, container };
 }
 

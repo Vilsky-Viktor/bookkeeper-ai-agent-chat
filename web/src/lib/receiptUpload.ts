@@ -1,13 +1,13 @@
+import type { ReceiptContentType } from "../types/api";
 // Receipts are stored at this size: text stays legible, and a phone photo shrinks
 // from several MB to a few hundred KB. The agent downsizes to the same bound before
 // the vision call, so nothing it reads is lost.
 export const MAX_RECEIPT_SIDE = 1600;
 const JPEG_QUALITY = 0.85;
 
-export type ReceiptContentType = "image/jpeg" | "application/pdf";
-
 export function fitWithin(width: number, height: number, maxSide: number): { width: number; height: number } {
   const scale = Math.min(1, maxSide / Math.max(width, height));
+
   return { width: Math.round(width * scale), height: Math.round(height * scale) };
 }
 
@@ -19,11 +19,13 @@ export async function prepareReceiptUpload(file: File): Promise<{ body: Blob; co
   const original = { body: file as Blob, contentType: "image/jpeg" as const };
 
   let bitmap: ImageBitmap;
+
   try {
     bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
   } catch {
     return original;
   }
+
   try {
     const within = bitmap.width <= MAX_RECEIPT_SIDE && bitmap.height <= MAX_RECEIPT_SIDE;
     if (within && file.type === "image/jpeg") return original; // re-encoding would only lose quality
@@ -38,6 +40,7 @@ export async function prepareReceiptUpload(file: File): Promise<{ body: Blob; co
     ctx.fillRect(0, 0, width, height);
     ctx.drawImage(bitmap, 0, 0, width, height);
     const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", JPEG_QUALITY));
+
     return blob ? { body: blob, contentType: "image/jpeg" } : original;
   } finally {
     bitmap.close();

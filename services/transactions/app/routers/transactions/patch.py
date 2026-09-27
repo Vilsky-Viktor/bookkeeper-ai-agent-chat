@@ -28,10 +28,12 @@ async def patch_transaction(
 
         async def handler() -> tuple[int, dict]:
             existing = await conn.fetchrow("SELECT * FROM transactions WHERE uid=$1 AND id=$2", uid, transaction_id)
+
             if not existing:
                 raise HTTPException(status_code=404, detail="transaction not found")
 
             currency = fields.get("currency", existing["currency"])
+
             if "amount" in fields:
                 try:
                     amount_minor = to_minor(fields["amount"], currency)
@@ -45,6 +47,7 @@ async def patch_transaction(
                 # stored integer, read back as a 0-decimal currency, silently
                 # inflates the displayed amount by 100x.
                 existing_amount = to_decimal_string(existing["amount_minor"], existing["currency"])
+
                 try:
                     amount_minor = to_minor(existing_amount, currency)
                 except InvalidAmount as e:
@@ -79,6 +82,7 @@ async def patch_transaction(
             # near-duplicates that don't match exactly).
             if "category" in fields:
                 await save_correction(conn, uid, description, category)
+
             return 200, row_to_out(row).model_dump(mode="json")
 
         status, response = await run_idempotent(conn, uid, idempotency_key, payload, handler)

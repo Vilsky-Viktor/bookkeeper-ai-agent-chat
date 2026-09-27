@@ -27,6 +27,7 @@ async def _fetch_exchange_rate(from_currency: str, to_currency: str) -> dict:
     from_currency = from_currency.upper()
     to_currency = to_currency.upper()
     data = None
+
     for url_tpl in CURRENCY_API_URLS:
         try:
             async with httpx.AsyncClient(timeout=10) as c:
@@ -36,6 +37,7 @@ async def _fetch_exchange_rate(from_currency: str, to_currency: str) -> dict:
             break
         except httpx.HTTPError:
             continue
+
     if data is None:
         return ToolError(
             error=(
@@ -44,6 +46,7 @@ async def _fetch_exchange_rate(from_currency: str, to_currency: str) -> dict:
             )
         ).model_dump()
     rate = data.get(from_currency.lower(), {}).get(to_currency.lower())
+
     if rate is None:
         return ToolError(
             error=(
@@ -51,6 +54,7 @@ async def _fetch_exchange_rate(from_currency: str, to_currency: str) -> dict:
                 "source recognizes — double-check it with the user."
             )
         ).model_dump()
+
     return ExchangeRateResult(
         **{"from": from_currency},
         to=to_currency,
@@ -65,6 +69,7 @@ def build_currency_tools(http_client: Callable[[], httpx.AsyncClient]) -> list[B
     async def get_exchange_rate(from_currency: str, to_currency: str) -> dict:
         """Daily reference exchange rate between two 3-letter currency codes, for the
         user's information only."""
+
         return await _fetch_exchange_rate(from_currency, to_currency)
 
     @tool
@@ -80,6 +85,7 @@ def build_currency_tools(http_client: Callable[[], httpx.AsyncClient]) -> list[B
         query_transactions) converted into to_currency, with exact per-currency
         arithmetic. Use it for any total that spans more than one currency."""
         params = filter_params(type=type, from_date=from_date, to_date=to_date, currency=currency, category=category)
+
         async with http_client() as c:
             resp = await c.get("/api/transactions/aggregates", params=params)
         resp.raise_for_status()
@@ -87,6 +93,7 @@ def build_currency_tools(http_client: Callable[[], httpx.AsyncClient]) -> list[B
 
         to_currency = to_currency.upper()
         totals_by_currency: dict[str, Decimal] = {}
+
         for item in items:
             src = item["currency"].upper()
             totals_by_currency[src] = totals_by_currency.get(src, Decimal(0)) + Decimal(item["total"])
@@ -96,12 +103,14 @@ def build_currency_tools(http_client: Callable[[], httpx.AsyncClient]) -> list[B
 
         breakdown: list[CurrencyBreakdownEntry] = []
         grand_total = Decimal(0)
+
         for src_currency, amount in totals_by_currency.items():
             if src_currency == to_currency:
                 converted = amount
                 rate = None
             else:
                 rate_result = await _fetch_exchange_rate(src_currency, to_currency)
+
                 if "error" in rate_result:
                     return rate_result
                 rate = Decimal(str(rate_result["rate"]))

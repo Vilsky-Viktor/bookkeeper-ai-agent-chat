@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
-import type { ReceiptProposal } from "../lib/chat";
+import type { ReceiptProposal } from "../types/chat";
 import { LanguageProvider } from "../lib/i18n";
 import ReceiptProposalCard from "./ReceiptProposalCard";
 
@@ -28,6 +28,7 @@ const proposal: ReceiptProposal = {
 function renderCard() {
   const handlers = { onChange: vi.fn(), onConfirm: vi.fn(), onCancel: vi.fn() };
   render(<ReceiptProposalCard proposal={proposal} {...handlers} />, { wrapper });
+
   return handlers;
 }
 

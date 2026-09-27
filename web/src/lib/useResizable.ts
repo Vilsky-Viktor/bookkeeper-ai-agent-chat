@@ -20,8 +20,10 @@ interface UseResizableOptions {
 export function useResizable({ axis, initial, min, max, storageKey, reverse = false }: UseResizableOptions) {
   const [size, setSize] = useState<number>(() => {
     if (!storageKey) return initial;
+
     try {
       const stored = Number(localStorage.getItem(storageKey));
+
       return Number.isFinite(stored) && stored > 0 ? stored : initial;
     } catch {
       return initial;
@@ -31,6 +33,7 @@ export function useResizable({ axis, initial, min, max, storageKey, reverse = fa
 
   useEffect(() => {
     if (!storageKey) return;
+
     try {
       localStorage.setItem(storageKey, String(size));
     } catch {
@@ -47,6 +50,7 @@ export function useResizable({ axis, initial, min, max, storageKey, reverse = fa
   // effect, to avoid an extra render pass — see
   // https://react.dev/learn/you-might-not-need-an-effect
   const [prevBounds, setPrevBounds] = useState({ min, max });
+
   if (prevBounds.min !== min || prevBounds.max !== max) {
     setPrevBounds({ min, max });
     const clamped = clamp(size);
@@ -73,6 +77,7 @@ export function useResizable({ axis, initial, min, max, storageKey, reverse = fa
 
   const onPointerUp = useCallback((e: React.PointerEvent<HTMLElement>) => {
     dragState.current = null;
+
     try {
       e.currentTarget.releasePointerCapture(e.pointerId);
     } catch {

@@ -42,6 +42,7 @@ async def aggregates(
         + " AND ".join(clauses)
         + " GROUP BY currency, category, month ORDER BY month DESC, currency, category"
     )
+
     async with db.uid_conn(uid) as conn:
         rows = await conn.fetch(sql, *params)
 

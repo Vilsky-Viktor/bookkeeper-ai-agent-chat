@@ -3,7 +3,7 @@ import { act, renderHook } from "@testing-library/react";
 import { createRef } from "react";
 import type { ReactNode, RefObject } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { TransactionFilter } from "./api";
+import type { TransactionFilter } from "../types/api";
 
 type SseMessage = { event?: string; data: string };
 
@@ -41,6 +41,7 @@ function setup(threadId: string | null = "thread-1") {
     <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
   );
   const { result } = renderHook(() => useChatStream(threadId, filterRef, callbacks), { wrapper });
+
   return { result, callbacks, filterRef, queryClient };
 }
 

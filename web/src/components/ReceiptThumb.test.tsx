@@ -17,6 +17,7 @@ function renderThumb(props: Partial<ComponentProps<typeof ReceiptThumb>> = {}) {
       <ReceiptThumb url="https://example.com/receipt.jpg" onView={onView} {...props} />
     </LanguageProvider>,
   );
+
   return { onView };
 }
 

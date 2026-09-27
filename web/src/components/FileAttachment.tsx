@@ -34,6 +34,7 @@ export default function FileAttachment({ url, filename }: Props) {
       .catch(() => {
         // best effort — the generic file icon below stays as the fallback
       });
+
     return () => {
       cancelled = true;
     };

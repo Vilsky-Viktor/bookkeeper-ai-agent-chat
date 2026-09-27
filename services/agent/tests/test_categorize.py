@@ -15,8 +15,10 @@ class _FakeModel:
 
     async def ainvoke(self, messages, config=None):
         self.prompts.append(messages[0].content)
+
         if isinstance(self.reply, Exception):
             raise self.reply
+
         return AIMessage(content=self.reply)
 
 
@@ -28,10 +30,12 @@ def model(monkeypatch):
 
     def build(items, model_name=None):
         built.append((items, model_name))
+
         return fake
 
     monkeypatch.setattr(llm, "categorize_model", build)
     fake.built = built  # type: ignore[attr-defined]
+
     return fake
 
 
@@ -88,6 +92,7 @@ class TestFetchCorrections:
     async def test_reads_the_users_corrections(self):
         def handler(request: httpx.Request) -> httpx.Response:
             assert request.url.path == "/api/transactions/corrections"
+
             return httpx.Response(200, json={"items": [{"item_key": "coffee", "category": "dining"}]})
 
         async with httpx.AsyncClient(transport=httpx.MockTransport(handler), base_url="http://t") as c:

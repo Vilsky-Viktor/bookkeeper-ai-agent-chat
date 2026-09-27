@@ -13,70 +13,55 @@ import asyncio
 import datetime
 import json
 import uuid
-from typing import Annotated, TypedDict
 
 from langchain_core.callbacks import adispatch_custom_event
-from langchain_core.messages import AIMessage, AnyMessage, ToolMessage
+from langchain_core.messages import AIMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, START, StateGraph
-from langgraph.graph.message import add_messages
 
-from .. import receipts, storage
-from ..models.categorize import Correction
+from .. import images, receipt_helpers, receipts, storage
 from ..models.notices import Notice
-from ..models.tool_results import (
-    NotAReceiptResult,
-    ReceiptExtraction,
-    ReceiptProposedItem,
-    ReceiptProposedResult,
-    ToolError,
-)
-
-
-class ReceiptState(TypedDict, total=False):
-    receipt_object: str  # input
-    note: str  # input: what the user typed with the upload
-    messages: Annotated[list[AnyMessage], add_messages]  # shared with the main graph
-    image: bytes
-    content_type: str
-    extraction: ReceiptExtraction
-    descriptions: list[str]  # for the categorize subgraph
-    corrections: list[Correction]
-    categories: list[str]
-    result: dict  # what gets reported: a proposal, not_a_receipt, or an error
+from ..models.tool_results import NotAReceiptResult, ReceiptProposedItem, ReceiptProposedResult, ToolError
+from .state import ReceiptState
 
 
 def build_receipt_graph(categorize_graph, language: str, today: datetime.date):
     async def load(state: ReceiptState) -> ReceiptState:
         data, content_type = await asyncio.to_thread(storage.read_bytes, state["receipt_object"])
+
         if content_type == "application/pdf":
-            data, content_type = receipts.pdf_first_page_to_png(data), "image/png"
-        elif content_type not in receipts.SUPPORTED_IMAGE_TYPES:
+            data, content_type = images.pdf_first_page_to_png(data), "image/png"
+        elif content_type not in images.SUPPORTED_IMAGE_TYPES:
             error = (
                 f"That file is a {content_type}, which isn't supported. Please upload the "
                 "receipt as a photo/image (JPEG/PNG/WEBP/GIF) or a PDF."
             )
+
             return {"result": ToolError(error=error).model_dump()}
-        data, content_type = receipts.shrink_for_vision(data, content_type)
+        data, content_type = images.shrink_for_vision(data, content_type)
+
         return {"image": data, "content_type": content_type}
 
     async def read(state: ReceiptState) -> ReceiptState:
         extraction = await receipts.read_receipt(
             state["image"], state["content_type"], language, today, state.get("note", "")
         )
+
         if not extraction.is_receipt or not extraction.total_paid:
             message = (
                 "That doesn't look like a receipt — I couldn't find a purchase total on it. "
                 "Please upload a photo or PDF of an actual receipt."
             )
+
             return {"result": NotAReceiptResult(message=message).model_dump()}
-        # The merchant rides along with each item name: "Nasi goreng - Warung Jakarta"
-        # categorizes far better than a bare "Nasi goreng", and matches how the saved
+        # The merchant rides along with each item name: "Fried rice - Corner Diner"
+        # categorizes far better than a bare "Fried rice", and matches how the saved
         # description (and so the user's corrections) is worded.
         names = extraction.items or [extraction.description or ""]
+
         return {
             "extraction": extraction,
-            "descriptions": [receipts.fold_merchant(n, extraction.merchant) or "" for n in names][:100],
+            "descriptions": [receipt_helpers.fold_merchant(n, extraction.merchant) or "" for n in names][:100],
         }
 
     async def propose(state: ReceiptState) -> ReceiptState:
@@ -87,10 +72,11 @@ def build_receipt_graph(categorize_graph, language: str, today: datetime.date):
             type="expense",
             amount=extraction.total_paid,
             currency=(extraction.currency or "USD").upper(),
-            category=receipts.majority_category(state.get("categories", [])),
-            description=receipts.fold_merchant(extraction.description, extraction.merchant),
+            category=receipt_helpers.majority_category(state.get("categories", [])),
+            description=receipt_helpers.fold_merchant(extraction.description, extraction.merchant),
             receipt_uri=receipt_uri,
         )
+
         return {"result": ReceiptProposedResult(items=[item], receipt_uri=receipt_uri).model_dump()}
 
     async def report(state: ReceiptState, config: RunnableConfig) -> ReceiptState:
@@ -98,13 +84,16 @@ def build_receipt_graph(categorize_graph, language: str, today: datetime.date):
         ui_event = result.pop("ui_event", None)
         call_id = f"call_{uuid.uuid4().hex[:24]}"
         args = {"object_name": state["receipt_object"]}
+
         if ui_event == "receipt_proposed":
             card = {"type": ui_event, "items": result["items"], "receipt_uri": result["receipt_uri"]}
             await adispatch_custom_event("ui_event", {"event": ui_event, "payload": card}, config=config)
         record = {"id": call_id, "name": "extract_receipt", "args": args, "result": result}
         await adispatch_custom_event("tool_record", record, config=config)
+
         if not state.get("note", "").strip():
             await adispatch_custom_event("notice", notice_for(result, ui_event).model_dump(), config=config)
+
         return {
             "messages": [
                 AIMessage(content="", tool_calls=[{"id": call_id, "name": "extract_receipt", "args": args}]),
@@ -127,13 +116,17 @@ def build_receipt_graph(categorize_graph, language: str, today: datetime.date):
     graph.add_edge("categorize", "propose")
     graph.add_edge("propose", "report")
     graph.add_edge("report", END)
+
     return graph.compile(name="receipt_workflow")
 
 
 def notice_for(result: dict, ui_event: str | None) -> Notice:
     if ui_event == "receipt_proposed":
         date = (result.get("items") or [{}])[0].get("occurred_on") or ""
+
         return Notice(key="receiptProposed", params={"date": str(date)})
+
     if result.get("not_a_receipt"):
         return Notice(key="notAReceipt")
+
     return Notice(key="receiptUnreadable")

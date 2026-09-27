@@ -64,7 +64,9 @@ async def list_transactions(
 
     items = [row_to_out(r) for r in rows]
     next_cursor = None
+
     if len(rows) == limit:
         last = rows[-1]
         next_cursor = f"{last['occurred_on'].isoformat()}_{last['created_at'].isoformat()}_{last['id']}"
+
     return {"items": items, "next_cursor": next_cursor}

@@ -25,6 +25,7 @@ async def uid_conn(uid: str):
     """A connection whose transaction has app.uid set, so RLS scopes every query in
     the block to this user."""
     assert _pool is not None, "pool not initialized"
+
     async with _pool.acquire() as conn:
         async with conn.transaction():
             await conn.execute("SELECT set_config('app.uid', $1, true)", uid)
@@ -36,6 +37,7 @@ async def uid_conn(uid: str):
 
 async def create_thread(conn: asyncpg.Connection, uid: str, title: str | None = None) -> dict:
     row = await conn.fetchrow("INSERT INTO threads (uid, title) VALUES ($1, $2) RETURNING *", uid, title)
+
     return dict(row)
 
 
@@ -77,6 +79,7 @@ async def insert_message(
     compact: object | None = None,
 ) -> asyncpg.Record | None:
     """Returns the inserted row, or None if client_msg_id already exists (dedup)."""
+
     return await conn.fetchrow(
         """
         INSERT INTO messages (thread_id, uid, role, content, compact, token_count, client_msg_id)
@@ -106,11 +109,8 @@ async def unsummarized_messages(
         after_seq,
         limit,
     )
+
     return list(reversed(rows))  # oldest-first for prompt assembly
-
-
-async def all_messages(conn: asyncpg.Connection, uid: str, thread_id: str) -> list[asyncpg.Record]:
-    return await conn.fetch("SELECT * FROM messages WHERE uid=$1 AND thread_id=$2 ORDER BY seq ASC", uid, thread_id)
 
 
 async def messages_page(
@@ -121,6 +121,7 @@ async def messages_page(
     "load earlier" pagination so a long-running thread doesn't fetch its entire
     history on every open. Fetches one extra row to detect has_more without a second
     COUNT query."""
+
     if before_seq is None:
         rows = await conn.fetch(
             "SELECT * FROM messages WHERE uid=$1 AND thread_id=$2 ORDER BY seq DESC LIMIT $3",
@@ -137,6 +138,7 @@ async def messages_page(
             limit + 1,
         )
     has_more = len(rows) > limit
+
     return list(reversed(rows[:limit])), has_more
 
 

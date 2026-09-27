@@ -107,14 +107,17 @@ PRICES = {"gpt-4o": (2.50, 10.00), "gpt-4o-mini": (0.15, 0.60), "gpt-4.1-mini": 
 async def _classify(model: str, descriptions: list[str], history: list[tuple[str, str]], usage: dict) -> list[str]:
     """classify() with 429 retries: low rate-limit tiers would otherwise fail runs."""
     corrections = [Correction(item_key=k, category=c) for k, c in history]
+
     for attempt in range(10):
         try:
             with get_usage_metadata_callback() as cb:
                 result = await classify(descriptions, corrections, model)
+
             for u in cb.usage_metadata.values():
                 usage["calls"] += 1
                 usage["in"] += u.get("input_tokens", 0)
                 usage["out"] += u.get("output_tokens", 0)
+
             return result
         except Exception as e:
             if "429" not in str(e):
@@ -134,11 +137,13 @@ async def run_model(model: str, runs: int, concurrency: int) -> dict:
         results[group] += [(d, g, ok) for (d, ok), g in zip(items, got)]
 
     jobs = []
+
     for _ in range(runs):
         jobs += [one("single", [(d, ok)], []) for d, ok in PLAIN]
         jobs += [one("history", [(d, ok)], h) for h, d, ok in WITH_HISTORY]
         jobs += [one("batch", PLAIN[i : i + RECEIPT_SIZE], []) for i in range(0, len(PLAIN), RECEIPT_SIZE)]
     await asyncio.gather(*jobs)
+
     return {"results": results, "usage": usage}
 
 
@@ -146,6 +151,7 @@ def _cost_per_call(model: str, usage: dict) -> str:
     if model not in PRICES or not usage["calls"]:
         return "n/a"
     p_in, p_out = PRICES[model]
+
     return f"${(usage['in'] * p_in + usage['out'] * p_out) / 1_000_000 / usage['calls']:.5f}"
 
 
@@ -153,24 +159,30 @@ async def main(models: list[str], runs: int, concurrency: int) -> None:
     report = {m: await run_model(m, runs, concurrency) for m in models}
     groups = [("single", "one item per call"), ("history", "with corrections"), ("batch", "receipt (6 per call)")]
     print(f"\n{'':24}" + "".join(f"{m:>16}" for m in models))
+
     for key, label in groups:
         cells = []
+
         for m in models:
             rs = report[m]["results"][key]
             correct = sum(1 for _, got, ok in rs if got in ok)
             cells.append(f"{correct}/{len(rs)} {100 * correct / len(rs):3.0f}%".rjust(16))
         print(f"{label:24}" + "".join(cells))
+
     for key, label in (("single", "cost per call, 1 item"), ("batch", "cost per call, 6 items")):
         print(f"{label:24}" + "".join(_cost_per_call(m, report[m]["usage"][key]).rjust(16) for m in models))
 
     print("\nMisses (description: got -> expected):")
+
     for m in models:
         misses: dict[tuple[str, str], int] = defaultdict(int)
+
         for key, _ in groups:
             for desc, got, ok in report[m]["results"][key]:
                 if got not in ok:
                     misses[(f"[{key}] {desc}", f"{got} -> {'/'.join(sorted(ok))}")] += 1
         print(f"  {m}: {'none' if not misses else ''}")
+
         for (desc, detail), n in sorted(misses.items()):
             print(f"    {desc}: {detail} (x{n})")
 

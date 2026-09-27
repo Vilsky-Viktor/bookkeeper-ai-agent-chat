@@ -21,6 +21,7 @@ interface Props {
 export default function Tooltip({ label, children, align = "center", side = "top", className = "" }: Props) {
   const position = align === "end" ? "end-0" : align === "start" ? "start-0" : "start-1/2 -translate-x-1/2";
   const sideClasses = side === "bottom" ? "top-full mt-1.5" : "bottom-full mb-1.5";
+
   return (
     <div className={`group relative inline-flex ${className}`}>
       {children}

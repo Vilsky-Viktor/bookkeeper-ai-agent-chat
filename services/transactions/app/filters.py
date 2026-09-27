@@ -36,14 +36,19 @@ def build_filter_clauses(
 
     if currency:
         add("currency = ${n}", currency.upper())
+
     if category:
         add("category = ${n}", category)
+
     if type:
         add("type = ${n}", type)
+
     if from_:
         add("occurred_on >= ${n}", from_)
+
     if to:
         add("occurred_on <= ${n}", to)
+
     if description:
         # Case-insensitive substring match — lets the agent find a transaction by
         # what it was for ("the bagel one") across the whole table, not just the
@@ -51,9 +56,11 @@ def build_filter_clauses(
         add("description ILIKE ${n}", f"%{description}%")
 
     exponent_currency = currency.upper() if currency else "USD"
+
     try:
         if min_amount:
             add("amount_minor >= ${n}", to_minor(min_amount, exponent_currency))
+
         if max_amount:
             add("amount_minor <= ${n}", to_minor(max_amount, exponent_currency))
     except InvalidAmount as e:

@@ -16,27 +16,35 @@ FULL_DETAIL_TURNS = 3  # most-recent N turns keep full tool-result content, not 
 
 def _content_json(row) -> dict:
     c = row["content"]
+
     return json.loads(c) if isinstance(c, str) else c
 
 
 def _compact_json(row) -> dict | None:
     c = row["compact"]
+
     if c is None:
         return None
+
     return json.loads(c) if isinstance(c, str) else c
 
 
 def compact_tool_result(tool_name: str, result: dict) -> dict:
     """Deterministic, cheap compaction for a tool result — no LLM call. Used once a
     tool message ages out of the most-recent turns."""
+
     if tool_name == "query_transactions" and isinstance(result.get("items"), list):
         items = result["items"]
+
         return {"summary": f"{tool_name}: {len(items)} rows returned, ids stored"}
+
     if tool_name == "add_transaction" and "id" in result:
         return {"summary": f"added transaction {result['id']}"}
+
     if tool_name == "extract_receipt" and isinstance(result.get("items"), list):
         return {"summary": f"extracted {len(result['items'])} receipt line items (proposed, not saved)"}
     text = json.dumps(result)
+
     return {"summary": text[:200] + ("..." if len(text) > 200 else "")}
 
 
@@ -52,6 +60,7 @@ def row_to_message(row, full_detail: bool) -> BaseMessage:
         # A notice-only reply (a fixed receipt reply, an error) has no text of its own:
         # the model sees its key, e.g. "[notice: turnFailed]".
         notice = assistant_content.notice
+
         return AIMessage(
             content=assistant_content.text or (f"[notice: {notice.key}]" if notice else ""),
             tool_calls=[tc.model_dump() for tc in assistant_content.tool_calls],
@@ -60,10 +69,12 @@ def row_to_message(row, full_detail: bool) -> BaseMessage:
     if role == "tool":
         tool_content = ToolMessageContent.model_validate(content)
         compact = _compact_json(row)
+
         if not full_detail and compact:
             payload = compact
         else:
             payload = tool_content.result
+
         return ToolMessage(
             content=json.dumps(payload, default=str),
             tool_call_id=tool_content.tool_call_id,
@@ -79,11 +90,13 @@ def group_into_turns(rows: list) -> list[list]:
     result in the same turn so trimming never separates them."""
     turns: list[list] = []
     current: list = []
+
     for row in rows:
         if row["role"] == "user" and current:
             turns.append(current)
             current = []
         current.append(row)
+
     if current:
         turns.append(current)
 
@@ -94,4 +107,5 @@ def group_into_turns(rows: list) -> list[list]:
     # message-order validation, so drop that incomplete leading fragment.
     if turns and turns[0][0]["role"] != "user":
         turns = turns[1:]
+
     return turns

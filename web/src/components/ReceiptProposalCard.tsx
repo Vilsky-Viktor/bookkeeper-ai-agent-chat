@@ -1,4 +1,4 @@
-import type { ProposedItem, ReceiptProposal } from "../lib/chat";
+import type { ProposedItem, ReceiptProposal } from "../types/chat";
 import { BUILT_IN_CATEGORIES, useTranslation } from "../lib/i18n";
 
 const inputClass =
@@ -14,6 +14,7 @@ interface Props {
 /** The editable transaction proposed from a receipt; nothing is saved until Confirm. */
 export default function ReceiptProposalCard({ proposal, onChange, onConfirm, onCancel }: Props) {
   const { t, tCategory } = useTranslation();
+
   return (
     <div className="rounded-xl border border-dashed border-zinc-300 bg-zinc-100 p-3 dark:border-zinc-700 dark:bg-zinc-800/80">
       <strong className="mb-2.5 block text-sm font-medium text-zinc-900 dark:text-zinc-100">

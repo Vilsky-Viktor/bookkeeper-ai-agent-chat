@@ -8,7 +8,7 @@ import GoogleIcon from "./components/GoogleIcon";
 import ReceiptModal from "./components/ReceiptModal";
 import TransactionsTable from "./components/TransactionsTable";
 import { listThreads } from "./lib/api";
-import type { TransactionFilter } from "./lib/api";
+import type { TransactionFilter } from "./types/api";
 import { defaultFilter } from "./lib/filters";
 import { auth, signIn, signOut } from "./lib/firebase";
 import { LanguageProvider, SUPPORTED_LANGUAGES, useTranslation } from "./lib/i18n";
@@ -70,10 +70,12 @@ function AppContent({ user }: { user: User | null }) {
 
   useEffect(() => {
     if (!menuOpen) return;
+
     function onPointerDown(e: MouseEvent) {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
     }
     document.addEventListener("mousedown", onPointerDown);
+
     return () => document.removeEventListener("mousedown", onPointerDown);
   }, [menuOpen]);
 

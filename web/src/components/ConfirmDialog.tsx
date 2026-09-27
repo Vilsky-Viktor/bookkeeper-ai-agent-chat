@@ -17,6 +17,7 @@ export default function ConfirmDialog({ message, onConfirm, onCancel }: Props) {
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => e.key === "Escape" && onCancel();
     window.addEventListener("keydown", onKeyDown);
+
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [onCancel]);
 

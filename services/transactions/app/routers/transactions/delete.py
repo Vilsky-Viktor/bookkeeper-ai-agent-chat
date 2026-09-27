@@ -63,6 +63,7 @@ async def delete_transactions_bulk(
             sql = "DELETE FROM transactions WHERE " + " AND ".join(clauses)
             result = await conn.execute(sql, *params)
             deleted_count = int(result.split(" ")[1]) if result.startswith("DELETE") else 0
+
             return 200, BulkDeleteResponse(deleted_count=deleted_count).model_dump()
 
         status, response = await run_idempotent(conn, uid, idempotency_key, payload, handler)
@@ -85,8 +86,10 @@ async def delete_transaction(
 
         async def handler() -> tuple[int, dict]:
             result = await conn.execute("DELETE FROM transactions WHERE uid=$1 AND id=$2", uid, transaction_id)
+
             if result == "DELETE 0":
                 raise HTTPException(status_code=404, detail="transaction not found")
+
             return 200, DeleteResponse(deleted=transaction_id).model_dump()
 
         status, response = await run_idempotent(conn, uid, idempotency_key, payload, handler)

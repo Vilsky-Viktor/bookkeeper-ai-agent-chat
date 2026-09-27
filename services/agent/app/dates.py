@@ -13,4 +13,5 @@ def user_today(timezone: str | None) -> datetime.date:
             return datetime.datetime.now(ZoneInfo(timezone)).date()
         except (ZoneInfoNotFoundError, ValueError):
             pass  # unknown or malformed name: fall back to UTC
+
     return datetime.datetime.now(datetime.timezone.utc).date()

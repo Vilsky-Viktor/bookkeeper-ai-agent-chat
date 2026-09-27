@@ -12,6 +12,7 @@ class _FrozenDatetime(datetime.datetime):
     @classmethod
     def now(cls, tz=None):
         moment = datetime.datetime(2026, 9, 26, 23, 30, tzinfo=datetime.timezone.utc)
+
         return moment.astimezone(tz) if tz else moment.replace(tzinfo=None)
 
 

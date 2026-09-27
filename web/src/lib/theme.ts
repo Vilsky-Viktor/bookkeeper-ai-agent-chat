@@ -9,6 +9,7 @@ function getInitialTheme(): Theme {
   } catch {
     // private-mode/blocked storage — fall through to system preference
   }
+
   return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 }
 
@@ -19,6 +20,7 @@ export function useTheme(): [Theme, () => void] {
 
   useEffect(() => {
     document.documentElement.classList.toggle("dark", theme === "dark");
+
     try {
       localStorage.setItem("theme", theme);
     } catch {
@@ -27,5 +29,6 @@ export function useTheme(): [Theme, () => void] {
   }, [theme]);
 
   const toggle = () => setTheme((t) => (t === "dark" ? "light" : "dark"));
+
   return [theme, toggle];
 }

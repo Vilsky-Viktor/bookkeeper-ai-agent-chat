@@ -18,6 +18,7 @@ export function receiptViewUrl(receiptUri: string | null | undefined): string | 
   const match = receiptUri.match(/^gs:\/\/([^/]+)\/(.+)$/);
   if (!match) return null;
   const [, bucket, object] = match;
+
   return buildUrl(bucket, object);
 }
 
@@ -25,6 +26,7 @@ export function receiptViewUrl(receiptUri: string | null | undefined): string | 
 // an upload, and what's embedded in a chat message's "[uploaded receipt: ...]" marker.
 export function receiptViewUrlFromObject(object: string | null | undefined): string | null {
   if (!object) return null;
+
   return buildUrl(BUCKET, object);
 }
 
@@ -38,5 +40,6 @@ export function splitReceiptMarker(text: string): { text: string; imageUrl?: str
   const match = text.match(RECEIPT_MARKER);
   if (!match) return { text };
   const imageUrl = receiptViewUrlFromObject(match[1]);
+
   return { text: text.slice(0, match.index), imageUrl: imageUrl ?? undefined };
 }

@@ -14,6 +14,7 @@ def _thread_rows(roles: str, first_seq: int = 1, stride: int = 1) -> list[dict]:
         {"seq": first_seq + i * stride, "role": {"u": "user", "a": "assistant", "t": "tool"}[r]}
         for i, r in enumerate(roles)
     ]
+
     return list(reversed(rows))
 
 
@@ -31,6 +32,7 @@ async def _finalize(conn, monkeypatch, rows, summarized_through=0, trimmed_befor
         agent_base_url=_AGENT_BASE_URL,
         trimmed_before_seq=trimmed_before_seq,
     )
+
     return enqueue
 
 

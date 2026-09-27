@@ -14,6 +14,7 @@ function stubCanvas(decoded: ReturnType<typeof bitmap>) {
   vi.spyOn(HTMLCanvasElement.prototype, "toBlob").mockImplementation(function (cb, type) {
     cb(new Blob(["jpeg"], { type }));
   });
+
   return drawn;
 }
 

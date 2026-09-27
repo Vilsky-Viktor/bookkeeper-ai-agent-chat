@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { StoredMessage } from "./api";
+import type { StoredMessage } from "../types/api";
 import { errorDetail, mapStoredMessages, messageText, toReceiptProposal } from "./chat";
 import { LOCALES } from "./i18n/languages";
 

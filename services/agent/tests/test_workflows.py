@@ -8,12 +8,11 @@ from langchain_core.tools import tool
 from langgraph.graph import END, START, MessagesState, StateGraph
 
 from app.models.tool_results import ReceiptExtraction
+from app.tools.schema import compact_tool_schema
 from app.workflows import main as main_module
 from app.workflows import receipt as receipt_module
-from app.workflows.assistant import compact_tool_schema
-from app.workflows.categorize import CategorizeState
 from app.workflows.receipt import build_receipt_graph
-from app.workflows.state import ChatState
+from app.workflows.state import CategorizeState, ChatState
 
 TODAY = datetime.date(2026, 9, 27)
 
@@ -23,12 +22,14 @@ def _fake_categorize_graph(categories: dict[str, str], calls: list):
 
     def classify(state: CategorizeState) -> CategorizeState:
         calls.append(state["descriptions"])
+
         return {"categories": [categories.get(d, "other") for d in state["descriptions"]]}
 
     g = StateGraph(CategorizeState)
     g.add_node("classify", classify)
     g.add_edge(START, "classify")
     g.add_edge("classify", END)
+
     return g.compile(name="categorize")
 
 
@@ -36,17 +37,20 @@ async def _run_receipt(monkeypatch, extraction, content_type="image/jpeg", note=
     """Runs the real receipt workflow with storage and the vision call faked; returns
     (custom events by name, final state, categorize calls)."""
     monkeypatch.setattr(receipt_module.storage, "read_bytes", lambda name: (b"img", content_type))
-    monkeypatch.setattr(receipt_module.receipts, "shrink_for_vision", lambda data, ct: (data, ct))
+    monkeypatch.setattr(receipt_module.images, "shrink_for_vision", lambda data, ct: (data, ct))
     monkeypatch.setattr(receipt_module.receipts, "read_receipt", AsyncMock(return_value=extraction))
     calls: list = []
     graph = build_receipt_graph(_fake_categorize_graph(categories or {}, calls), "en", TODAY)
     events: dict[str, list] = {}
     final = None
+
     async for ev in graph.astream_events({"receipt_object": "receipts/u1/r.jpg", "note": note}, version="v2"):
         if ev["event"] == "on_custom_event":
             events.setdefault(ev["name"], []).append(ev["data"])
+
         if ev["event"] == "on_chain_end" and ev["name"] == "receipt_workflow":
             final = ev["data"]["output"]
+
     return events, final, calls
 
 
@@ -118,12 +122,14 @@ class TestReceiptWorkflow:
 def _recording_subgraph(name: str, visits: list, state_schema=MessagesState):
     def visit(state):
         visits.append(name)
+
         return {}
 
     g = StateGraph(state_schema)
     g.add_node("visit", visit)
     g.add_edge(START, "visit")
     g.add_edge("visit", END)
+
     return g.compile(name=name)
 
 
@@ -150,13 +156,16 @@ class TestMainGraphRouting:
         def fake_assistant(tools, name="assistant", instructions=None):
             s["tools"][name] = [t.name for t in tools]
             s.setdefault("instructions", {})[name] = instructions
+
             return _recording_subgraph(name, s["visits"])
 
         monkeypatch.setattr(main_module, "build_assistant_graph", fake_assistant)
+
         return s
 
     async def _run(self, receipt_object=None, note=""):
         graph = main_module.build_main_graph("jwt", "en", TODAY)
+
         return await graph.ainvoke(
             {"messages": [HumanMessage(content=note or "x")], "receipt_object": receipt_object, "note": note}
         )
@@ -190,6 +199,7 @@ class TestCompactToolSchema:
             """Find things.
 
             Second line,    indented."""
+
             return {}
 
         fn = compact_tool_schema(query)["function"]

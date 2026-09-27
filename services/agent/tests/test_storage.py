@@ -31,6 +31,7 @@ class TestUploadTarget:
         class FakeBlob:
             def generate_signed_url(self, **kwargs):
                 signed.update(kwargs)
+
                 return "https://storage.example/signed"
 
         class FakeClient:

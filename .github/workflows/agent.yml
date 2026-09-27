@@ -10,6 +10,7 @@ on:
       - "services/Dockerfile"
       - ".github/workflows/agent.yml"
       - ".github/workflows/python-service.yml"
+      - "scripts/blank_lines.py" # run by poe check
       # Read by tests/test_contracts.py (lists this service keeps copies of).
       - "services/transactions/app/money.py"
       - "web/src/lib/i18n/languages.ts"
@@ -21,6 +22,7 @@ on:
       - "services/Dockerfile"
       - ".github/workflows/agent.yml"
       - ".github/workflows/python-service.yml"
+      - "scripts/blank_lines.py" # run by poe check
       # Read by tests/test_contracts.py (lists this service keeps copies of).
       - "services/transactions/app/money.py"
       - "web/src/lib/i18n/languages.ts"

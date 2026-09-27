@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { Transaction, TransactionFilter } from "../lib/api";
+import type { Transaction, TransactionFilter } from "../types/api";
 import { LanguageProvider } from "../lib/i18n";
 import TransactionsTable from "./TransactionsTable";
 
@@ -52,6 +52,7 @@ function renderTable(props?: {
       </LanguageProvider>
     </QueryClientProvider>,
   );
+
   return { onViewImage, onReferenceTransaction };
 }
 

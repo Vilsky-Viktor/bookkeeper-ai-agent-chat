@@ -9,6 +9,7 @@ def _mock_model(reply_text: str):
     response = MagicMock()
     response.content = reply_text
     model.ainvoke = AsyncMock(return_value=response)
+
     return model
 
 

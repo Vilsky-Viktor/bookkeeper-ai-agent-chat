@@ -61,4 +61,5 @@ def build_main_graph(jwt: str, language: str, today: datetime.date):
     graph.add_conditional_edges("receipt_workflow", after_receipt, ["receipt_followup", END])
     graph.add_edge("assistant", END)
     graph.add_edge("receipt_followup", END)
+
     return graph.compile(name="chat")

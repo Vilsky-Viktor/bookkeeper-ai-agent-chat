@@ -36,6 +36,7 @@ async def record_turn_failure(uid: str, thread_id: str, notice: Notice) -> None:
     """Saves an assistant reply for a turn that failed after the user's message was
     stored. Otherwise the thread holds two user messages in a row with no reply
     between them, which derails the model on every later turn in that thread."""
+
     try:
         async with chat_db.uid_conn(uid) as conn:
             await chat_db.insert_message(
@@ -56,20 +57,25 @@ def _working_set_entries(tool_name: str, result: dict) -> dict:
 
     def label(row: dict) -> str:
         what = row.get("description") or row.get("category") or "transaction"
+
         return f"{what}, {row.get('amount')} {row.get('currency')}, {row.get('occurred_on')}"
 
     if tool_name in ("add_transaction", "edit_transaction") and "id" in result:
         return {result["id"]: label(result)}
+
     if tool_name == "query_transactions" and isinstance(result.get("items"), list):
         return {i["id"]: label(i) for i in result["items"][:20] if "id" in i}
+
     return {}
 
 
 def _cap_working_set(ws: dict, limit: int = 20) -> dict:
     if len(ws) <= limit:
         return ws
+
     for k in list(ws.keys())[: len(ws) - limit]:
         ws.pop(k, None)
+
     return ws
 
 
@@ -86,6 +92,7 @@ async def _summarize_through(
         summarized_through,
     )
     through = 0
+
     if len(rows) > SUMMARIZE_AFTER_MESSAGES:
         # Keep at least KEEP_RECENT_MESSAGES, extended back to a user message so the
         # kept window starts on a turn boundary, never mid-turn.
@@ -93,12 +100,15 @@ async def _summarize_through(
             (i for i in range(KEEP_RECENT_MESSAGES - 1, len(rows)) if rows[i]["role"] == "user"),
             None,
         )
+
         if start is not None and start + 1 < len(rows):
             through = rows[start + 1]["seq"]
+
     if trimmed_before_seq is not None:
         # The token budget dropped older messages from this turn's prompt: fold them
         # into the summary so they aren't forgotten.
         through = max(through, trimmed_before_seq - 1)
+
     return through if through > summarized_through else None
 
 

@@ -2,9 +2,9 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Sparkles } from "lucide-react";
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { createTransactionBatch, requestUploadTarget, uploadReceiptImage } from "../lib/api";
-import type { TransactionFilter } from "../lib/api";
+import type { TransactionFilter } from "../types/api";
 import { errorDetail, messageText } from "../lib/chat";
-import type { ProposedItem, ReceiptProposal } from "../lib/chat";
+import type { ProposedItem, ReceiptProposal } from "../types/chat";
 import { useTranslation } from "../lib/i18n";
 import { receiptViewUrlFromObject } from "../lib/receipts";
 import { prepareReceiptUpload } from "../lib/receiptUpload";
@@ -77,6 +77,7 @@ const ChatPanel = forwardRef<ChatPanelHandle, Props>(function ChatPanel(
     // bottom here would fight it.
     if (history.justLoadedOlderRef.current) {
       history.justLoadedOlderRef.current = false;
+
       return;
     }
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -115,11 +116,13 @@ const ChatPanel = forwardRef<ChatPanelHandle, Props>(function ChatPanel(
 
   async function confirmProposal() {
     if (!proposal) return;
+
     try {
       await createTransactionBatch(proposal.items as unknown as Record<string, unknown>[], crypto.randomUUID());
     } catch (e) {
       // Keep the card so the user can fix the field the server rejected and retry.
       appendMessage({ role: "assistant", text: "", notice: { key: "saveFailed", params: { error: errorDetail(e) } } });
+
       return;
     }
     queryClient.invalidateQueries({ queryKey: ["transactions"] });
@@ -166,6 +169,7 @@ const ChatPanel = forwardRef<ChatPanelHandle, Props>(function ChatPanel(
         )}
         {messages.map((m, i) => {
           const text = messageText(m, t);
+
           return (
             <div
               key={i}

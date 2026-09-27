@@ -127,4 +127,5 @@ class ReceiptExtraction(BaseModel):
     def _strip_zero_decimal_separator(self) -> "ReceiptExtraction":
         if self.total_paid and (self.currency or "").upper() in _ZERO_DECIMAL_CURRENCIES:
             self.total_paid = self.total_paid.replace(".", "")
+
         return self

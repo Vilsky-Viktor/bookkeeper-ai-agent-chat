@@ -3,19 +3,13 @@ correction first, one model call for the rest — app/categorize.py). Shared: th
 receipt workflow runs it as a node, and the assistant's add_transaction tool invokes
 the same compiled graph."""
 
-from typing import Callable, TypedDict
+from typing import Callable
 
 import httpx
 from langgraph.graph import END, START, StateGraph
 
 from .. import categorize as categorizer
-from ..models.categorize import Correction
-
-
-class CategorizeState(TypedDict, total=False):
-    descriptions: list[str]  # input
-    corrections: list[Correction]
-    categories: list[str]  # output, one per description
+from .state import CategorizeState
 
 
 def build_categorize_graph(http_client: Callable[[], httpx.AsyncClient]):
@@ -32,4 +26,5 @@ def build_categorize_graph(http_client: Callable[[], httpx.AsyncClient]):
     graph.add_edge(START, "load_corrections")
     graph.add_edge("load_corrections", "classify")
     graph.add_edge("classify", END)
+
     return graph.compile(name="categorize")

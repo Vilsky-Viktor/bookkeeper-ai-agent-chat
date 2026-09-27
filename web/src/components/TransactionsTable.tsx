@@ -2,9 +2,11 @@ import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import { Hash, Paperclip, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { deleteTransaction, listTransactions, patchTransaction } from "../lib/api";
-import type { Transaction, TransactionFilter } from "../lib/api";
+import type { Transaction, TransactionFilter } from "../types/api";
+import { formatAmount } from "../lib/format";
 import { BUILT_IN_CATEGORIES, useTranslation } from "../lib/i18n";
 import { receiptViewUrl } from "../lib/receipts";
+import AmountText from "./AmountText";
 import ConfirmDialog from "./ConfirmDialog";
 import IconButton from "./IconButton";
 import Tooltip from "./Tooltip";
@@ -21,34 +23,8 @@ interface Props {
   onReferenceTransaction: (id: string) => void;
 }
 
-// Grouping-only: the API returns an exact decimal string (integer minor units under
-// the hood, see services/transactions/app/money.py) — this never parses it as a
-// number, so there's no float rounding risk, just thousands separators inserted into
-// the integer part.
-function formatAmount(amount: string): string {
-  const [intPart, decPart] = amount.split(".");
-  const grouped = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
-  return decPart !== undefined ? `${grouped}.${decPart}` : grouped;
-}
-
 const editableCellClass =
   "w-full min-w-0 rounded-md border border-transparent bg-transparent px-1.5 py-1 text-inherit focus:border-zinc-300 focus:bg-white focus:outline-none focus:ring-1 focus:ring-sky-500/40 dark:focus:border-zinc-600 dark:focus:bg-zinc-800";
-
-// A native <input>'s value can't have mixed font sizes, so showing the decimal part
-// smaller than the integer part (to make the currency's actual precision visually
-// obvious — see money.py's per-currency exponent, e.g. IDR has none at all) means the
-// amount cell isn't a plain always-visible input like every other column: it shows
-// this styled, click-to-edit button instead, swapping to a real input only while
-// actively being edited.
-function AmountText({ amount }: { amount: string }) {
-  const [intPart, decPart] = formatAmount(amount).split(".");
-  return (
-    <>
-      {intPart}
-      {decPart !== undefined && <span className="text-[0.75em] opacity-70">.{decPart}</span>}
-    </>
-  );
-}
 
 // Every field is directly editable in place (a plain uncontrolled input per cell,
 // keyed on the row's current value so it remounts — and picks up the fresh
@@ -78,6 +54,7 @@ export default function TransactionsTable({ filter, onViewImage, onReferenceTran
 
   function handleScroll(e: React.UIEvent<HTMLDivElement>) {
     const el = e.currentTarget;
+
     if (
       el.scrollHeight - el.scrollTop - el.clientHeight < LOAD_MORE_THRESHOLD_PX &&
       hasNextPage &&
@@ -89,6 +66,7 @@ export default function TransactionsTable({ filter, onViewImage, onReferenceTran
 
   async function handlePatch(tx: Transaction, field: keyof Transaction, value: string) {
     if (value === tx[field]) return; // no-op edit (e.g. blurred without changing anything)
+
     try {
       await patchTransaction(tx.id, { [field]: value }, crypto.randomUUID());
     } catch (e) {
@@ -103,6 +81,7 @@ export default function TransactionsTable({ filter, onViewImage, onReferenceTran
 
   async function performDelete(id: string) {
     setConfirmDeleteId(null);
+
     try {
       await deleteTransaction(id, crypto.randomUUID());
     } catch (e) {
@@ -163,6 +142,7 @@ export default function TransactionsTable({ filter, onViewImage, onReferenceTran
                 className={`${editableCellClass} truncate`}
               />
             );
+
             return (
               <tr
                 key={tx.id}

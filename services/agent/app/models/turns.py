@@ -2,8 +2,10 @@
 draining the graph's event stream) and chat/turns.py's finalize_turn (which persists
 it) — the turn's outcome in one place instead of untyped dict keys."""
 
+from dataclasses import dataclass
 from typing import Any
 
+from langchain_core.messages import AnyMessage
 from pydantic import BaseModel, Field
 
 from .notices import Notice
@@ -40,3 +42,14 @@ class TurnState(BaseModel):
     tool_results: list[ToolResult] = Field(default_factory=list)
     total_tokens_used: int = 0
     notice: Notice | None = None
+
+
+@dataclass
+class PreparedTurn:
+    """A saved user message and the context built for it (chat/runner.py)."""
+
+    user_text: str
+    user_tokens: int
+    language: str
+    messages: list[AnyMessage]
+    trimmed_before_seq: int | None  # see context.first_kept_seq

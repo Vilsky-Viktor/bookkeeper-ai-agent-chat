@@ -14,8 +14,10 @@ BUCKET = os.environ["RECEIPTS_BUCKET"]
 
 def upload_target(uid: str, object_id: str, content_type: str = "image/jpeg") -> UploadTargetOut:
     name = f"receipts/{uid}/{object_id}.jpg"
+
     if os.getenv("STORAGE_MODE") == "local":
         base = os.environ["PUBLIC_UPLOAD_BASE"]
+
         return UploadTargetOut(
             method="POST",
             object=name,
@@ -26,6 +28,7 @@ def upload_target(uid: str, object_id: str, content_type: str = "image/jpeg") ->
     url = blob.generate_signed_url(
         version="v4", method="PUT", expiration=datetime.timedelta(minutes=5), content_type=content_type
     )
+
     return UploadTargetOut(method="PUT", object=name, url=url)
 
 
@@ -36,4 +39,5 @@ def read_bytes(object_name: str) -> tuple[bytes, str]:
     against both fake-gcs-server (STORAGE_EMULATOR_HOST) and real GCS."""
     blob = storage.Client().bucket(BUCKET).blob(object_name)
     data = blob.download_as_bytes()
+
     return data, blob.content_type or "image/jpeg"

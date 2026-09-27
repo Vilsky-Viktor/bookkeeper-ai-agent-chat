@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { Transaction } from "./api";
+import type { Transaction } from "../types/api";
 import { createCsvObjectUrl, parseCsvPreviewRows, transactionsToCsv } from "./csv";
 
 function tx(overrides: Partial<Transaction> = {}): Transaction {

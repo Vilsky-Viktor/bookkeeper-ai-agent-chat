@@ -5,30 +5,11 @@ context.build_context)."""
 from langchain_core.messages import SystemMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool
-from langchain_core.utils.function_calling import convert_to_openai_tool
 from langgraph.graph import END, START, MessagesState, StateGraph
 from langgraph.prebuilt import ToolNode, tools_condition
 
 from .. import llm
-
-
-def compact_tool_schema(tool: BaseTool) -> dict:
-    """The schema sent to the model on EVERY call, so every token here is billed on
-    every request. Collapses the docstring's indentation/newlines and rewrites each
-    optional param's generated `anyOf: [{type: X}, {type: null}], default: null`
-    as plain `type: X` — it's already optional by being absent from `required`.
-    Execution still goes through the real tool (ToolNode), so validation is unchanged."""
-    schema = convert_to_openai_tool(tool)
-    fn = schema["function"]
-    fn["description"] = " ".join(fn.get("description", "").split())
-    for prop in fn.get("parameters", {}).get("properties", {}).values():
-        non_null = [s for s in prop.get("anyOf", []) if s.get("type") != "null"]
-        if len(non_null) == 1:
-            del prop["anyOf"]
-            prop.update(non_null[0])
-        if "default" in prop and prop["default"] is None:
-            del prop["default"]
-    return schema
+from ..tools.schema import compact_tool_schema
 
 
 def build_assistant_graph(tools: list[BaseTool], name: str = "assistant", instructions: str | None = None):
@@ -41,6 +22,7 @@ def build_assistant_graph(tools: list[BaseTool], name: str = "assistant", instru
     async def call_model(state: MessagesState, config: RunnableConfig):
         messages = state["messages"] + ([SystemMessage(content=instructions)] if instructions else [])
         response = await llm.ainvoke_with_fallback(model_with_tools, fallback_with_tools, messages, config=config)
+
         return {"messages": [response]}
 
     graph = StateGraph(MessagesState)
@@ -49,4 +31,5 @@ def build_assistant_graph(tools: list[BaseTool], name: str = "assistant", instru
     graph.add_edge(START, "call_model")
     graph.add_conditional_edges("call_model", tools_condition, {"tools": "call_tools", "__end__": END})
     graph.add_edge("call_tools", "call_model")
+
     return graph.compile(name=name)

@@ -20,6 +20,7 @@ class TestRequireUid:
             raise ValueError("bad token")
 
         monkeypatch.setattr("app.auth.fb_auth.verify_id_token", _raise)
+
         with pytest.raises(HTTPException) as exc_info:
             await require_uid(authorization="Bearer garbage")
         assert exc_info.value.status_code == 401

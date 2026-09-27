@@ -11,8 +11,10 @@ async def require_uid(authorization: str = Header(...)) -> str:
     if not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="missing bearer token")
     token = authorization.removeprefix("Bearer ")
+
     try:
         decoded = fb_auth.verify_id_token(token)
     except Exception as e:
         raise HTTPException(status_code=401, detail=f"invalid token: {e}") from e
+
     return decoded["uid"]

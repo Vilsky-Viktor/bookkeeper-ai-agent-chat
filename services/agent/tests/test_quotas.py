@@ -17,6 +17,7 @@ class TestIncrementAndCheckTurn:
 
     async def test_over_limit_raises_429(self, mock_conn: AsyncMock):
         mock_conn.fetchrow.return_value = {"turns": quotas.DAILY_TURN_LIMIT + 1}
+
         with pytest.raises(HTTPException) as exc_info:
             await quotas.increment_and_check_turn(mock_conn, "uid-1")
         assert exc_info.value.status_code == 429
@@ -29,6 +30,7 @@ class TestIncrementReceipt:
 
     async def test_over_limit_raises_429(self, mock_conn: AsyncMock):
         mock_conn.fetchrow.return_value = {"receipts": quotas.DAILY_RECEIPT_LIMIT + 1}
+
         with pytest.raises(HTTPException) as exc_info:
             await quotas.increment_receipt(mock_conn, "uid-1")
         assert exc_info.value.status_code == 429

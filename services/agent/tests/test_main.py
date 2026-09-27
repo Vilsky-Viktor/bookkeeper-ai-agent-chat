@@ -53,6 +53,7 @@ class TestRunTurnAgainstARealGraph:
 
         def factory(*args, **kwargs):
             kwargs["transport"] = httpx.MockTransport(handler)
+
             return _RealAsyncClient(*args, **kwargs)
 
         monkeypatch.setattr(tools_module.httpx, "AsyncClient", factory)
@@ -167,6 +168,7 @@ class TestUploadTargetEndpoint:
             lambda uid, obj, ct: calls.append(ct) or {"method": "POST", "object": "o", "url": "u"},
         )
         monkeypatch.setitem(main.app.dependency_overrides, require_uid, lambda: "uid-1")
+
         return TestClient(main.app), calls
 
     def test_defaults_to_jpeg_when_no_body_is_sent(self, monkeypatch):

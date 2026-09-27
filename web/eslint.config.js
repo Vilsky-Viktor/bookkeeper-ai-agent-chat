@@ -29,4 +29,13 @@ export default tseslint.config(
     },
   },
   eslintConfigPrettier,
+  {
+    // CLAUDE.md rule 2: an empty line before every block statement and every return
+    // (not needed when it's the first statement of its block). `pnpm run lint --fix`
+    // adds them.
+    files: ["**/*.{ts,tsx}"],
+    rules: {
+      "padding-line-between-statements": ["error", { blankLine: "always", prev: "*", next: ["block-like", "return"] }],
+    },
+  },
 );

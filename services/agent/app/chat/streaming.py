@@ -10,6 +10,7 @@ from ..models.turns import ToolCallRecord, ToolResult, TurnState
 def sse(event: str | None, data: dict) -> bytes:
     lines = [f"event: {event}"] if event else []
     lines.append(f"data: {json.dumps(data, default=str)}")
+
     return ("\n".join(lines) + "\n\n").encode()
 
 
@@ -26,6 +27,7 @@ async def run_graph_turn(compiled_graph, inputs: dict, run_config: dict, state: 
     run_config carries the LangSmith tags/metadata built by langsmith_obs.traced_turn
     — LangSmith attaches its own tracer from environment variables, so there's no
     callback handler to pass here."""
+
     async for event in compiled_graph.astream_events(inputs, config=run_config, version="v2"):
         kind = event["event"]
         # Some tools (extract_receipt's vision call) make their own, separate LLM
@@ -40,6 +42,7 @@ async def run_graph_turn(compiled_graph, inputs: dict, run_config: dict, state: 
         if kind == "on_chat_model_stream" and is_call_model_node:
             chunk = event["data"]["chunk"]
             text = chunk.content if isinstance(chunk.content, str) else ""
+
             if text:
                 state.assistant_text_parts.append(text)
                 yield sse(None, {"type": "token", "text": text})
@@ -47,16 +50,20 @@ async def run_graph_turn(compiled_graph, inputs: dict, run_config: dict, state: 
         elif kind == "on_chat_model_end":
             output = event["data"].get("output")
             usage = getattr(output, "usage_metadata", None)
+
             if usage:
                 # Counted for every model call, including nested ones like vision
                 # extraction — it's real spend against the user's token quota
                 # either way.
                 state.total_tokens_used += usage.get("total_tokens", 0)
+
             if not is_call_model_node:
                 continue
             round_tool_calls = getattr(output, "tool_calls", None) or []
+
             for c in round_tool_calls:
                 state.tool_calls_made.append(ToolCallRecord(id=c.get("id"), name=c.get("name"), args=c.get("args")))
+
             if round_tool_calls:
                 # This round's streamed text (if any) was narration before a tool
                 # call, not the final answer — e.g. "I'll export this now." Without
@@ -71,10 +78,12 @@ async def run_graph_turn(compiled_graph, inputs: dict, run_config: dict, state: 
             name = event.get("name", "")
             tool_call_id = getattr(output, "tool_call_id", None)
             raw = getattr(output, "content", "{}")
+
             try:
                 parsed = json.loads(raw) if isinstance(raw, str) else raw
             except (TypeError, ValueError):
                 parsed = {"result": raw}
+
             if not isinstance(parsed, dict):
                 parsed = {"result": parsed}
             ui_event = parsed.pop("ui_event", None)
@@ -94,6 +103,7 @@ async def run_graph_turn(compiled_graph, inputs: dict, run_config: dict, state: 
                 payload = {"type": "export_ready"}
             else:
                 payload = None
+
             if payload:
                 yield sse(ui_event, payload)
 
@@ -102,6 +112,7 @@ async def run_graph_turn(compiled_graph, inputs: dict, run_config: dict, state: 
         # fixed reply as a notice (a key the web app translates).
         elif kind == "on_custom_event":
             data = event["data"]
+
             if event["name"] == "ui_event":
                 yield sse(data["event"], data["payload"])
             elif event["name"] == "tool_record":

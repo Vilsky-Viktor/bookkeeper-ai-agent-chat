@@ -23,8 +23,10 @@ _tasks_client: tasks_v2.CloudTasksClient | None = None
 
 def _get_tasks_client() -> tasks_v2.CloudTasksClient:
     global _tasks_client
+
     if _tasks_client is None:
         _tasks_client = tasks_v2.CloudTasksClient()
+
     return _tasks_client
 
 
@@ -32,6 +34,7 @@ async def enqueue_summarize(uid: str, thread_id: str, through_seq: int, agent_ba
     # Cloud Tasks would carry {thread_id, through_seq}; we also pass uid so the local
     # handler can open an RLS-scoped connection without a caller JWT to derive it from.
     task_name = f"summarize-{thread_id}-{through_seq}"
+
     if task_name in _seen_task_names:
         return  # duplicate enqueue for the same range, rejected like Cloud Tasks would
     _seen_task_names.add(task_name)
@@ -48,6 +51,7 @@ async def enqueue_summarize(uid: str, thread_id: str, through_seq: int, agent_ba
                 _seen_task_names.discard(task_name)
 
         asyncio.create_task(_run())
+
         return
 
     try:
@@ -73,6 +77,7 @@ async def enqueue_summarize(uid: str, thread_id: str, through_seq: int, agent_ba
                 ),
             ),
         )
+
         try:
             await asyncio.to_thread(client.create_task, parent=parent, task=task)
         except AlreadyExists:

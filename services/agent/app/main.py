@@ -25,6 +25,7 @@ from .models.api import (
     UploadTargetOut,
     UploadTargetRequest,
 )
+from .serializers import message_out
 from .service_auth import require_service_caller
 from .summarize import run_summarize
 
@@ -54,6 +55,7 @@ async def healthz():
 async def list_threads(uid: str = Depends(require_uid)):
     async with chat_db.uid_conn(uid) as conn:
         rows = await chat_db.list_threads(conn, uid)
+
     # asyncpg decodes the uuid column as a real uuid.UUID, not str — ThreadSummary.id
     # is str (matching what the wire format has always been), so this needs the same
     # explicit str() conversion create_thread_endpoint below already does.
@@ -68,20 +70,11 @@ async def create_thread_endpoint(uid: str = Depends(require_uid)):
     # raw JSON text, same as context/__init__.py's build_context() already has to
     # handle defensively.
     working_set = thread["working_set"]
+
     if isinstance(working_set, str):
         working_set = json.loads(working_set) if working_set else {}
+
     return ThreadOut(**{**thread, "id": str(thread["id"]), "working_set": working_set})
-
-
-def _message_out(row) -> MessageOut:
-    content = row["content"]
-    content = json.loads(content) if isinstance(content, str) else content
-    return MessageOut(
-        seq=row["seq"],
-        role=row["role"],
-        content=content,
-        created_at=row["created_at"].isoformat(),
-    )
 
 
 @app.get("/api/chat/threads/{thread_id}/messages", response_model=MessagesPageResponse)
@@ -93,10 +86,12 @@ async def get_messages(
 ):
     async with chat_db.uid_conn(uid) as conn:
         thread = await chat_db.get_thread(conn, uid, thread_id)
+
         if thread is None:
             raise HTTPException(status_code=404, detail="thread not found")
         rows, has_more = await chat_db.messages_page(conn, uid, thread_id, before_seq, limit)
-    return MessagesPageResponse(items=[_message_out(r) for r in rows], has_more=has_more)
+
+    return MessagesPageResponse(items=[message_out(r) for r in rows], has_more=has_more)
 
 
 # --- preferences ---------------------------------------------------------------------
@@ -106,6 +101,7 @@ async def get_messages(
 async def get_preferences_endpoint(uid: str = Depends(require_uid)):
     async with chat_db.uid_conn(uid) as conn:
         row = await chat_db.get_preferences(conn, uid)
+
     return PreferencesOut(
         language=row["language"] if row else "en",
         default_currency=row["default_currency"] if row else None,
@@ -116,8 +112,10 @@ async def get_preferences_endpoint(uid: str = Depends(require_uid)):
 async def update_preferences_endpoint(body: PreferencesUpdate, uid: str = Depends(require_uid)):
     if body.language not in SUPPORTED_LANGUAGES:
         raise HTTPException(status_code=400, detail=f"unsupported language: {body.language}")
+
     async with chat_db.uid_conn(uid) as conn:
         row = await chat_db.set_language(conn, uid, body.language)
+
     return PreferencesOut(language=row["language"], default_currency=row["default_currency"])
 
 
@@ -130,6 +128,7 @@ async def create_upload_target(body: UploadTargetRequest | None = None, uid: str
     frontend PUTs/POSTs the file there, then sends the returned `object` path back as
     `receipt_object` on the next /api/chat/chat call."""
     content_type = body.content_type if body else "image/jpeg"
+
     return storage.upload_target(uid, str(uuid.uuid4()), content_type)
 
 
@@ -143,6 +142,7 @@ async def transcribe_audio(file: UploadFile = File(...), uid: str = Depends(requ
     typed message. Doesn't touch quotas itself; the actual chat turn it feeds into
     does."""
     audio_bytes = await file.read()
+
     if not audio_bytes:
         raise HTTPException(status_code=400, detail="empty audio")
 
@@ -153,6 +153,7 @@ async def transcribe_audio(file: UploadFile = File(...), uid: str = Depends(requ
     # The SDK's `language` param takes a plain str (or must be omitted entirely) — it
     # doesn't accept None as "no hint", so this is only added when there's a real value.
     transcribe_kwargs = {"language": language} if language in SUPPORTED_LANGUAGES else {}
+
     try:
         resp = await llm.transcribe_client().audio.transcriptions.create(
             model=llm.TRANSCRIBE_MODEL,
@@ -162,6 +163,7 @@ async def transcribe_audio(file: UploadFile = File(...), uid: str = Depends(requ
     except Exception as e:
         log.warning("transcription failed: %s", e)
         raise HTTPException(status_code=502, detail="Couldn't transcribe that — please try again.") from e
+
     return TranscribeResponse(text=resp.text)
 
 
@@ -180,6 +182,7 @@ async def chat(
     # Host plus a hardcoded https is reliable — and avoids an AGENT_URL env var, which
     # Terraform can't set (a Cloud Run service can't reference its own URL).
     agent_base_url = f"https://{request.headers.get('host', '')}"
+
     return StreamingResponse(runner.stream_chat_turn(body, uid, jwt, agent_base_url), media_type="text/event-stream")
 
 
@@ -189,4 +192,5 @@ async def chat(
 @app.post("/internal/summarize", dependencies=[Depends(require_service_caller)], response_model=HealthzResponse)
 async def summarize_endpoint(body: SummarizeRequest):
     await run_summarize(body.uid, body.thread_id, body.through_seq)
+
     return HealthzResponse(ok=True)

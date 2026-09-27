@@ -26,15 +26,18 @@ def _select_turns(recent_rows: list) -> list[tuple[list, list]]:
     turns = messages.group_into_turns(recent_rows)
     selected: list[tuple[list, list]] = []
     used = 0
+
     for i, turn in enumerate(reversed(turns)):
         full_detail = i < messages.FULL_DETAIL_TURNS
         rendered = [messages.row_to_message(row, full_detail) for row in turn]
         turn_tokens = sum(count_tokens(str(m.content)) for m in rendered)
+
         if selected and used + turn_tokens > tokens.HISTORY_TOKEN_BUDGET:
             break
         selected.append((turn, rendered))
         used += turn_tokens
     selected.reverse()
+
     return selected
 
 
@@ -42,6 +45,7 @@ def first_kept_seq(recent_rows: list) -> int | None:
     """seq of the oldest row build_context() keeps from recent_rows — anything older
     was trimmed by the token budget and must be folded into the summary."""
     selected = _select_turns(recent_rows)
+
     return selected[0][0][0]["seq"] if selected else None
 
 
@@ -57,6 +61,7 @@ def build_context(
         SYSTEM_PROMPT + f'\nToday\'s date is {(today or datetime.date.today()).isoformat()}. Resolve "today",'
         ' "yesterday", "last month" etc. against this date, not your training cutoff.'
     )
+
     if preferences and preferences.get("default_currency"):
         sys_text += f"\nUser's default currency: {preferences['default_currency']}."
     language_name = SUPPORTED_LANGUAGES.get((preferences or {}).get("language") or "en", "English")
@@ -66,14 +71,17 @@ def build_context(
         "extraction) is shown in it."
     )
     working_set = thread.get("working_set")
+
     if isinstance(working_set, str):
         working_set = json.loads(working_set) if working_set else {}
     working_set = dict(working_set) if working_set else {}
+
     # A marker's id is always listed, even if it fell off the working set's cap: the
     # model treats an id missing from this list as invalid, and no prompt wording
     # reliably talked it out of that.
     for marker_id in TRANSACTION_MARKER_RE.findall(current_user_text):
         working_set.setdefault(marker_id, "referenced in this message")
+
     if working_set:
         labels = "; ".join(f"{k}: {v}" for k, v in working_set.items())
         sys_text += (
@@ -84,15 +92,18 @@ def build_context(
             'particular, a "[transaction: <id>]" marker\'s id is valid whether or not it '
             "happens to appear here."
         )
+
     if thread.get("summary"):
         sys_text += f"\nSummary of earlier conversation: {thread['summary']}"
 
     result: list[AnyMessage] = [SystemMessage(content=sys_text)]
+
     for _, rendered in _select_turns(recent_rows):
         result.extend(rendered)
 
     if current_images:
         content_blocks: list[str | dict[str, Any]] = [{"type": "text", "text": current_user_text}]
+
         for url in current_images:
             content_blocks.append({"type": "image_url", "image_url": {"url": url}})
         result.append(HumanMessage(content=content_blocks))

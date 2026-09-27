@@ -28,12 +28,14 @@ def build_crud_tools(http_client: Callable[[], httpx.AsyncClient], categorize_gr
         7-Eleven", "Claude subscription payment"), not just the bare item. Past
         category corrections match on this text, so reuse the same wording for the
         same recurring purchase every time."""
+
         if type == "income":
             category = "income"
         else:
             # The same categorize subgraph the receipt workflow runs.
             result = await categorize_graph.ainvoke({"descriptions": [description or ""]})
             (category,) = result["categories"]
+
         async with http_client() as c:
             resp = await c.post(
                 "/api/transactions/transactions",
@@ -52,6 +54,7 @@ def build_crud_tools(http_client: Callable[[], httpx.AsyncClient], categorize_gr
                 headers={"Idempotency-Key": tool_call_id},
             )
         resp.raise_for_status()
+
         return TableChangedResult(**resp.json()["items"][0]).model_dump()
 
     @tool
@@ -83,15 +86,18 @@ def build_crud_tools(http_client: Callable[[], httpx.AsyncClient], categorize_gr
             }.items()
             if v is not None
         }
+
         async with http_client() as c:
             resp = await c.patch(
                 f"/api/transactions/transactions/{transaction_id}",
                 json=body,
                 headers={"Idempotency-Key": tool_call_id},
             )
+
         if resp.status_code == 404:
             return ToolError(error="transaction not found").model_dump()
         resp.raise_for_status()
+
         return TableChangedResult(**resp.json()).model_dump()
 
     @tool
@@ -99,14 +105,17 @@ def build_crud_tools(http_client: Callable[[], httpx.AsyncClient], categorize_gr
         """Delete ONE transaction by id; for more than one, use
         delete_transactions_matching. If this returns an error, the transaction was NOT
         deleted."""
+
         async with http_client() as c:
             resp = await c.delete(
                 f"/api/transactions/transactions/{transaction_id}",
                 headers={"Idempotency-Key": tool_call_id},
             )
+
         if resp.status_code == 404:
             return ToolError(error="transaction not found").model_dump()
         resp.raise_for_status()
+
         return TableChangedResult(**resp.json()).model_dump()
 
     @tool
@@ -134,6 +143,7 @@ def build_crud_tools(http_client: Callable[[], httpx.AsyncClient], categorize_gr
             max_amount=max_amount,
             description=description,
         )
+
         async with http_client() as c:
             resp = await c.delete(
                 "/api/transactions/transactions",
@@ -141,6 +151,7 @@ def build_crud_tools(http_client: Callable[[], httpx.AsyncClient], categorize_gr
                 headers={"Idempotency-Key": tool_call_id},
             )
         resp.raise_for_status()
+
         return TableChangedResult(**resp.json()).model_dump()
 
     @tool
@@ -171,9 +182,11 @@ def build_crud_tools(http_client: Callable[[], httpx.AsyncClient], categorize_gr
             description=description,
         )
         path = "/api/transactions/aggregates" if aggregate else "/api/transactions/transactions"
+
         async with http_client() as c:
             resp = await c.get(path, params=params)
         resp.raise_for_status()
+
         return resp.json()
 
     return [add_transaction, edit_transaction, delete_transaction, delete_transactions_matching, query_transactions]

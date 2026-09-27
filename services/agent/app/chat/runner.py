@@ -5,7 +5,6 @@ result, and turn any failure into a user-facing error event."""
 import datetime
 import logging
 import uuid
-from dataclasses import dataclass
 
 from fastapi import HTTPException
 from langchain_core.messages import AnyMessage
@@ -16,7 +15,7 @@ from ..langsmith_obs import traced_turn
 from ..models.api import ChatRequest
 from ..models.message_content import UserMessageContent
 from ..models.notices import Notice
-from ..models.turns import TurnState
+from ..models.turns import PreparedTurn, TurnState
 from ..workflows import build_main_graph
 from . import streaming, turns
 from .streaming import sse
@@ -29,33 +28,28 @@ REQUEST_FAILED = Notice(key="requestFailed")
 CRASHED = Notice(key="turnFailed")
 
 
-@dataclass
-class _PreparedTurn:
-    user_text: str
-    user_tokens: int
-    language: str
-    messages: list[AnyMessage]
-    trimmed_before_seq: int | None  # see context.first_kept_seq
-
-
 async def _open_thread(conn, uid: str, thread_id: str | None) -> dict:
     if not thread_id:
         return dict(await chat_db.create_thread(conn, uid))
+
     try:
         uuid.UUID(thread_id)
     except ValueError:
         raise HTTPException(status_code=404, detail="thread not found")
     row = await chat_db.get_thread(conn, uid, thread_id)
+
     if row is None:
         raise HTTPException(status_code=404, detail="thread not found")
+
     return dict(row)
 
 
-async def _prepare_turn(conn, uid: str, thread: dict, body: ChatRequest, today: datetime.date) -> _PreparedTurn | None:
+async def _prepare_turn(conn, uid: str, thread: dict, body: ChatRequest, today: datetime.date) -> PreparedTurn | None:
     """Saves the user's message and builds the model's context. None if this exact
     message (same client_msg_id) was already processed."""
     thread_id = str(thread["id"])
     user_text = body.message
+
     if body.receipt_object:
         user_text = f"{user_text}\n\n[uploaded receipt: {body.receipt_object}]"
 
@@ -69,11 +63,13 @@ async def _prepare_turn(conn, uid: str, thread: dict, body: ChatRequest, today: 
         user_tokens,
         client_msg_id=body.client_msg_id,
     )
+
     if inserted is None:
         return None
 
     # Counted only once we know this is a new message, not a resubmit.
     await quotas.increment_and_check_turn(conn, uid)
+
     if body.receipt_object:
         await quotas.increment_receipt(conn, uid)
 
@@ -85,7 +81,8 @@ async def _prepare_turn(conn, uid: str, thread: dict, body: ChatRequest, today: 
     )
     rows = [r for r in rows if r["seq"] != inserted["seq"]]
     kept_from = context.first_kept_seq(rows)
-    return _PreparedTurn(
+
+    return PreparedTurn(
         user_text=user_text,
         user_tokens=user_tokens,
         language=(preferences or {}).get("language") or "en",
@@ -103,13 +100,17 @@ async def _run_marker_turn(
     buffered instead of streamed — a fabricated reply never reaches the client — and
     retried once from scratch if that happens (nothing to undo: no tool was called)."""
     state = TurnState()
+
     with traced_turn(uid, thread_id, request_id, tags=["turn"]) as run_config:
         chunks = [c async for c in streaming.run_graph_turn(compiled_graph, inputs, run_config, state)]
+
     if turns.marker_call_missing(state.tool_calls_made, marker_ids):
         log.warning("transaction-marker turn made no matching tool call, retrying once")
         state = TurnState()
+
         with traced_turn(uid, thread_id, request_id, tags=["turn", "retry"]) as run_config:
             chunks = [c async for c in streaming.run_graph_turn(compiled_graph, inputs, run_config, state)]
+
     return chunks, state
 
 
@@ -120,13 +121,16 @@ async def stream_chat_turn(body: ChatRequest, uid: str, jwt: str, agent_base_url
     request_id = str(uuid.uuid4())
     thread_id: str | None = None
     today = user_today(body.timezone)
+
     try:
         async with chat_db.uid_conn(uid) as conn:
             thread = await _open_thread(conn, uid, body.thread_id)
             thread_id = str(thread["id"])
             turn = await _prepare_turn(conn, uid, thread, body, today)
+
         if turn is None:
             yield sse("error", {"notice": ALREADY_SENT.model_dump()})
+
             return
 
         graph = build_main_graph(jwt, turn.language, today)
@@ -136,6 +140,7 @@ async def stream_chat_turn(body: ChatRequest, uid: str, jwt: str, agent_base_url
 
         if marker_ids and not body.receipt_object:
             chunks, state = await _run_marker_turn(graph, inputs, marker_ids, uid, thread_id, request_id)
+
             for chunk in chunks:
                 yield chunk
         else:
@@ -159,11 +164,13 @@ async def stream_chat_turn(body: ChatRequest, uid: str, jwt: str, agent_base_url
         # A daily limit has its own notice (see quotas.py); anything else gets a plain
         # "couldn't do that", never the raw detail.
         notice = Notice(key=e.notice_key) if isinstance(e, quotas.LimitReached) else REQUEST_FAILED
+
         if thread_id is not None:
             await turns.record_turn_failure(uid, thread_id, notice)
         yield sse("error", {"notice": notice.model_dump(), "status": e.status_code})
     except Exception:
         log.exception("chat turn failed")
+
         if thread_id is not None:
             await turns.record_turn_failure(uid, thread_id, CRASHED)
         yield sse("error", {"notice": CRASHED.model_dump()})

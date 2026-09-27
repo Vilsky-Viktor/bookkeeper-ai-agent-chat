@@ -47,7 +47,7 @@ purchase from context instead (the merchant, icons, layout), e.g. "Restaurant \
 delivery order", "Fuel", "Pharmacy purchase" — never a vague "Food and delivery" or \
 "Purchase". Don't include the merchant; it's added later.
 - items: the name of every product actually bought, one string each, in receipt \
-order, without prices or quantities (e.g. ["Nasi goreng", "Iced tea", "Shampoo \
+order, without prices or quantities (e.g. ["Fried rice", "Iced tea", "Shampoo \
 400ml"]). These are used to decide the receipt's category, so list ONLY real \
 products: never fees (delivery, service, packaging), tips, taxes, discounts, \
 vouchers, payment or change lines, and never summary labels like "Price", \

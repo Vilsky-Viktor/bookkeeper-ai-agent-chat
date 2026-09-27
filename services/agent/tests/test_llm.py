@@ -27,6 +27,7 @@ class TestBuildChatModel:
 
     def test_unsupported_provider_raises(self, monkeypatch):
         monkeypatch.setattr(llm, "LLM_PROVIDER", "some-unsupported-provider")
+
         with pytest.raises(ValueError, match="unsupported LLM_PROVIDER"):
             llm.build_chat_model("gpt-4o")
 
@@ -92,6 +93,7 @@ class TestTranscribeClient:
 
     def test_unsupported_provider_raises(self, monkeypatch):
         monkeypatch.setattr(llm, "LLM_PROVIDER", "some-unsupported-provider")
+
         with pytest.raises(ValueError, match="unsupported LLM_PROVIDER for transcription"):
             llm.transcribe_client()
 

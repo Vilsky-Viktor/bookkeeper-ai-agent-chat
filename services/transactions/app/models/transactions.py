@@ -21,8 +21,10 @@ class TransactionIn(BaseModel):
     @classmethod
     def _upper_currency(cls, v: str) -> str:
         v = v.upper()
+
         if len(v) != 3:
             raise ValueError("currency must be a 3-letter ISO 4217 code")
+
         return v
 
 

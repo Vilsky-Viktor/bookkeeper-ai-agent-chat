@@ -22,6 +22,7 @@ MUTATING_TOOLS = {"add_transaction", "edit_transaction", "delete_transaction", "
 def transactions_client(jwt: str) -> Callable[[], httpx.AsyncClient]:
     """A factory for clients to the transactions service, authenticated as the user."""
     headers = {"Authorization": f"Bearer {jwt}"}
+
     return lambda: httpx.AsyncClient(base_url=TRANSACTIONS_URL, headers=headers, timeout=30)
 
 

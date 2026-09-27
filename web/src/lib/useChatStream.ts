@@ -3,9 +3,9 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
 import { authHeaders, fetchAllTransactions } from "./api";
-import type { TransactionFilter } from "./api";
+import type { TransactionFilter } from "../types/api";
 import { toNotice, toReceiptProposal } from "./chat";
-import type { DisplayMessage, Notice, ReceiptProposal } from "./chat";
+import type { DisplayMessage, Notice, ReceiptProposal } from "../types/chat";
 import { createCsvObjectUrl } from "./csv";
 import { defaultFilter, exportFilename } from "./filters";
 
@@ -60,6 +60,7 @@ export function useChatStream(threadId: string | null, filterRef: RefObject<Tran
           if (!ev.data) return;
           const data = JSON.parse(ev.data);
           const kind = ev.event || "message";
+
           if (kind === "message" && data.type === "token") {
             assistantText += data.text;
             setPendingText(assistantText);
@@ -105,6 +106,7 @@ export function useChatStream(threadId: string | null, filterRef: RefObject<Tran
     } finally {
       setStreaming(false);
       let csvAttachment: { csvUrl?: string; csvFilename?: string } = {};
+
       if (exportRequested) {
         try {
           const items = await fetchAllTransactions(filterRef.current);

@@ -104,6 +104,7 @@ def build_chat_model(
         raise ValueError(
             f"unsupported LLM_PROVIDER: {LLM_PROVIDER!r} (supported: {sorted(_PROVIDER_BUILDERS)})"
         ) from None
+
     return builder(model, temperature, json_mode=json_mode, max_tokens=max_tokens)
 
 
@@ -123,11 +124,13 @@ def vision_model() -> BaseChatModel:
     """Used for receipt image extraction (see receipts.py) — a one-shot structured-JSON
     call outside the main chat graph, so it's built directly rather than bound with
     tools."""
+
     return build_chat_model(VISION_MODEL, temperature=0, json_mode=True, max_tokens=600)
 
 
 def categorize_model(items: int, model: str | None = None) -> BaseChatModel:
     """For app/categorize.py: a JSON reply with one short category word per item."""
+
     return build_chat_model(model or CATEGORIZE_MODEL, temperature=0, json_mode=True, max_tokens=12 * items + 20)
 
 
@@ -155,6 +158,7 @@ def transcribe_client() -> Any:
             f"unsupported LLM_PROVIDER for transcription: {LLM_PROVIDER!r} "
             f"(supported: {sorted(_TRANSCRIBE_CLIENT_BUILDERS)})"
         ) from None
+
     return builder()
 
 
@@ -163,6 +167,7 @@ async def ainvoke_with_fallback(primary, fallback, messages, config=None):
     back once to `fallback`. Raises the fallback's error if that also fails. `config`
     is threaded through so LangGraph's astream_events sees this as a nested run and
     still emits on_chat_model_stream/end for it."""
+
     async with _semaphore:
         try:
             return await asyncio.wait_for(primary.ainvoke(messages, config=config), timeout=CALL_TIMEOUT)

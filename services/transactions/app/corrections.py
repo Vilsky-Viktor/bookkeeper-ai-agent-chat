@@ -16,6 +16,7 @@ def normalize_item(description: str | None) -> str:
 
 async def save_correction(conn: asyncpg.Connection, uid: str, description: str | None, category: str) -> None:
     item_key = normalize_item(description)
+
     if not item_key:
         return
     await conn.execute(

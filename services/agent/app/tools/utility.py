@@ -35,6 +35,7 @@ def build_utility_tools() -> list[BaseTool]:
             description=description,
             **{"from": from_date},
         )
+
         return FilterSetResult(filter=filt).model_dump(by_alias=True, exclude_none=True)
 
     @tool
@@ -45,6 +46,7 @@ def build_utility_tools() -> list[BaseTool]:
         is asked for. End your reply with exactly: "You can download it by clicking
         the file below."
         """
+
         return ExportReadyResult().model_dump()
 
     return [set_filter, export_transactions]

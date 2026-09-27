@@ -29,6 +29,7 @@ async def increment_and_check_turn(conn: asyncpg.Connection, uid: str) -> None:
         """,
         uid,
     )
+
     if row["turns"] > DAILY_TURN_LIMIT:
         raise LimitReached("turnLimitReached", "daily chat turn limit reached")
 
@@ -42,6 +43,7 @@ async def increment_receipt(conn: asyncpg.Connection, uid: str) -> None:
         """,
         uid,
     )
+
     if row["receipts"] > DAILY_RECEIPT_LIMIT:
         raise LimitReached("receiptLimitReached", "daily receipt limit reached")
 

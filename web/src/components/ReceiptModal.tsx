@@ -13,6 +13,7 @@ export default function ReceiptModal({ url, onClose }: Props) {
   // for this) instead of in an effect — avoids the extra render pass an effect-based
   // reset would cause. See https://react.dev/learn/you-might-not-need-an-effect
   const [prevUrl, setPrevUrl] = useState(url);
+
   if (url !== prevUrl) {
     setPrevUrl(url);
     setFailed(false);
@@ -23,6 +24,7 @@ export default function ReceiptModal({ url, onClose }: Props) {
     if (!url) return;
     const onKeyDown = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", onKeyDown);
+
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [url, onClose]);
 

@@ -17,15 +17,17 @@ THREAD = {"id": "thread-1", "working_set": {}, "summarized_through": 0}
 
 def _events(chunks: list[bytes]) -> list[tuple[str | None, dict]]:
     out = []
+
     for chunk in chunks:
         lines = chunk.decode().strip().split("\n")
         event = lines[0].removeprefix("event: ") if lines[0].startswith("event: ") else None
         out.append((event, json.loads(lines[-1].removeprefix("data: "))))
+
     return out
 
 
-def _prepared(user_text: str = "hi", trimmed_before_seq: int | None = None) -> runner._PreparedTurn:
-    return runner._PreparedTurn(
+def _prepared(user_text: str = "hi", trimmed_before_seq: int | None = None) -> runner.PreparedTurn:
+    return runner.PreparedTurn(
         user_text=user_text, user_tokens=1, language="en", messages=[], trimmed_before_seq=trimmed_before_seq
     )
 
@@ -69,6 +71,7 @@ def seams(monkeypatch, patch_chat_uid_conn):
     monkeypatch.setattr(runner.streaming, "run_graph_turn", fake_graph_turn)
     monkeypatch.setattr(runner.turns, "finalize_turn", s["finalize"])
     monkeypatch.setattr(runner.turns, "record_turn_failure", s["record_failure"])
+
     return s
 
 
@@ -76,6 +79,7 @@ async def _run(
     message: str = "hi", receipt_object: str | None = None, timezone: str | None = None
 ) -> list[tuple[str | None, dict]]:
     body = ChatRequest(message=message, receipt_object=receipt_object, thread_id=None, timezone=timezone)
+
     return _events([c async for c in runner.stream_chat_turn(body, "uid-1", "jwt", "https://agent")])
 
 

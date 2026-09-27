@@ -22,34 +22,43 @@ export function useVoiceRecorder({ onTranscript, onError }: Callbacks) {
   async function startRecording() {
     holdingRef.current = true;
     let stream: MediaStream;
+
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     } catch {
       onError();
       holdingRef.current = false;
+
       return;
     }
+
     if (!holdingRef.current) {
       stream.getTracks().forEach((track) => track.stop());
+
       return;
     }
     const mimeType = ["audio/webm", "audio/mp4"].find((type) => MediaRecorder.isTypeSupported(type));
     const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
     audioChunksRef.current = [];
+
     recorder.ondataavailable = (e) => {
       if (e.data.size > 0) audioChunksRef.current.push(e.data);
     };
+
     recorder.onstop = async () => {
       stream.getTracks().forEach((track) => track.stop());
       setRecording(false);
       const blob = new Blob(audioChunksRef.current, { type: recorder.mimeType || "audio/webm" });
       if (blob.size === 0) return;
       setTranscribing(true);
+
       try {
         const { text } = await transcribeAudio(blob);
+
         if (text.trim()) {
           setTranscribing(false);
           await onTranscript(text.trim());
+
           return;
         }
       } catch {

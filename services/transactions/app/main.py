@@ -14,6 +14,7 @@ log = logging.getLogger("transactions")
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await db.init_pool()
+
     try:
         yield
     finally:

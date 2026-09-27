@@ -32,6 +32,7 @@ def mock_tasks_client(monkeypatch):
     client = MagicMock()
     client.queue_path.return_value = _QUEUE_PATH
     monkeypatch.setattr(tasks_module, "_get_tasks_client", lambda: client)
+
     return client
 
 

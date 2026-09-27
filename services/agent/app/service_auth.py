@@ -24,10 +24,12 @@ async def require_service_caller(
 ) -> None:
     if os.getenv("SKIP_SERVICE_AUTH") == "true":
         return
+
     if not x_serverless_authorization:
         raise HTTPException(status_code=401, detail="missing service token")
 
     token = x_serverless_authorization.removeprefix("Bearer ").strip()
+
     try:
         claims = google_id_token.verify_oauth2_token(token, _auth_request, audience=AUDIENCE)
     except ValueError as e:
@@ -37,5 +39,6 @@ async def require_service_caller(
     # terraform/service_accounts.tf and cloud_run.tf) — only Cloud Tasks, minting as
     # that identity, is allowed to call this endpoint.
     expected_caller = os.environ["TASKS_INVOKER_SERVICE_ACCOUNT"]
+
     if not claims.get("email_verified") or claims.get("email") != expected_caller:
         raise HTTPException(status_code=403, detail="caller not authorized")

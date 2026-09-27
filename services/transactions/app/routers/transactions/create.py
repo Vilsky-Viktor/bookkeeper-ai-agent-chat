@@ -29,6 +29,7 @@ async def create_transactions(
 
         async def handler() -> tuple[int, dict]:
             created = []
+
             for t in body.transactions:
                 try:
                     amount_minor = to_minor(t.amount, t.currency)
@@ -61,6 +62,7 @@ async def create_transactions(
                 # the categorizer's prompt.
                 if t.receipt_uri and t.category and t.category != t.suggested_category:
                     await save_correction(conn, uid, t.description, t.category)
+
             return 201, {"items": created}
 
         status, response = await run_idempotent(conn, uid, idempotency_key, payload, handler)

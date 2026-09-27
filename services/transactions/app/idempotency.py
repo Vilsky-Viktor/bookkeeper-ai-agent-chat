@@ -30,9 +30,11 @@ async def run_idempotent(
         uid,
         key,
     )
+
     if existing:
         if existing["request_hash"] != h:
             raise HTTPException(status_code=409, detail="Idempotency-Key reused with a different request")
+
         return existing["status"], json.loads(existing["response"])
 
     status, response = await handler()
@@ -48,4 +50,5 @@ async def run_idempotent(
     # it with the app's own role, and it needs no scheduler (which a scale-to-zero
     # Cloud Run service couldn't run reliably anyway).
     await conn.execute(f"DELETE FROM idempotency_keys WHERE uid=$1 AND created_at < now() - interval '{KEY_TTL}'", uid)
+
     return status, response

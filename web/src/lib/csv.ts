@@ -1,7 +1,8 @@
-import type { Transaction } from "./api";
+import type { Transaction } from "../types/api";
 
 function csvField(value: string | number | null | undefined): string {
   const s = value == null ? "" : String(value);
+
   return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
@@ -16,6 +17,7 @@ export function transactionsToCsv(items: Transaction[]): string {
     t.category,
     t.description ?? "",
   ]);
+
   return [HEADERS, ...rows].map((row) => row.map(csvField).join(",")).join("\r\n");
 }
 
@@ -24,6 +26,7 @@ export function transactionsToCsv(items: Transaction[]): string {
 // export happens, and the resulting link stays clickable for the rest of the session.
 export function createCsvObjectUrl(items: Transaction[]): string {
   const blob = new Blob([transactionsToCsv(items)], { type: "text/csv;charset=utf-8;" });
+
   return URL.createObjectURL(blob);
 }
 

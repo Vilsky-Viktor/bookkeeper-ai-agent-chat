@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
 import { fetchAllTransactions, getThreadMessages } from "./api";
-import type { TransactionFilter } from "./api";
+import type { TransactionFilter } from "../types/api";
 import { mapStoredMessages } from "./chat";
-import type { DisplayMessage } from "./chat";
+import type { DisplayMessage } from "../types/chat";
 import { createCsvObjectUrl } from "./csv";
 import { exportFilename } from "./filters";
 
@@ -30,6 +30,7 @@ export function useThreadMessages(
   // state on a prop change. Local messages of a just-created thread stay visible
   // until its history loads below, so the first exchange doesn't blink out.
   const [shownThreadId, setShownThreadId] = useState(threadId);
+
   if (threadId !== shownThreadId) {
     setShownThreadId(threadId);
     setHasMoreOlder(false);
@@ -43,6 +44,7 @@ export function useThreadMessages(
       setMessages(loaded);
       setHasMoreOlder(res.has_more);
       if (exportIndexes.length === 0) return;
+
       try {
         const items = await fetchAllTransactions(filterRef.current);
         const csvUrl = createCsvObjectUrl(items);
@@ -58,6 +60,7 @@ export function useThreadMessages(
     const oldestSeq = messages[0]?.seq;
     if (!threadId || loadingOlder || !hasMoreOlder || oldestSeq === undefined) return;
     setLoadingOlder(true);
+
     try {
       const res = await getThreadMessages(threadId, { beforeSeq: oldestSeq, limit: MESSAGE_PAGE_LIMIT });
       const container = listRef.current;

@@ -10,6 +10,7 @@ on:
       - "services/Dockerfile"
       - ".github/workflows/transactions.yml"
       - ".github/workflows/python-service.yml"
+      - "scripts/blank_lines.py" # run by poe check
   push:
     branches: [main]
     paths:
@@ -17,6 +18,7 @@ on:
       - "services/Dockerfile"
       - ".github/workflows/transactions.yml"
       - ".github/workflows/python-service.yml"
+      - "scripts/blank_lines.py" # run by poe check
 
 permissions:
   contents: read

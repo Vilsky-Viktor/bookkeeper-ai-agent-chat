@@ -7,10 +7,11 @@ import re
 import typing
 from pathlib import Path
 
-from app.categorize import CATEGORIES, CATEGORY_DEFINITIONS
+from app.categories import CATEGORIES
 from app.languages import SUPPORTED_LANGUAGES
 from app.models.notices import NoticeKey
 from app.models.tool_results import _ZERO_DECIMAL_CURRENCIES
+from app.prompts.categorize import CATEGORY_DEFINITIONS
 
 REPO = Path(__file__).resolve().parents[3]
 
