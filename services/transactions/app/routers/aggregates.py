@@ -2,11 +2,11 @@ from datetime import date
 
 from fastapi import APIRouter, Depends, Query
 
-from .. import db
 from ..auth import require_uid
-from ..filters import build_filter_clauses
+from ..helpers.filters import build_filter_clauses
+from ..helpers.money import to_decimal_string
 from ..models.aggregates import AggregateItem, AggregatesResponse
-from ..money import to_decimal_string
+from ..storage import pool
 
 router = APIRouter()
 
@@ -43,7 +43,7 @@ async def aggregates(
         + " GROUP BY currency, category, month ORDER BY month DESC, currency, category"
     )
 
-    async with db.uid_conn(uid) as conn:
+    async with pool.uid_conn(uid) as conn:
         rows = await conn.fetch(sql, *params)
 
     return AggregatesResponse(

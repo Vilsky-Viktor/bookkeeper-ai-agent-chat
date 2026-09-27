@@ -1,6 +1,6 @@
 // Turns a stored receipt reference into a browser-viewable URL, through Caddy's
 // /gcs/* route to fake-gcs-server (see Caddyfile, STORAGE_MODE=local in
-// services/agent/app/storage.py). Local-dev only: a production build would need this
+// services/agent/app/storage/bucket.py). Local-dev only: a production build would need this
 // resolved server-side into a signed GET URL instead.
 
 // Matches RECEIPTS_BUCKET in docker-compose.yml — set via a build-time env var so

@@ -50,7 +50,7 @@ const en = {
     noResponse: "(no response)",
   },
   // Display labels for the built-in category keys, which are also the stored values:
-  // must match CATEGORIES in services/agent/app/categorize.py (that service's
+  // must match CATEGORIES in services/agent/app/constants/categories.py (that service's
   // tests/test_contracts.py fails if they drift).
   categories: {
     groceries: "Groceries",

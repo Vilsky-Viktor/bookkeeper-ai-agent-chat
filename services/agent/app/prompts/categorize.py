@@ -1,4 +1,4 @@
-"""The categorizer's prompt (categorize.py): the category definitions, how to use
+"""The categorizer's prompt (services/categorize.py): the category definitions, how to use
 the user's past corrections, and the reply format."""
 
 # Short definitions so an ambiguous item (e.g. toothpaste from a minimarket that also

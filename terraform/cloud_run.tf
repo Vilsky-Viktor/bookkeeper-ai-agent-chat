@@ -158,7 +158,7 @@ resource "google_cloud_run_v2_service" "agent" {
         value = var.langsmith_tracing ? "true" : "false"
       }
       env {
-        # tasks.py's production enqueue path — where the queue lives and which
+        # integrations/tasks.py's production enqueue path — where the queue lives and which
         # identity Cloud Tasks mints its callback token as. TASKS_INVOKER_SERVICE_ACCOUNT
         # doubles as service_auth.py's expected caller for POST /internal/summarize.
         name  = "CLOUD_TASKS_LOCATION"
@@ -177,7 +177,7 @@ resource "google_cloud_run_v2_service" "agent" {
       # patching it in after the fact (CI, or a local-exec provisioner here) would
       # conflict with Terraform's own authoritative ownership of this env list —
       # the next `terraform apply` would just reset it back out again. Instead,
-      # main.py's chat() derives it per-request from the Host header (see tasks.py's
+      # routers/chat.py derives it per-request from the Host header (see integrations/tasks.py's
       # docstring) — always correct, no bootstrap step needed.
       env {
         name  = "LANGSMITH_PROJECT"

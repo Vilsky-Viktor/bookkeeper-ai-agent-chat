@@ -2,8 +2,8 @@
 
 import asyncpg
 
-from ...models.transactions import TransactionOut
-from ...money import to_decimal_string
+from ..models.transactions import TransactionOut
+from .money import to_decimal_string
 
 
 def row_to_out(row: asyncpg.Record) -> TransactionOut:

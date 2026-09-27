@@ -5,11 +5,11 @@ from datetime import date
 from fastapi import Depends, Header, HTTPException, Query
 from fastapi.responses import JSONResponse
 
-from ... import db
 from ...auth import require_uid
-from ...filters import build_filter_clauses
-from ...idempotency import run_idempotent
+from ...helpers.filters import build_filter_clauses
 from ...models.transactions import BulkDeleteFilterPayload, BulkDeleteResponse, DeleteResponse
+from ...storage import pool
+from ...storage.idempotency import run_idempotent
 from . import router
 
 
@@ -57,7 +57,7 @@ async def delete_transactions_bulk(
         description=description,
     ).model_dump(by_alias=True)
 
-    async with db.uid_conn(uid) as conn:
+    async with pool.uid_conn(uid) as conn:
 
         async def handler() -> tuple[int, dict]:
             sql = "DELETE FROM transactions WHERE " + " AND ".join(clauses)
@@ -82,7 +82,7 @@ async def delete_transaction(
 ):
     payload = {"id": transaction_id}
 
-    async with db.uid_conn(uid) as conn:
+    async with pool.uid_conn(uid) as conn:
 
         async def handler() -> tuple[int, dict]:
             result = await conn.execute("DELETE FROM transactions WHERE uid=$1 AND id=$2", uid, transaction_id)

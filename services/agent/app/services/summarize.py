@@ -7,8 +7,9 @@ import logging
 
 from langchain_core.messages import HumanMessage
 
-from . import chat_db, llm
-from .prompts.summarize import SUMMARIZE_PROMPT
+from ..integrations import llm
+from ..prompts.summarize import SUMMARIZE_PROMPT
+from ..storage import chat_db
 
 log = logging.getLogger("summarize")
 

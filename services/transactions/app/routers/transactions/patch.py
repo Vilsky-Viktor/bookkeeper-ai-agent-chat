@@ -4,14 +4,14 @@ handling when currency changes without an explicit new amount."""
 from fastapi import Depends, Header, HTTPException
 from fastapi.responses import JSONResponse
 
-from ... import db
 from ...auth import require_uid
-from ...corrections import save_correction
-from ...idempotency import run_idempotent
+from ...helpers.money import InvalidAmount, to_decimal_string, to_minor
+from ...helpers.serializers import row_to_out
 from ...models.transactions import PatchIdempotencyPayload, TransactionOut, TransactionPatch
-from ...money import InvalidAmount, to_decimal_string, to_minor
+from ...storage import pool
+from ...storage.corrections import save_correction
+from ...storage.idempotency import run_idempotent
 from . import router
-from .serializers import row_to_out
 
 
 @router.patch("/transactions/{transaction_id}", response_model=TransactionOut)
@@ -24,7 +24,7 @@ async def patch_transaction(
     fields = body.model_dump(exclude_unset=True)
     payload = PatchIdempotencyPayload(id=transaction_id, **fields).model_dump(exclude_unset=True)
 
-    async with db.uid_conn(uid) as conn:
+    async with pool.uid_conn(uid) as conn:
 
         async def handler() -> tuple[int, dict]:
             existing = await conn.fetchrow("SELECT * FROM transactions WHERE uid=$1 AND id=$2", uid, transaction_id)
@@ -76,7 +76,7 @@ async def patch_transaction(
                 transaction_id,
             )
 
-            # See corrections.py's save_correction: keyed purely on the normalized
+            # See storage/corrections.py's save_correction: keyed purely on the normalized
             # description, so this correction only reliably reapplies to a
             # near-identical description in the future (the LLM fallback path handles
             # near-duplicates that don't match exactly).

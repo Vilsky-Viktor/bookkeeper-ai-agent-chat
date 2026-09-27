@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock
 import pytest
 from fastapi import HTTPException
 
-from app import quotas
+from app.storage import quotas
 
 
 class TestIncrementAndCheckTurn:

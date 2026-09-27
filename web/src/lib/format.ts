@@ -1,5 +1,5 @@
 // Grouping-only: the API returns an exact decimal string (integer minor units under
-// the hood, see services/transactions/app/money.py) — this never parses it as a
+// the hood, see services/transactions/app/helpers/money.py) — this never parses it as a
 // number, so there's no float rounding risk, just thousands separators inserted into
 // the integer part.
 export function formatAmount(amount: string): string {

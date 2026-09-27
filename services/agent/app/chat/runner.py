@@ -9,13 +9,14 @@ import uuid
 from fastapi import HTTPException
 from langchain_core.messages import AnyMessage
 
-from .. import chat_db, context, quotas
-from ..dates import user_today
-from ..langsmith_obs import traced_turn
+from .. import context
+from ..helpers.dates import user_today
+from ..integrations.tracing import traced_turn
 from ..models.api import ChatRequest
 from ..models.message_content import UserMessageContent
 from ..models.notices import Notice
 from ..models.turns import PreparedTurn, TurnState
+from ..storage import chat_db, quotas
 from ..workflows import build_main_graph
 from . import streaming, turns
 from .streaming import sse
@@ -161,7 +162,7 @@ async def stream_chat_turn(body: ChatRequest, uid: str, jwt: str, agent_base_url
 
     except HTTPException as e:
         log.warning("chat turn returned %s: %s", e.status_code, e.detail)
-        # A daily limit has its own notice (see quotas.py); anything else gets a plain
+        # A daily limit has its own notice (see storage/quotas.py); anything else gets a plain
         # "couldn't do that", never the raw detail.
         notice = Notice(key=e.notice_key) if isinstance(e, quotas.LimitReached) else REQUEST_FAILED
 

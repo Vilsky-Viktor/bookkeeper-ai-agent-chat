@@ -1,4 +1,4 @@
-# Receipts bucket — mirrors fake-gcs-server locally. storage.py's production branch
+# Receipts bucket — mirrors fake-gcs-server locally. storage/bucket.py's production branch
 # (STORAGE_MODE unset) generates a v4 signed PUT URL and hands it straight to the
 # browser, so — unlike the local direct-POST-through-Caddy path — this bucket needs
 # CORS allowing a cross-origin PUT from the deployed web app.

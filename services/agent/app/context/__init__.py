@@ -8,7 +8,7 @@ from typing import Any
 
 from langchain_core.messages import AnyMessage, HumanMessage, SystemMessage
 
-from ..languages import SUPPORTED_LANGUAGES
+from ..constants.languages import SUPPORTED_LANGUAGES
 from ..prompts.assistant import SYSTEM_PROMPT
 from . import messages, tokens
 from .messages import TRANSACTION_MARKER_RE, compact_tool_result

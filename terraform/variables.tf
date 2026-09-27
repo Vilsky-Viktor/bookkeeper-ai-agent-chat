@@ -45,7 +45,7 @@ variable "llm_summary_model" {
   default = "gpt-4o-mini"
 }
 
-# --- LangSmith (optional — see services/agent/app/langsmith_obs.py). Off by default:
+# --- LangSmith (optional — see services/agent/app/integrations/tracing.py). Off by default:
 # turning it on before a real LANGSMITH_API_KEY value has been added (see
 # secret_manager.tf) just means every trace upload fails silently, which is harmless
 # but noisy — flip this once you've added a real key.
@@ -89,8 +89,8 @@ variable "cloud_sql_tier" {
 }
 
 # --- Cloud Run scaling caps: a ceiling on cost from a traffic spike or abuse, and on
-# Postgres connections — each agent instance holds up to 3 (chat_db.py) and each
-# transactions instance up to 5 (db.py). The defaults use 19 of db-f1-micro's ~25,
+# Postgres connections — each agent instance holds up to 3 (storage/chat_db.py) and each
+# transactions instance up to 5 (storage/pool.py). The defaults use 19 of db-f1-micro's ~25,
 # leaving room for the migrate job and admin. Raise them together with cloud_sql_tier.
 # One instance serves up to 80 concurrent requests.
 

@@ -4,8 +4,9 @@ import httpx
 import pytest
 from langchain_core.messages import AIMessage
 
-from app import categorize, llm
+from app.integrations import llm
 from app.models.categorize import Correction
+from app.services import categorize
 
 
 class _FakeModel:

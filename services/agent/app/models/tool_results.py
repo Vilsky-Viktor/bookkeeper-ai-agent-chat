@@ -101,7 +101,7 @@ class ReceiptProposedResult(BaseModel):
     receipt_uri: str
 
 
-# Currencies with a 0 exponent — a copy of services/transactions/app/money.py's
+# Currencies with a 0 exponent — a copy of services/transactions/app/helpers/money.py's
 # (no shared code between services; tests/test_contracts.py fails if they drift). A
 # correctly-formatted zero-decimal amount never contains a ".", so a "." here can only
 # be a misread thousands separator (e.g. "63.800" meaning 63800), never a real decimal

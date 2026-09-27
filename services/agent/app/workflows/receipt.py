@@ -19,15 +19,18 @@ from langchain_core.messages import AIMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, START, StateGraph
 
-from .. import images, receipt_helpers, receipts, storage
+from ..helpers import images
+from ..helpers.receipts import fold_merchant, majority_category
 from ..models.notices import Notice
 from ..models.tool_results import NotAReceiptResult, ReceiptProposedItem, ReceiptProposedResult, ToolError
+from ..services import receipts
+from ..storage import bucket
 from .state import ReceiptState
 
 
 def build_receipt_graph(categorize_graph, language: str, today: datetime.date):
     async def load(state: ReceiptState) -> ReceiptState:
-        data, content_type = await asyncio.to_thread(storage.read_bytes, state["receipt_object"])
+        data, content_type = await asyncio.to_thread(bucket.read_bytes, state["receipt_object"])
 
         if content_type == "application/pdf":
             data, content_type = images.pdf_first_page_to_png(data), "image/png"
@@ -61,19 +64,19 @@ def build_receipt_graph(categorize_graph, language: str, today: datetime.date):
 
         return {
             "extraction": extraction,
-            "descriptions": [receipt_helpers.fold_merchant(n, extraction.merchant) or "" for n in names][:100],
+            "descriptions": [fold_merchant(n, extraction.merchant) or "" for n in names][:100],
         }
 
     async def propose(state: ReceiptState) -> ReceiptState:
         extraction = state["extraction"]
-        receipt_uri = f"gs://{storage.BUCKET}/{state['receipt_object']}"
+        receipt_uri = f"gs://{bucket.BUCKET}/{state['receipt_object']}"
         item = ReceiptProposedItem(
             occurred_on=extraction.occurred_on,
             type="expense",
             amount=extraction.total_paid,
             currency=(extraction.currency or "USD").upper(),
-            category=receipt_helpers.majority_category(state.get("categories", [])),
-            description=receipt_helpers.fold_merchant(extraction.description, extraction.merchant),
+            category=majority_category(state.get("categories", [])),
+            description=fold_merchant(extraction.description, extraction.merchant),
             receipt_uri=receipt_uri,
         )
 

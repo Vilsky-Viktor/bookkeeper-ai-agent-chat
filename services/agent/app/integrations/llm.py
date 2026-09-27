@@ -121,7 +121,7 @@ def summary_model() -> BaseChatModel:
 
 
 def vision_model() -> BaseChatModel:
-    """Used for receipt image extraction (see receipts.py) — a one-shot structured-JSON
+    """Used for receipt image extraction (see services/receipts.py) — a one-shot structured-JSON
     call outside the main chat graph, so it's built directly rather than bound with
     tools."""
 
@@ -129,7 +129,7 @@ def vision_model() -> BaseChatModel:
 
 
 def categorize_model(items: int, model: str | None = None) -> BaseChatModel:
-    """For app/categorize.py: a JSON reply with one short category word per item."""
+    """For services/categorize.py: a JSON reply with one short category word per item."""
 
     return build_chat_model(model or CATEGORIZE_MODEL, temperature=0, json_mode=True, max_tokens=12 * items + 20)
 
@@ -142,9 +142,9 @@ def _build_openai_transcribe_client() -> Any:
 
 
 # LangChain has no unified speech-to-text model abstraction the way it does
-# BaseChatModel, so main.py's /api/chat/transcribe can't go through
+# BaseChatModel, so routers/transcribe.py can't go through
 # build_chat_model(). This is the equivalent provider-keyed registry for that one
-# non-chat call site, so provider-swapping still doesn't mean hunting through main.py.
+# non-chat call site, so provider-swapping still doesn't mean hunting through the routers.
 _TRANSCRIBE_CLIENT_BUILDERS: dict[str, Callable[[], Any]] = {
     "openai": _build_openai_transcribe_client,
 }

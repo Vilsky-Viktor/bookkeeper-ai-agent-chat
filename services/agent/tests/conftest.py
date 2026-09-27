@@ -1,6 +1,6 @@
 """Env vars must be set before any `app.*` module is imported, since several of them
 read os.environ at import time: auth.py's firebase_admin.initialize_app(), tools.py's
-TRANSACTIONS_URL/LLM_API_KEY, storage.py's RECEIPTS_BUCKET. pytest imports conftest.py
+TRANSACTIONS_URL/LLM_API_KEY, storage/bucket.py's RECEIPTS_BUCKET. pytest imports conftest.py
 before collecting test modules, so this runs first."""
 
 import os
@@ -36,7 +36,7 @@ def mock_conn() -> AsyncMock:
 def patch_chat_uid_conn(monkeypatch, mock_conn: AsyncMock):
     """Makes every `chat_db.uid_conn(uid)` in the app return `mock_conn` instead of
     opening a real pool connection."""
-    from app import chat_db
+    from app.storage import chat_db
 
     @asynccontextmanager
     async def _fake_uid_conn(uid: str):

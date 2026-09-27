@@ -1,6 +1,6 @@
 from unittest.mock import AsyncMock
 
-from app.corrections import LIST_LIMIT, list_corrections, normalize_item, save_correction
+from app.storage.corrections import LIST_LIMIT, list_corrections, normalize_item, save_correction
 
 
 class TestNormalizeItem:

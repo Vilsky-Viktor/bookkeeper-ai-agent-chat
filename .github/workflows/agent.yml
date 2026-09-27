@@ -12,7 +12,7 @@ on:
       - ".github/workflows/python-service.yml"
       - "scripts/blank_lines.py" # run by poe check
       # Read by tests/test_contracts.py (lists this service keeps copies of).
-      - "services/transactions/app/money.py"
+      - "services/transactions/app/helpers/money.py"
       - "web/src/lib/i18n/languages.ts"
       - "web/src/lib/i18n/locales/en.ts"
   push:
@@ -24,7 +24,7 @@ on:
       - ".github/workflows/python-service.yml"
       - "scripts/blank_lines.py" # run by poe check
       # Read by tests/test_contracts.py (lists this service keeps copies of).
-      - "services/transactions/app/money.py"
+      - "services/transactions/app/helpers/money.py"
       - "web/src/lib/i18n/languages.ts"
       - "web/src/lib/i18n/locales/en.ts"
 

@@ -1,7 +1,7 @@
 import uuid
 from unittest.mock import AsyncMock
 
-from app import chat_db
+from app.storage import chat_db
 
 
 def _msg_row(seq: int) -> dict:

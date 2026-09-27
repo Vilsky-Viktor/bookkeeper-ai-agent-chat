@@ -6,8 +6,8 @@ from typing import Annotated, Callable, Optional
 import httpx
 from langchain_core.tools import BaseTool, InjectedToolCallId, tool
 
+from ..helpers.filters import filter_params
 from ..models.tool_results import TableChangedResult, ToolError
-from .filters import filter_params
 
 
 def build_crud_tools(http_client: Callable[[], httpx.AsyncClient], categorize_graph) -> list[BaseTool]:

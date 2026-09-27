@@ -4,12 +4,12 @@ from datetime import date, datetime
 
 from fastapi import Depends, HTTPException, Query
 
-from ... import db
 from ...auth import require_uid
-from ...filters import build_filter_clauses
+from ...helpers.filters import build_filter_clauses
+from ...helpers.serializers import row_to_out
 from ...models.transactions import TransactionsListResponse
+from ...storage import pool
 from . import router
-from .serializers import row_to_out
 
 
 @router.get("/transactions", response_model=TransactionsListResponse)
@@ -59,7 +59,7 @@ async def list_transactions(
         + f" ORDER BY occurred_on DESC, created_at DESC, id DESC LIMIT ${len(params)}"
     )
 
-    async with db.uid_conn(uid) as conn:
+    async with pool.uid_conn(uid) as conn:
         rows = await conn.fetch(sql, *params)
 
     items = [row_to_out(r) for r in rows]

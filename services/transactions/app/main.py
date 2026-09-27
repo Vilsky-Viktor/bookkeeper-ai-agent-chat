@@ -3,9 +3,9 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from . import db
 from .models.api import HealthzResponse
 from .routers import aggregates, corrections, transactions
+from .storage import pool
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("transactions")
@@ -13,12 +13,12 @@ log = logging.getLogger("transactions")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    await db.init_pool()
+    await pool.init_pool()
 
     try:
         yield
     finally:
-        await db.close_pool()
+        await pool.close_pool()
 
 
 app = FastAPI(title="transactions-service", lifespan=lifespan)

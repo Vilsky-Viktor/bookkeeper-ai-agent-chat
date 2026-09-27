@@ -6,9 +6,9 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
 
 from app import context
-from app import llm as llm_module
 from app import tools as tools_module
 from app.chat import streaming, turns
+from app.integrations import llm as llm_module
 from app.models.notices import Notice
 from app.models.turns import ToolCallRecord, TurnState
 from app.workflows import build_main_graph
@@ -160,10 +160,11 @@ class TestUploadTargetEndpoint:
 
         from app import main
         from app.auth import require_uid
+        from app.routers import uploads
 
         calls = []
         monkeypatch.setattr(
-            main.storage,
+            uploads.bucket,
             "upload_target",
             lambda uid, obj, ct: calls.append(ct) or {"method": "POST", "object": "o", "url": "u"},
         )

@@ -1,7 +1,7 @@
 """Internal-endpoint gate (POST /internal/summarize, called by Cloud Tasks / the
-local task stand-in — see tasks.py, the only minter). Verifies a Google-signed OIDC
+local task stand-in — see integrations/tasks.py, the only minter). Verifies a Google-signed OIDC
 ID token in X-Serverless-Authorization: signature and expiry (via Google's public
-certs), a fixed audience both this verifier and tasks.py agree on, and that the
+certs), a fixed audience both this verifier and integrations/tasks.py agree on, and that the
 signer is tasks-invoker-sa specifically — not just "any valid Google token".
 Locally it's skipped entirely via SKIP_SERVICE_AUTH."""
 
@@ -11,7 +11,7 @@ from fastapi import Header, HTTPException
 from google.auth.transport import requests as google_auth_requests
 from google.oauth2 import id_token as google_id_token
 
-# Not a real URL — just a fixed string both this file and tasks.py's minter agree
+# Not a real URL — just a fixed string both this file and integrations/tasks.py's minter agree
 # on. Namespaced per-endpoint so a token minted for a different internal route
 # can't be replayed here.
 AUDIENCE = "internal://agent/summarize"

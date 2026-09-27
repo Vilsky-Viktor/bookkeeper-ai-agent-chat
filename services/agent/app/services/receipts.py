@@ -7,10 +7,10 @@ import json
 
 from langchain_core.messages import HumanMessage
 
-from . import llm
-from .languages import SUPPORTED_LANGUAGES
-from .models.tool_results import ReceiptExtraction
-from .prompts.receipt import RECEIPT_EXTRACTION_PROMPT
+from ..constants.languages import SUPPORTED_LANGUAGES
+from ..integrations import llm
+from ..models.tool_results import ReceiptExtraction
+from ..prompts.receipt import RECEIPT_EXTRACTION_PROMPT
 
 
 async def read_receipt(

@@ -2,7 +2,7 @@
 (asyncio.create_task); in production it's a Cloud Tasks HTTP task that POSTs back to
 this service's /internal/summarize with a signed OIDC token, verified by
 service_auth.py — so its AUDIENCE must match what's minted here. The callback's
-base URL comes from the triggering request's Host header (see main.py's chat()),
+base URL comes from the triggering request's Host header (see routers/chat.py),
 since Terraform can't give a Cloud Run service its own URL."""
 
 import asyncio
@@ -13,7 +13,7 @@ import os
 from google.api_core.exceptions import AlreadyExists
 from google.cloud import tasks_v2
 
-from .service_auth import AUDIENCE
+from ..service_auth import AUDIENCE
 
 log = logging.getLogger("tasks")
 
@@ -40,7 +40,7 @@ async def enqueue_summarize(uid: str, thread_id: str, through_seq: int, agent_ba
     _seen_task_names.add(task_name)
 
     if os.getenv("TASKS_MODE") == "local":
-        from .summarize import run_summarize
+        from ..services.summarize import run_summarize
 
         async def _run():
             try:

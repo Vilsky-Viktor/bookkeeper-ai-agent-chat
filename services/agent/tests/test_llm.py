@@ -7,7 +7,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
 from openai import AsyncOpenAI
 
-from app import llm
+from app.integrations import llm
 
 
 class TestBuildChatModel:

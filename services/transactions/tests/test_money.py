@@ -1,6 +1,6 @@
 import pytest
 
-from app.money import InvalidAmount, exponent_for, to_decimal_string, to_minor
+from app.helpers.money import InvalidAmount, exponent_for, to_decimal_string, to_minor
 
 
 class TestExponentFor:

@@ -4,19 +4,20 @@ from unittest.mock import MagicMock
 
 from PIL import Image
 
-from app import images, receipt_helpers
-from app import receipts as receipts_module
+from app.helpers import images
+from app.helpers.receipts import fold_merchant, majority_category
+from app.services import receipts as receipts_module
 
 
 class TestMajorityCategory:
     def test_most_common_wins(self):
-        assert receipt_helpers.majority_category(["health", "groceries", "groceries"]) == "groceries"
+        assert majority_category(["health", "groceries", "groceries"]) == "groceries"
 
     def test_tie_goes_to_the_first_on_the_receipt(self):
-        assert receipt_helpers.majority_category(["shopping", "groceries", "groceries", "shopping"]) == "shopping"
+        assert majority_category(["shopping", "groceries", "groceries", "shopping"]) == "shopping"
 
     def test_empty_is_other(self):
-        assert receipt_helpers.majority_category([]) == "other"
+        assert majority_category([]) == "other"
 
 
 class TestReadReceipt:
@@ -92,32 +93,32 @@ class TestReceiptNote:
 
 class TestFoldMerchant:
     def test_merchant_appended_when_not_already_in_description(self):
-        assert receipt_helpers.fold_merchant("rice", "Alfamart") == "rice - Alfamart"
+        assert fold_merchant("rice", "Alfamart") == "rice - Alfamart"
 
     def test_merchant_omitted_when_already_present(self):
-        assert receipt_helpers.fold_merchant("rice from Alfamart", "Alfamart") == "rice from Alfamart"
+        assert fold_merchant("rice from Alfamart", "Alfamart") == "rice from Alfamart"
 
     def test_no_merchant_returns_description_unchanged(self):
-        assert receipt_helpers.fold_merchant("rice", None) == "rice"
+        assert fold_merchant("rice", None) == "rice"
 
     def test_no_description_returns_merchant(self):
-        assert receipt_helpers.fold_merchant(None, "Alfamart") == "Alfamart"
+        assert fold_merchant(None, "Alfamart") == "Alfamart"
 
     def test_neither_returns_none(self):
-        assert receipt_helpers.fold_merchant(None, None) is None
+        assert fold_merchant(None, None) is None
 
     def test_literal_unknown_merchant_is_treated_as_no_merchant(self):
         # Observed: the model wrote "Unknown" as the merchant when it genuinely
         # couldn't read one, which folded in as "3x Camel White 20 - Unknown" — a
         # placeholder that looks like a real (wrong) merchant name.
-        assert receipt_helpers.fold_merchant("3x Camel White 20", "Unknown") == "3x Camel White 20"
+        assert fold_merchant("3x Camel White 20", "Unknown") == "3x Camel White 20"
 
     def test_placeholder_merchant_case_insensitive(self):
-        assert receipt_helpers.fold_merchant("rice", "UNKNOWN") == "rice"
-        assert receipt_helpers.fold_merchant("rice", "N/A") == "rice"
+        assert fold_merchant("rice", "UNKNOWN") == "rice"
+        assert fold_merchant("rice", "N/A") == "rice"
 
     def test_unknown_merchant_with_no_description_returns_none(self):
-        assert receipt_helpers.fold_merchant(None, "Unknown") is None
+        assert fold_merchant(None, "Unknown") is None
 
 
 def _jpeg(width: int, height: int, orientation: int | None = None) -> bytes:

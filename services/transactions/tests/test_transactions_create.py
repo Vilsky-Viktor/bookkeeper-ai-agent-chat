@@ -119,7 +119,7 @@ class TestCreateTransactions:
         assert res.status_code == 422
 
     def test_replayed_idempotent_request_returns_the_stored_response(self, client, mock_conn: AsyncMock):
-        from app.idempotency import _hash
+        from app.storage.idempotency import _hash
 
         payload = [
             {

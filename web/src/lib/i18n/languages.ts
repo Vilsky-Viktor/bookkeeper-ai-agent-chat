@@ -10,7 +10,7 @@ import pt from "./locales/pt";
 import ru from "./locales/ru";
 import uk from "./locales/uk";
 
-// Must match services/agent/app/languages.py (the backend rejects anything else);
+// Must match services/agent/app/constants/languages.py (the backend rejects anything else);
 // that service's tests/test_contracts.py fails if they drift.
 export const SUPPORTED_LANGUAGES: { code: string; label: string; dir: "ltr" | "rtl" }[] = [
   { code: "en", label: "English", dir: "ltr" },

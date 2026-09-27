@@ -7,8 +7,8 @@ import re
 import typing
 from pathlib import Path
 
-from app.categories import CATEGORIES
-from app.languages import SUPPORTED_LANGUAGES
+from app.constants.categories import CATEGORIES
+from app.constants.languages import SUPPORTED_LANGUAGES
 from app.models.notices import NoticeKey
 from app.models.tool_results import _ZERO_DECIMAL_CURRENCIES
 from app.prompts.categorize import CATEGORY_DEFINITIONS
@@ -24,7 +24,7 @@ def _assigned_literal(path: Path, name: str):
 
 
 def test_zero_decimal_currencies_match_the_transactions_service():
-    exponents = _assigned_literal(REPO / "services/transactions/app/money.py", "_EXPONENTS")
+    exponents = _assigned_literal(REPO / "services/transactions/app/helpers/money.py", "_EXPONENTS")
     assert _ZERO_DECIMAL_CURRENCIES == {code for code, exponent in exponents.items() if exponent == 0}
 
 

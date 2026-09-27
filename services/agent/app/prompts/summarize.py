@@ -1,4 +1,4 @@
-"""The rolling-summary prompt (summarize.py)."""
+"""The rolling-summary prompt (services/summarize.py)."""
 
 SUMMARIZE_PROMPT = """You maintain a rolling summary of a bookkeeping chat, used as \
 context for a future turn. Fold the new messages into the previous summary. Record \

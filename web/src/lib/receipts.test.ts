@@ -22,7 +22,7 @@ describe("receiptViewUrl", () => {
 describe("receiptViewUrlFromObject", () => {
   it("builds a URL against the configured bucket from a bare object path", () => {
     // No VITE_RECEIPTS_BUCKET is set in the test env, so this exercises the
-    // "receipts-local" fallback — the same default services/agent's storage.py uses.
+    // "receipts-local" fallback — the same default services/agent's storage/bucket.py uses.
     expect(receiptViewUrlFromObject("receipts/u1/x.jpg")).toBe(
       "/gcs/download/storage/v1/b/receipts-local/o/receipts%2Fu1%2Fx.jpg?alt=media",
     );

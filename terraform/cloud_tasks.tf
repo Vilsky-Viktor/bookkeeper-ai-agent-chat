@@ -1,4 +1,4 @@
-# Backs the rolling-summary background job — see services/agent/app/tasks.py's
+# Backs the rolling-summary background job — see services/agent/app/integrations/tasks.py's
 # enqueue_summarize(), which creates an HTTP task here whose target is
 # POST <agent's own origin, derived per-request from the Host header, not an env
 # var>/internal/summarize, with an OIDC token minted as tasks-invoker-sa (see

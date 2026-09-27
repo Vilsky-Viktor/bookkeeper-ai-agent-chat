@@ -40,7 +40,7 @@ file's docstring), and that the signer is `TASKS_INVOKER_SERVICE_ACCOUNT` (an en
 set by `cloud_run.tf`). Locally
 it's skipped entirely via `SKIP_SERVICE_AUTH=true`.
 
-`services/agent/app/tasks.py`'s `enqueue_summarize()` mints the Cloud Tasks side of
+`services/agent/app/integrations/tasks.py`'s `enqueue_summarize()` mints the Cloud Tasks side of
 that: it creates an explicitly-named HTTP task (so Cloud Tasks itself provides
 cross-instance dedup, not just the in-process set) targeting
 `<this service's own origin>/internal/summarize` with an OIDC token minted as

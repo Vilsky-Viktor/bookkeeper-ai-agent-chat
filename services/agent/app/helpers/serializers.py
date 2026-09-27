@@ -1,8 +1,8 @@
-"""Chat DB rows to API response models (main.py)."""
+"""Chat DB rows to API response models (routers/threads.py)."""
 
 import json
 
-from .models.api import MessageOut
+from ..models.api import MessageOut
 
 
 def message_out(row) -> MessageOut:

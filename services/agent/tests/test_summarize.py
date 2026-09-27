@@ -1,7 +1,7 @@
 from unittest.mock import AsyncMock, MagicMock
 
-from app import llm as llm_module
-from app import summarize
+from app.integrations import llm as llm_module
+from app.services import summarize
 
 
 def _mock_model(reply_text: str):

@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from google.api_core.exceptions import AlreadyExists
 
-from app import tasks as tasks_module
+from app.integrations import tasks as tasks_module
 
 _QUEUE_PATH = "projects/demo-project/locations/us-central1/queues/prod-summarize"
 _AGENT_BASE_URL = "https://agent.example.com"
@@ -40,7 +40,7 @@ class TestEnqueueSummarizeLocal:
     async def test_local_mode_schedules_the_handler(self, monkeypatch):
         monkeypatch.setenv("TASKS_MODE", "local")
         mock_run = AsyncMock()
-        monkeypatch.setattr("app.summarize.run_summarize", mock_run)
+        monkeypatch.setattr("app.services.summarize.run_summarize", mock_run)
 
         await tasks_module.enqueue_summarize("uid-1", "thread-1", 10, _AGENT_BASE_URL)
         await asyncio.sleep(0)  # let the scheduled background task run
@@ -50,7 +50,7 @@ class TestEnqueueSummarizeLocal:
     async def test_duplicate_enqueue_for_same_range_is_skipped(self, monkeypatch):
         monkeypatch.setenv("TASKS_MODE", "local")
         mock_run = AsyncMock()
-        monkeypatch.setattr("app.summarize.run_summarize", mock_run)
+        monkeypatch.setattr("app.services.summarize.run_summarize", mock_run)
 
         await tasks_module.enqueue_summarize("uid-1", "thread-1", 10, _AGENT_BASE_URL)
         await tasks_module.enqueue_summarize(
@@ -63,7 +63,7 @@ class TestEnqueueSummarizeLocal:
     async def test_different_through_seq_is_not_deduped(self, monkeypatch):
         monkeypatch.setenv("TASKS_MODE", "local")
         mock_run = AsyncMock()
-        monkeypatch.setattr("app.summarize.run_summarize", mock_run)
+        monkeypatch.setattr("app.services.summarize.run_summarize", mock_run)
 
         await tasks_module.enqueue_summarize("uid-1", "thread-1", 10, _AGENT_BASE_URL)
         await tasks_module.enqueue_summarize("uid-1", "thread-1", 20, _AGENT_BASE_URL)

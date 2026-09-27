@@ -7,8 +7,8 @@ from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langchain_core.tools import tool
 from langgraph.graph import END, START, MessagesState, StateGraph
 
+from app.helpers.tool_schema import compact_tool_schema
 from app.models.tool_results import ReceiptExtraction
-from app.tools.schema import compact_tool_schema
 from app.workflows import main as main_module
 from app.workflows import receipt as receipt_module
 from app.workflows.receipt import build_receipt_graph
@@ -36,7 +36,7 @@ def _fake_categorize_graph(categories: dict[str, str], calls: list):
 async def _run_receipt(monkeypatch, extraction, content_type="image/jpeg", note="", categories=None):
     """Runs the real receipt workflow with storage and the vision call faked; returns
     (custom events by name, final state, categorize calls)."""
-    monkeypatch.setattr(receipt_module.storage, "read_bytes", lambda name: (b"img", content_type))
+    monkeypatch.setattr(receipt_module.bucket, "read_bytes", lambda name: (b"img", content_type))
     monkeypatch.setattr(receipt_module.images, "shrink_for_vision", lambda data, ct: (data, ct))
     monkeypatch.setattr(receipt_module.receipts, "read_receipt", AsyncMock(return_value=extraction))
     calls: list = []

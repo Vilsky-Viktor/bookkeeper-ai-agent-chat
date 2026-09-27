@@ -1,6 +1,6 @@
 """Helpers for the tool tests (test_tools_*.py)."""
 
-from app import categorize as categorize_module
+from app.services import categorize as categorize_module
 
 
 def tool_by_name(built, name):

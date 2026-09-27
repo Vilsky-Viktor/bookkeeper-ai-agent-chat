@@ -6,10 +6,12 @@ quota, summarization trigger)."""
 import json
 import logging
 
-from .. import chat_db, context, quotas, tasks
+from .. import context
+from ..integrations import tasks
 from ..models.message_content import AssistantMessageContent, ToolMessageContent
 from ..models.notices import Notice
 from ..models.turns import ToolCallRecord, TurnState
+from ..storage import chat_db, quotas
 
 log = logging.getLogger("agent")
 

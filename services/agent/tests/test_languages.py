@@ -1,4 +1,4 @@
-from app.languages import SUPPORTED_LANGUAGES
+from app.constants.languages import SUPPORTED_LANGUAGES
 
 
 class TestSupportedLanguages:

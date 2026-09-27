@@ -18,11 +18,11 @@ import json
 
 from langchain_core.messages import AIMessage, SystemMessage, ToolMessage
 
-from app import llm
 from app.context import build_context
+from app.helpers.tool_schema import compact_tool_schema
+from app.integrations import llm
 from app.prompts.assistant import RECEIPT_FOLLOWUP_PROMPT
 from app.tools import MUTATING_TOOLS, build_tools, transactions_client
-from app.tools.schema import compact_tool_schema
 
 from .chat_cases import CASES
 from .chat_fixtures import PRICES, fake_result

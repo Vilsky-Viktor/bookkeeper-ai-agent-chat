@@ -1,4 +1,4 @@
-from app.langsmith_obs import mask_for_export
+from app.integrations.tracing import mask_for_export
 
 
 class TestMaskForExport:

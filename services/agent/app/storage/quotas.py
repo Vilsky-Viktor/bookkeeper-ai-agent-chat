@@ -6,7 +6,7 @@ import os
 import asyncpg
 from fastapi import HTTPException
 
-from .models.notices import NoticeKey
+from ..models.notices import NoticeKey
 
 DAILY_TURN_LIMIT = int(os.environ.get("DAILY_TURN_LIMIT", "200"))
 DAILY_RECEIPT_LIMIT = int(os.environ.get("DAILY_RECEIPT_LIMIT", "50"))

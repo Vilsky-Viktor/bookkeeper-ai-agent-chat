@@ -5,9 +5,9 @@ method/url it receives, so it can't tell the environments apart."""
 import datetime
 import os
 
-from google.cloud import storage  # honors STORAGE_EMULATOR_HOST
+import google.cloud.storage as storage  # honors STORAGE_EMULATOR_HOST
 
-from .models.api import UploadTargetOut
+from ..models.api import UploadTargetOut
 
 BUCKET = os.environ["RECEIPTS_BUCKET"]
 

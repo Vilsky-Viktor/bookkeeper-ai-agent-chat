@@ -14,10 +14,10 @@ import logging
 import httpx
 from langchain_core.messages import HumanMessage
 
-from . import llm
-from .categories import CATEGORIES
-from .models.categorize import Correction
-from .prompts.categorize import CATEGORIZE_PROMPT, CATEGORY_DEFINITIONS, MATCHING_RULES
+from ..constants.categories import CATEGORIES
+from ..integrations import llm
+from ..models.categorize import Correction
+from ..prompts.categorize import CATEGORIZE_PROMPT, CATEGORY_DEFINITIONS, MATCHING_RULES
 
 log = logging.getLogger("categorize")
 

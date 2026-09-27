@@ -19,6 +19,14 @@
    prompts and constants each get their own module. Don't mix them with the logic
    that uses them.
 
+   Group modules into folders by kind. A service's `app/` folder holds only very
+   general files: `main.py` (app setup: lifespan, routers, health check) and auth
+   (`auth.py`, `service_auth.py`). `main.py` defines no route logic: routes live in
+   `routers/`. Everything else goes in a subfolder, for example `routers/`,
+   `models/`, `prompts/`, `helpers/` (pure helpers), `storage/` (databases, file
+   storage, anything that persists data), `services/`, `integrations/` (external
+   services) and `constants/`.
+
 5. **Keep code as simple as possible.** Strictly avoid overcomplicating and
    overengineering: no abstractions, layers, options or generalizations that the
    current need doesn't require. Choose the most direct solution that works.

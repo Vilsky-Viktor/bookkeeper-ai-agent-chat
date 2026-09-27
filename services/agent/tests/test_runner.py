@@ -6,11 +6,11 @@ from unittest.mock import AsyncMock
 import pytest
 from fastapi import HTTPException
 
-from app import quotas
 from app.chat import runner
 from app.models.api import ChatRequest
 from app.models.notices import Notice
 from app.models.turns import ToolCallRecord
+from app.storage import quotas
 
 THREAD = {"id": "thread-1", "working_set": {}, "summarized_through": 0}
 

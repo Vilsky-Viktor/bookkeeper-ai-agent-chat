@@ -1,5 +1,5 @@
 """Env vars must be set before any `app.*` module is imported, since a few of them
-(auth.py's firebase_admin.initialize_app(), db.py reading os.environ at call
+(auth.py's firebase_admin.initialize_app(), storage/pool.py reading os.environ at call
 time) touch the environment at import or call time. pytest imports conftest.py before
 collecting test modules, so this runs first."""
 
@@ -31,16 +31,16 @@ def mock_conn() -> AsyncMock:
 
 @pytest.fixture
 def patch_uid_conn(monkeypatch, mock_conn: AsyncMock):
-    """Makes every `db.uid_conn(uid)` in the app return `mock_conn` instead of opening
+    """Makes every `pool.uid_conn(uid)` in the app return `mock_conn` instead of opening
     a real pool connection — the routers only ever use it as `async with
-    db.uid_conn(uid) as conn`, so a plain async context manager stand-in is enough."""
-    from app import db
+    pool.uid_conn(uid) as conn`, so a plain async context manager stand-in is enough."""
+    from app.storage import pool
 
     @asynccontextmanager
     async def _fake_uid_conn(uid: str):
         yield mock_conn
 
-    monkeypatch.setattr(db, "uid_conn", _fake_uid_conn)
+    monkeypatch.setattr(pool, "uid_conn", _fake_uid_conn)
 
     return mock_conn
 

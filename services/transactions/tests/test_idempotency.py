@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock
 import pytest
 from fastapi import HTTPException
 
-from app.idempotency import run_idempotent
+from app.storage.idempotency import run_idempotent
 
 
 class TestRunIdempotent:
@@ -29,7 +29,7 @@ class TestRunIdempotent:
         assert purge_call.args[1] == "uid-1"
 
     async def test_existing_key_same_payload_replays_without_calling_handler(self, mock_conn: AsyncMock):
-        from app.idempotency import _hash
+        from app.storage.idempotency import _hash
 
         payload = {"a": 1}
         mock_conn.fetchrow.return_value = {
@@ -48,7 +48,7 @@ class TestRunIdempotent:
         mock_conn.execute.assert_not_awaited()
 
     async def test_replay_does_not_write_or_purge(self, mock_conn: AsyncMock):
-        from app.idempotency import _hash
+        from app.storage.idempotency import _hash
 
         mock_conn.fetchrow.return_value = {"request_hash": _hash({"a": 1}), "status": 201, "response": "{}"}
 
@@ -57,7 +57,7 @@ class TestRunIdempotent:
         mock_conn.execute.assert_not_awaited()
 
     async def test_existing_key_different_payload_raises_409(self, mock_conn: AsyncMock):
-        from app.idempotency import _hash
+        from app.storage.idempotency import _hash
 
         mock_conn.fetchrow.return_value = {
             "request_hash": _hash({"a": 1}),
@@ -73,11 +73,11 @@ class TestRunIdempotent:
         handler.assert_not_awaited()
 
     async def test_hash_is_stable_regardless_of_key_order(self):
-        from app.idempotency import _hash
+        from app.storage.idempotency import _hash
 
         assert _hash({"a": 1, "b": 2}) == _hash({"b": 2, "a": 1})
 
     async def test_hash_differs_for_different_payloads(self):
-        from app.idempotency import _hash
+        from app.storage.idempotency import _hash
 
         assert _hash({"a": 1}) != _hash({"a": 2})

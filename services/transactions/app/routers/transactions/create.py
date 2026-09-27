@@ -4,14 +4,14 @@ confirmation."""
 from fastapi import Depends, Header, HTTPException
 from fastapi.responses import JSONResponse
 
-from ... import db
 from ...auth import require_uid
-from ...corrections import save_correction
-from ...idempotency import run_idempotent
+from ...helpers.money import InvalidAmount, to_minor
+from ...helpers.serializers import row_to_out
 from ...models.transactions import CreateBatchRequest, TransactionsListResponse
-from ...money import InvalidAmount, to_minor
+from ...storage import pool
+from ...storage.corrections import save_correction
+from ...storage.idempotency import run_idempotent
 from . import router
-from .serializers import row_to_out
 
 
 @router.post("/transactions", status_code=201, response_model=TransactionsListResponse)
@@ -25,7 +25,7 @@ async def create_transactions(
 
     payload = [t.model_dump() for t in body.transactions]
 
-    async with db.uid_conn(uid) as conn:
+    async with pool.uid_conn(uid) as conn:
 
         async def handler() -> tuple[int, dict]:
             created = []

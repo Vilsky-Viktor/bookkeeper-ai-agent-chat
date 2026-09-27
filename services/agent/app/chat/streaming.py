@@ -24,7 +24,7 @@ async def run_graph_turn(compiled_graph, inputs: dict, run_config: dict, state: 
     where an empty tool_calls_made despite the marker means the model fabricated a
     reply without ever calling the tool.
 
-    run_config carries the LangSmith tags/metadata built by langsmith_obs.traced_turn
+    run_config carries the LangSmith tags/metadata built by integrations/tracing.py's traced_turn
     — LangSmith attaches its own tracer from environment variables, so there's no
     callback handler to pass here."""
 

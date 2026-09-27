@@ -18,8 +18,8 @@ from collections import defaultdict
 
 from langchain_core.callbacks import get_usage_metadata_callback
 
-from app.categorize import classify
 from app.models.categorize import Correction
+from app.services.categorize import classify
 
 # (description, acceptable categories). Descriptions are shaped like the agent sends
 # them: item name plus " - merchant" when one is known.

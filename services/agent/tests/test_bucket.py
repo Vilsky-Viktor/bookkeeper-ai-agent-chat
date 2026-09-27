@@ -1,4 +1,4 @@
-from app import storage
+from app.storage import bucket
 
 
 class TestUploadTarget:
@@ -6,7 +6,7 @@ class TestUploadTarget:
         monkeypatch.setenv("STORAGE_MODE", "local")
         monkeypatch.setenv("PUBLIC_UPLOAD_BASE", "http://localhost:8080/gcs")
 
-        target = storage.upload_target("uid-1", "obj-1")
+        target = bucket.upload_target("uid-1", "obj-1")
 
         assert target.method == "POST"
         assert target.object == "receipts/uid-1/obj-1.jpg"
@@ -17,8 +17,8 @@ class TestUploadTarget:
         monkeypatch.setenv("STORAGE_MODE", "local")
         monkeypatch.setenv("PUBLIC_UPLOAD_BASE", "http://localhost:8080/gcs")
 
-        target_a = storage.upload_target("uid-a", "obj-1")
-        target_b = storage.upload_target("uid-b", "obj-1")
+        target_a = bucket.upload_target("uid-a", "obj-1")
+        target_b = bucket.upload_target("uid-b", "obj-1")
 
         assert target_a.object != target_b.object
 
@@ -38,9 +38,9 @@ class TestUploadTarget:
             def bucket(self, name):
                 return type("B", (), {"blob": lambda self, n: FakeBlob()})()
 
-        monkeypatch.setattr(storage.storage, "Client", FakeClient)
+        monkeypatch.setattr(bucket.storage, "Client", FakeClient)
 
-        target = storage.upload_target("uid-1", "obj-1", "application/pdf")
+        target = bucket.upload_target("uid-1", "obj-1", "application/pdf")
 
         assert target.method == "PUT"
         assert signed["content_type"] == "application/pdf"

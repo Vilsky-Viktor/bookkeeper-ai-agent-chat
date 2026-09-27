@@ -8,8 +8,8 @@ from langchain_core.tools import BaseTool
 from langgraph.graph import END, START, MessagesState, StateGraph
 from langgraph.prebuilt import ToolNode, tools_condition
 
-from .. import llm
-from ..tools.schema import compact_tool_schema
+from ..helpers.tool_schema import compact_tool_schema
+from ..integrations import llm
 
 
 def build_assistant_graph(tools: list[BaseTool], name: str = "assistant", instructions: str | None = None):
