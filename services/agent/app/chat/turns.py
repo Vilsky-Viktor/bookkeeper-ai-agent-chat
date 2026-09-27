@@ -8,6 +8,7 @@ import logging
 
 from .. import chat_db, context, quotas, tasks
 from ..models.message_content import AssistantMessageContent, ToolMessageContent
+from ..models.notices import Notice
 from ..models.turns import ToolCallRecord, TurnState
 
 log = logging.getLogger("agent")
@@ -31,7 +32,7 @@ def marker_call_missing(tool_calls_made: list[ToolCallRecord], marker_ids: list[
     )
 
 
-async def record_turn_failure(uid: str, thread_id: str, note: str) -> None:
+async def record_turn_failure(uid: str, thread_id: str, notice: Notice) -> None:
     """Saves an assistant reply for a turn that failed after the user's message was
     stored. Otherwise the thread holds two user messages in a row with no reply
     between them, which derails the model on every later turn in that thread."""
@@ -42,8 +43,8 @@ async def record_turn_failure(uid: str, thread_id: str, note: str) -> None:
                 uid,
                 thread_id,
                 "assistant",
-                AssistantMessageContent(text=note, tool_calls=[]).model_dump(),
-                context.count_tokens(note),
+                AssistantMessageContent(text="", notice=notice).model_dump(),
+                0,
             )
     except Exception:
         log.exception("failed to record fallback assistant message after a failed turn")
@@ -117,7 +118,9 @@ async def finalize_turn(
     assistant_text = "".join(state.assistant_text_parts)
 
     async with chat_db.uid_conn(uid) as conn:
-        assistant_content = AssistantMessageContent(text=assistant_text, tool_calls=state.tool_calls_made)
+        assistant_content = AssistantMessageContent(
+            text=assistant_text, tool_calls=state.tool_calls_made, notice=state.notice
+        )
         await chat_db.insert_message(
             conn, uid, thread_id, "assistant", assistant_content.model_dump(), context.count_tokens(assistant_text)
         )

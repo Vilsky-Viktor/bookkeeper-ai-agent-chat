@@ -9,6 +9,7 @@ from app import context
 from app import llm as llm_module
 from app import tools as tools_module
 from app.chat import streaming, turns
+from app.models.notices import Notice
 from app.models.turns import ToolCallRecord, TurnState
 from app.workflows import build_main_graph
 
@@ -103,15 +104,15 @@ class TestRecordTurnFailure:
     # out to be a much stronger source of model confusion than ordinary variance
     # (traced to a real incident: repeated, otherwise-inexplicable failures retrying
     # the same edit, all in one thread that had this exact orphaned message).
-    async def test_inserts_an_assistant_message_with_the_given_note(self, patch_chat_uid_conn):
-        await turns.record_turn_failure("uid-1", "thread-1", "Sorry, something went wrong.")
+    async def test_inserts_an_assistant_message_with_the_given_notice(self, patch_chat_uid_conn):
+        await turns.record_turn_failure("uid-1", "thread-1", Notice(key="turnFailed"))
 
         patch_chat_uid_conn.fetchrow.assert_awaited_once()
         args = patch_chat_uid_conn.fetchrow.await_args.args
         assert args[1] == "thread-1"
         assert args[2] == "uid-1"
         assert args[3] == "assistant"
-        assert '"text": "Sorry, something went wrong."' in args[4]
+        assert '"notice": {"key": "turnFailed", "params": {}}' in args[4]
 
     async def test_swallows_its_own_failure_instead_of_raising(self, patch_chat_uid_conn):
         patch_chat_uid_conn.fetchrow.side_effect = RuntimeError("db unreachable")
@@ -119,7 +120,7 @@ class TestRecordTurnFailure:
         # Must not raise — this runs from inside an except block handling a turn
         # that already failed; a second exception here would replace the real error
         # response the client is waiting for.
-        await turns.record_turn_failure("uid-1", "thread-1", "Sorry, something went wrong.")
+        await turns.record_turn_failure("uid-1", "thread-1", Notice(key="turnFailed"))
 
 
 class TestMarkerCallMissing:

@@ -7,6 +7,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from .notices import Notice
 from .turns import ToolCallRecord
 
 
@@ -17,6 +18,7 @@ class UserMessageContent(BaseModel):
 class AssistantMessageContent(BaseModel):
     text: str
     tool_calls: list[ToolCallRecord] = Field(default_factory=list)
+    notice: Notice | None = None  # a fixed reply, shown translated by the web app
 
 
 class ToolMessageContent(BaseModel):

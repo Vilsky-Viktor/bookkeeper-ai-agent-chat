@@ -115,13 +115,39 @@ describe("useChatStream", () => {
     expect(callbacks.onReceiptProposed.mock.calls[0][0].items[0].suggested_category).toBe("dining");
   });
 
-  it("shows a server error as reply text", async () => {
-    serverSends(event("error", { message: "Daily limit reached." }));
+  it("shows a server error as a notice, after anything already streamed", async () => {
+    serverSends(token("Partial"), event("error", { notice: { key: "turnLimitReached", params: {} }, status: 429 }));
     const { result, callbacks } = setup();
 
     await act(() => result.current.send("hi"));
 
-    expect(callbacks.onMessage.mock.calls.at(-1)?.[0].text).toBe("Daily limit reached.");
+    expect(callbacks.onMessage.mock.calls.at(-1)?.[0]).toMatchObject({
+      text: "Partial",
+      notice: { key: "turnLimitReached" },
+    });
+  });
+
+  it("keeps a fixed reply as a key, so it's shown in the current language", async () => {
+    serverSends(event("notice", { key: "receiptProposed", params: { date: "2026-09-26" } }));
+    const { result, callbacks } = setup();
+
+    await act(() => result.current.send("", "receipts/u1/r.jpg"));
+
+    expect(callbacks.onMessage.mock.calls.at(-1)?.[0].notice).toEqual({
+      key: "receiptProposed",
+      params: { date: "2026-09-26" },
+    });
+  });
+
+  it("falls back to generic notices for an unknown error key or an empty turn", async () => {
+    serverSends(event("error", { notice: { key: "fromANewerServer" } }));
+    const { result, callbacks } = setup();
+    await act(() => result.current.send("hi"));
+    expect(callbacks.onMessage.mock.calls.at(-1)?.[0].notice).toEqual({ key: "requestFailed" });
+
+    serverSends();
+    await act(() => result.current.send("hi"));
+    expect(callbacks.onMessage.mock.calls.at(-1)?.[0].notice).toEqual({ key: "noResponse" });
   });
 
   it("refreshes the transactions table when the turn changed it", async () => {

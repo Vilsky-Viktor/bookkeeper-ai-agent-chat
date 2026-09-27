@@ -12,7 +12,7 @@ from app.workflows import main as main_module
 from app.workflows import receipt as receipt_module
 from app.workflows.assistant import compact_tool_schema
 from app.workflows.categorize import CategorizeState
-from app.workflows.receipt import REPLIES, build_receipt_graph, reply_text
+from app.workflows.receipt import build_receipt_graph
 from app.workflows.state import ChatState
 
 TODAY = datetime.date(2026, 9, 27)
@@ -81,7 +81,8 @@ class TestReceiptWorkflow:
     async def test_a_bare_upload_gets_the_fixed_reply_and_a_history_record(self, monkeypatch):
         events, final, _ = await _run_receipt(monkeypatch, GROCERY_RECEIPT)
 
-        assert events["reply"] == [{"text": REPLIES["en"]["proposed"].format(date="2026-09-26")}]
+        # A key, not a sentence: the web app words it in the user's language.
+        assert events["notice"] == [{"key": "receiptProposed", "params": {"date": "2026-09-26"}}]
         (record,) = events["tool_record"]
         assert record["name"] == "extract_receipt" and record["args"] == {"object_name": "receipts/u1/r.jpg"}
         assert "ui_event" not in record["result"]
@@ -89,7 +90,7 @@ class TestReceiptWorkflow:
     async def test_with_a_note_the_reply_is_left_to_the_assistant(self, monkeypatch):
         events, final, _ = await _run_receipt(monkeypatch, GROCERY_RECEIPT, note="this was yesterday")
 
-        assert "reply" not in events
+        assert "notice" not in events
         # The note reached the reader...
         receipt_module.receipts.read_receipt.assert_awaited_once()
         assert receipt_module.receipts.read_receipt.await_args.args[4] == "this was yesterday"
@@ -103,7 +104,7 @@ class TestReceiptWorkflow:
 
         assert calls == []
         assert "ui_event" not in events
-        assert events["reply"] == [{"text": REPLIES["en"]["not_a_receipt"]}]
+        assert events["notice"] == [{"key": "notAReceipt", "params": {}}]
 
     async def test_an_unsupported_file_never_reaches_the_reader(self, monkeypatch):
         events, _, calls = await _run_receipt(monkeypatch, GROCERY_RECEIPT, content_type="text/html")
@@ -111,17 +112,7 @@ class TestReceiptWorkflow:
         receipt_module.receipts.read_receipt.assert_not_awaited()
         assert calls == []
         assert "text/html" in events["tool_record"][0]["result"]["error"]
-        assert events["reply"] == [{"text": REPLIES["en"]["error"]}]
-
-
-class TestReplies:
-    def test_unknown_language_falls_back_to_english(self):
-        assert reply_text({"error": "x"}, None, "xx") == REPLIES["en"]["error"]
-
-    def test_every_language_has_every_reply(self):
-        for replies in REPLIES.values():
-            assert set(replies) == set(REPLIES["en"])
-            assert "{date}" in replies["proposed"]
+        assert events["notice"] == [{"key": "receiptUnreadable", "params": {}}]
 
 
 def _recording_subgraph(name: str, visits: list, state_schema=MessagesState):

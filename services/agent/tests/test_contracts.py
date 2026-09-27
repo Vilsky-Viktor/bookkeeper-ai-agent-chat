@@ -4,12 +4,13 @@ runtime."""
 
 import ast
 import re
+import typing
 from pathlib import Path
 
 from app.categorize import CATEGORIES, CATEGORY_DEFINITIONS
 from app.languages import SUPPORTED_LANGUAGES
+from app.models.notices import NoticeKey
 from app.models.tool_results import _ZERO_DECIMAL_CURRENCIES
-from app.workflows.receipt import REPLIES
 
 REPO = Path(__file__).resolve().parents[3]
 
@@ -26,8 +27,11 @@ def test_zero_decimal_currencies_match_the_transactions_service():
     assert _ZERO_DECIMAL_CURRENCIES == {code for code, exponent in exponents.items() if exponent == 0}
 
 
-def test_every_supported_language_has_receipt_replies():
-    assert set(REPLIES) == set(SUPPORTED_LANGUAGES)
+def test_every_notice_has_a_translation_in_the_web_app():
+    # Other locales are typed against en.ts, so a key there is in all of them.
+    en = (REPO / "web/src/lib/i18n/locales/en.ts").read_text()
+    ui_keys = set(re.findall(r"^    (\w+):", re.search(r"ui: \{(.*?)\n  \}", en, re.S).group(1), re.M))
+    assert set(typing.get_args(NoticeKey)) <= ui_keys
 
 
 def test_supported_languages_match_the_web_app():

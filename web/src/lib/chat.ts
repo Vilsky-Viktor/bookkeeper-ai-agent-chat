@@ -1,9 +1,19 @@
 import type { StoredMessage } from "./api";
+import { isMessageKey } from "./i18n/languages";
+import type { MessageKey } from "./i18n/languages";
 import { splitReceiptMarker } from "./receipts";
+
+/** A fixed reply the server sends as a key (see services/agent/app/models/notices.py),
+ * shown in the user's current language. */
+export interface Notice {
+  key: MessageKey;
+  params?: Record<string, string>;
+}
 
 export interface DisplayMessage {
   role: "user" | "assistant";
   text: string;
+  notice?: Notice;
   imageUrl?: string;
   csvUrl?: string;
   csvFilename?: string;
@@ -42,12 +52,25 @@ export function mapStoredMessages(items: StoredMessage[]): { messages: DisplayMe
       // A receipt upload's stored text carries a "[uploaded receipt: ...]" marker —
       // split it back into text + a viewable image.
       messages.push({ role: "user", seq: m.seq, ...splitReceiptMarker(m.content.text) });
-    } else if (m.role === "assistant" && m.content?.text) {
+    } else if (m.role === "assistant" && (m.content?.text || m.content?.notice)) {
       if (m.content.tool_calls?.some((c) => c.name === "export_transactions")) exportIndexes.push(messages.length);
-      messages.push({ role: "assistant", seq: m.seq, text: m.content.text });
+      messages.push({ role: "assistant", seq: m.seq, text: m.content.text ?? "", notice: toNotice(m.content.notice) });
     }
   }
   return { messages, exportIndexes };
+}
+
+/** A notice from the server, or undefined when there's none — or its key is unknown
+ * here (a newer server than this page), rather than showing a raw key. */
+export function toNotice(raw: unknown): Notice | undefined {
+  const n = raw as { key?: unknown; params?: Record<string, string> } | null | undefined;
+  return typeof n?.key === "string" && isMessageKey(n.key) ? { key: n.key, params: n.params ?? {} } : undefined;
+}
+
+/** A message's full text as shown: its own text, then its notice in `t`'s language. */
+export function messageText(m: DisplayMessage, t: (key: MessageKey, params?: Record<string, string>) => string) {
+  const notice = m.notice ? t(m.notice.key, m.notice.params) : "";
+  return [m.text, notice].filter(Boolean).join("\n");
 }
 
 /** The receipt_proposed SSE payload, with each item's proposed category kept aside

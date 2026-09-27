@@ -56,8 +56,8 @@ export function LanguageProvider({ userId, children }: { userId: string | null; 
     });
   }
 
-  function t(key: MessageKey): string {
-    return LOCALES[language].ui[key];
+  function t(key: MessageKey, params: Record<string, string> = {}): string {
+    return LOCALES[language].ui[key].replace(/\{(\w+)\}/g, (match, name: string) => params[name] ?? match);
   }
 
   function tCategory(category: string): string {

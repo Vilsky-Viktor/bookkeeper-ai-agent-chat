@@ -6,8 +6,18 @@ import os
 import asyncpg
 from fastapi import HTTPException
 
+from .models.notices import NoticeKey
+
 DAILY_TURN_LIMIT = int(os.environ.get("DAILY_TURN_LIMIT", "200"))
 DAILY_RECEIPT_LIMIT = int(os.environ.get("DAILY_RECEIPT_LIMIT", "50"))
+
+
+class LimitReached(HTTPException):
+    """A 429 whose user-facing wording is the web app's, by `notice_key`."""
+
+    def __init__(self, notice_key: NoticeKey, detail: str):
+        super().__init__(status_code=429, detail=detail)
+        self.notice_key: NoticeKey = notice_key
 
 
 async def increment_and_check_turn(conn: asyncpg.Connection, uid: str) -> None:
@@ -20,7 +30,7 @@ async def increment_and_check_turn(conn: asyncpg.Connection, uid: str) -> None:
         uid,
     )
     if row["turns"] > DAILY_TURN_LIMIT:
-        raise HTTPException(status_code=429, detail="Daily chat turn limit reached. Try again tomorrow.")
+        raise LimitReached("turnLimitReached", "daily chat turn limit reached")
 
 
 async def increment_receipt(conn: asyncpg.Connection, uid: str) -> None:
@@ -33,7 +43,7 @@ async def increment_receipt(conn: asyncpg.Connection, uid: str) -> None:
         uid,
     )
     if row["receipts"] > DAILY_RECEIPT_LIMIT:
-        raise HTTPException(status_code=429, detail="Daily receipt limit reached. Try again tomorrow.")
+        raise LimitReached("receiptLimitReached", "daily receipt limit reached")
 
 
 async def add_tokens(conn: asyncpg.Connection, uid: str, tokens: int) -> None:

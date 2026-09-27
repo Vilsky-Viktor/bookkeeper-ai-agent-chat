@@ -5,8 +5,9 @@ and room for mistakes.
 
 `report` publishes through custom events (streaming.py turns them into SSE): the
 proposal card, a record of the result for the chat history, and — when the user
-typed nothing else — the reply. It also adds the result to the conversation as an
-extract_receipt tool call, which is what the assistant sees if it runs next."""
+typed nothing else — the reply, as a notice key the web app shows translated. It
+also adds the result to the conversation as an extract_receipt tool call, which is
+what the assistant sees if it runs next."""
 
 import asyncio
 import datetime
@@ -22,6 +23,7 @@ from langgraph.graph.message import add_messages
 
 from .. import receipts, storage
 from ..models.categorize import Correction
+from ..models.notices import Notice
 from ..models.tool_results import (
     NotAReceiptResult,
     ReceiptExtraction,
@@ -29,59 +31,6 @@ from ..models.tool_results import (
     ReceiptProposedResult,
     ToolError,
 )
-
-REPLIES: dict[str, dict[str, str]] = {
-    "en": {
-        "proposed": "Extracted your receipt from {date} — you can edit or confirm it below.",
-        "not_a_receipt": "That doesn't look like a receipt. Please upload a photo or PDF of an actual receipt.",
-        "error": "I couldn't read that file. Please upload the receipt as a photo (JPEG, PNG, WEBP, GIF) or a PDF.",
-    },
-    "es": {
-        "proposed": "He extraído tu recibo del {date}: puedes editarlo o confirmarlo abajo.",
-        "not_a_receipt": "Eso no parece un recibo. Sube una foto o un PDF de un recibo real.",
-        "error": "No pude leer ese archivo. Sube el recibo como foto (JPEG, PNG, WEBP, GIF) o PDF.",
-    },
-    "id": {
-        "proposed": "Struk tanggal {date} sudah diekstrak — kamu bisa mengedit atau mengonfirmasinya di bawah.",
-        "not_a_receipt": "Itu sepertinya bukan struk. Silakan unggah foto atau PDF struk yang asli.",
-        "error": "File itu tidak bisa dibaca. Silakan unggah struk sebagai foto (JPEG, PNG, WEBP, GIF) atau PDF.",
-    },
-    "fr": {
-        "proposed": "J'ai extrait votre reçu du {date} — vous pouvez le modifier ou le confirmer ci-dessous.",
-        "not_a_receipt": "Cela ne ressemble pas à un reçu. Veuillez envoyer une photo ou un PDF d'un vrai reçu.",
-        "error": "Je n'ai pas pu lire ce fichier. Envoyez le reçu en photo (JPEG, PNG, WEBP, GIF) ou en PDF.",
-    },
-    "de": {
-        "proposed": "Dein Beleg vom {date} wurde ausgelesen — du kannst ihn unten bearbeiten oder bestätigen.",
-        "not_a_receipt": "Das sieht nicht wie ein Beleg aus. Bitte lade ein Foto oder PDF eines echten Belegs hoch.",
-        "error": "Ich konnte die Datei nicht lesen. Bitte lade den Beleg als Foto (JPEG, PNG, WEBP, GIF) oder PDF hoch.",
-    },
-    "pt": {
-        "proposed": "Extraí seu recibo de {date} — você pode editá-lo ou confirmá-lo abaixo.",
-        "not_a_receipt": "Isso não parece um recibo. Envie uma foto ou PDF de um recibo de verdade.",
-        "error": "Não consegui ler esse arquivo. Envie o recibo como foto (JPEG, PNG, WEBP, GIF) ou PDF.",
-    },
-    "he": {
-        "proposed": "חילצתי את הקבלה מתאריך {date} — אפשר לערוך או לאשר אותה למטה.",
-        "not_a_receipt": "זה לא נראה כמו קבלה. אנא העלה תמונה או PDF של קבלה אמיתית.",
-        "error": "לא הצלחתי לקרוא את הקובץ. אנא העלה את הקבלה כתמונה (JPEG, PNG, WEBP, GIF) או כ-PDF.",
-    },
-    "ru": {
-        "proposed": "Чек от {date} распознан — его можно отредактировать или подтвердить ниже.",
-        "not_a_receipt": "Это не похоже на чек. Загрузите фото или PDF настоящего чека.",
-        "error": "Не удалось прочитать файл. Загрузите чек как фото (JPEG, PNG, WEBP, GIF) или PDF.",
-    },
-    "uk": {
-        "proposed": "Чек від {date} розпізнано — його можна відредагувати або підтвердити нижче.",
-        "not_a_receipt": "Це не схоже на чек. Завантажте фото або PDF справжнього чека.",
-        "error": "Не вдалося прочитати файл. Завантажте чек як фото (JPEG, PNG, WEBP, GIF) або PDF.",
-    },
-    "ar": {
-        "proposed": "تم استخراج إيصالك بتاريخ {date} — يمكنك تعديله أو تأكيده أدناه.",
-        "not_a_receipt": "لا يبدو هذا إيصالًا. يرجى تحميل صورة أو ملف PDF لإيصال حقيقي.",
-        "error": "تعذّرت قراءة هذا الملف. يرجى تحميل الإيصال كصورة (JPEG أو PNG أو WEBP أو GIF) أو PDF.",
-    },
-}
 
 
 class ReceiptState(TypedDict, total=False):
@@ -155,7 +104,7 @@ def build_receipt_graph(categorize_graph, language: str, today: datetime.date):
         record = {"id": call_id, "name": "extract_receipt", "args": args, "result": result}
         await adispatch_custom_event("tool_record", record, config=config)
         if not state.get("note", "").strip():
-            await adispatch_custom_event("reply", {"text": reply_text(result, ui_event, language)}, config=config)
+            await adispatch_custom_event("notice", notice_for(result, ui_event).model_dump(), config=config)
         return {
             "messages": [
                 AIMessage(content="", tool_calls=[{"id": call_id, "name": "extract_receipt", "args": args}]),
@@ -181,11 +130,10 @@ def build_receipt_graph(categorize_graph, language: str, today: datetime.date):
     return graph.compile(name="receipt_workflow")
 
 
-def reply_text(result: dict, ui_event: str | None, language: str) -> str:
-    replies = REPLIES.get(language, REPLIES["en"])
+def notice_for(result: dict, ui_event: str | None) -> Notice:
     if ui_event == "receipt_proposed":
         date = (result.get("items") or [{}])[0].get("occurred_on") or ""
-        return replies["proposed"].format(date=date)
+        return Notice(key="receiptProposed", params={"date": str(date)})
     if result.get("not_a_receipt"):
-        return replies["not_a_receipt"]
-    return replies["error"]
+        return Notice(key="notAReceipt")
+    return Notice(key="receiptUnreadable")

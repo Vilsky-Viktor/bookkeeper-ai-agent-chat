@@ -128,6 +128,7 @@ export async function listThreads(): Promise<{ items: ThreadSummary[] }> {
 export interface StoredMessageContent {
   text?: string;
   tool_calls?: { name?: string }[];
+  notice?: { key: string; params?: Record<string, string> } | null;
   [key: string]: unknown;
 }
 

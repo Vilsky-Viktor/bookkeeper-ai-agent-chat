@@ -157,8 +157,9 @@ boundary rather than hitting a network). The chat pane is covered through its pa
   Text typed with the upload is a note to the receipt reader first ("this was
   yesterday" sets the date), then a follow-up agent confirms the card and answers any
   question in it. A plain upload (no typed text) skips the chat model entirely: the
-  reply is a fixed, translated sentence, since the outcome is fully determined. Photos are downscaled in the browser before upload (1600px long side,
-  JPEG, phone rotation applied), so that's also what's stored; PDFs upload as-is. All
+  reply is a fixed sentence, since the outcome is fully determined. Photos are
+  downscaled in the browser before upload (1600px long side, JPEG, phone rotation
+  applied), so that's also what's stored; PDFs upload as-is. All
   of a receipt's items are categorized in a single model call.
   Category corrections (made via chat or by editing a proposed row) are learned per
   normalized description and reused on future similar purchases, with an LLM
@@ -184,7 +185,11 @@ boundary rather than hitting a network). The chat pane is covered through its pa
   of what language the user types in, receipt descriptions get translated into it, the
   category column's built-in labels are translated for display (the stored/matched
   value stays the English key), and Hebrew/Arabic flip the whole layout to RTL via
-  logical CSS properties (not just a `dir` attribute flip).
+  logical CSS properties (not just a `dir` attribute flip). Every translation lives
+  in the web app (`web/src/lib/i18n/locales/`): fixed replies from the backend (a
+  receipt's outcome, errors, daily limits) arrive as a key plus params, a "notice"
+  (`services/agent/app/models/notices.py`), which the chat shows in the current
+  language — also after switching languages, and in reloaded history.
 - **Dark/light theme**, persisted locally, no flash of the wrong theme on reload.
 - Per-user daily quotas (chat turns, receipts, tokens — configurable via
   `DAILY_TURN_LIMIT`/`DAILY_RECEIPT_LIMIT`) and optional LangSmith tracing; it
@@ -259,7 +264,8 @@ the agent has no elevated identity of its own.
     prompt (the user's note, e.g. "this was yesterday", goes into that prompt), run
     the `categorize` subgraph, build the proposal and send the card. It records itself
     in history as an `extract_receipt` tool call, so later turns can refer to it. With
-    no note, it also writes a fixed translated reply, so no chat model is called.
+    no note, it also sends a fixed reply (a notice key the web app translates), so
+    no chat model is called.
   - `receipt_followup` — the assistant, specialized for the turn after a receipt:
     its own instructions (confirm the card, answer the question) and **read-only**
     tools. The receipt is saved only when the user confirms the card. With add/edit/

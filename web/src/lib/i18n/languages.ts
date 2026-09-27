@@ -30,6 +30,10 @@ export const LOCALES = { en, es, id, fr, de, pt, he, ru, uk, ar } satisfies Reco
 export type Language = keyof typeof LOCALES;
 export type MessageKey = keyof Locale["ui"];
 
+export function isMessageKey(k: string): k is MessageKey {
+  return k in en.ui;
+}
+
 export function isLanguage(l: string): l is Language {
   return l in LOCALES;
 }

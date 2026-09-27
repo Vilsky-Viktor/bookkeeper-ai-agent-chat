@@ -100,6 +100,14 @@ class TestCompactToolResult:
 
 
 class TestBuildContext:
+    def test_a_notice_only_reply_shows_the_model_its_key(self):
+        # The wording is the web app's, in the user's language; the model only needs
+        # to know what happened (and that the turn got a reply at all).
+        row = {"seq": 1, "role": "assistant", "content": json.dumps({"text": "", "notice": {"key": "turnFailed"}})}
+        row["compact"] = None
+        messages = context.build_context({}, None, [{**_user_row("hi"), "seq": 0}, row], "again")
+        assert messages[-2].content == "[notice: turnFailed]"
+
     def test_minimal_context_has_system_and_human_message(self):
         messages = context.build_context({}, None, [], "hello")
         assert isinstance(messages[0], SystemMessage)

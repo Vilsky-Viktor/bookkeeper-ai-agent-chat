@@ -15,6 +15,7 @@ from ..dates import user_today
 from ..langsmith_obs import traced_turn
 from ..models.api import ChatRequest
 from ..models.message_content import UserMessageContent
+from ..models.notices import Notice
 from ..models.turns import TurnState
 from ..workflows import build_main_graph
 from . import streaming, turns
@@ -22,9 +23,10 @@ from .streaming import sse
 
 log = logging.getLogger("agent")
 
-ALREADY_SENT = "That message was already sent — no need to resend it."
-COULDNT_DO_THAT = "Sorry, I couldn't do that — please try again."
-CRASHED = "Sorry, I ran into a problem and couldn't finish that. Please try again."
+# Error replies are notices: keys the web app shows in the user's language.
+ALREADY_SENT = Notice(key="alreadySent")
+REQUEST_FAILED = Notice(key="requestFailed")
+CRASHED = Notice(key="turnFailed")
 
 
 @dataclass
@@ -124,7 +126,7 @@ async def stream_chat_turn(body: ChatRequest, uid: str, jwt: str, agent_base_url
             thread_id = str(thread["id"])
             turn = await _prepare_turn(conn, uid, thread, body, today)
         if turn is None:
-            yield sse("error", {"message": ALREADY_SENT})
+            yield sse("error", {"notice": ALREADY_SENT.model_dump()})
             return
 
         graph = build_main_graph(jwt, turn.language, today)
@@ -154,14 +156,14 @@ async def stream_chat_turn(body: ChatRequest, uid: str, jwt: str, agent_base_url
 
     except HTTPException as e:
         log.warning("chat turn returned %s: %s", e.status_code, e.detail)
-        # Quota messages (429) are already user-facing sentences (see quotas.py);
-        # anything else gets a plain message instead of the raw detail.
-        message = e.detail if e.status_code == 429 else COULDNT_DO_THAT
+        # A daily limit has its own notice (see quotas.py); anything else gets a plain
+        # "couldn't do that", never the raw detail.
+        notice = Notice(key=e.notice_key) if isinstance(e, quotas.LimitReached) else REQUEST_FAILED
         if thread_id is not None:
-            await turns.record_turn_failure(uid, thread_id, message)
-        yield sse("error", {"message": message, "status": e.status_code})
+            await turns.record_turn_failure(uid, thread_id, notice)
+        yield sse("error", {"notice": notice.model_dump(), "status": e.status_code})
     except Exception:
         log.exception("chat turn failed")
         if thread_id is not None:
             await turns.record_turn_failure(uid, thread_id, CRASHED)
-        yield sse("error", {"message": CRASHED})
+        yield sse("error", {"notice": CRASHED.model_dump()})

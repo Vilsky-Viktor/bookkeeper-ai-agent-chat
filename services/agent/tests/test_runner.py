@@ -6,8 +6,10 @@ from unittest.mock import AsyncMock
 import pytest
 from fastapi import HTTPException
 
+from app import quotas
 from app.chat import runner
 from app.models.api import ChatRequest
+from app.models.notices import Notice
 from app.models.turns import ToolCallRecord
 
 THREAD = {"id": "thread-1", "working_set": {}, "summarized_through": 0}
@@ -131,7 +133,7 @@ class TestStreamChatTurn:
 
         events = await _run()
 
-        assert events == [("error", {"message": runner.ALREADY_SENT})]
+        assert events == [("error", {"notice": {"key": "alreadySent", "params": {}}})]
         assert seams["graph_runs"] == []
         seams["finalize"].assert_not_awaited()
 
@@ -142,20 +144,20 @@ class TestStreamChatTurn:
 
         assert seams["finalize"].await_args.kwargs["trimmed_before_seq"] == 42
 
-    async def test_quota_error_shows_its_own_message_and_is_recorded(self, seams):
-        seams["prepare"].side_effect = HTTPException(status_code=429, detail="Daily limit reached.")
+    async def test_quota_error_shows_its_own_notice_and_is_recorded(self, seams):
+        seams["prepare"].side_effect = quotas.LimitReached("receiptLimitReached", "daily receipt limit reached")
 
         events = await _run()
 
-        assert events == [("error", {"message": "Daily limit reached.", "status": 429})]
-        seams["record_failure"].assert_awaited_once_with("uid-1", "thread-1", "Daily limit reached.")
+        assert events == [("error", {"notice": {"key": "receiptLimitReached", "params": {}}, "status": 429})]
+        seams["record_failure"].assert_awaited_once_with("uid-1", "thread-1", Notice(key="receiptLimitReached"))
 
     async def test_other_http_errors_show_a_plain_message(self, seams):
         seams["open_thread"].side_effect = HTTPException(status_code=404, detail="thread not found")
 
         events = await _run()
 
-        assert events == [("error", {"message": runner.COULDNT_DO_THAT, "status": 404})]
+        assert events == [("error", {"notice": runner.REQUEST_FAILED.model_dump(), "status": 404})]
         seams["record_failure"].assert_not_awaited()  # no thread to record into
 
     async def test_unexpected_crash_is_recorded_and_reported(self, seams):
@@ -163,7 +165,7 @@ class TestStreamChatTurn:
 
         events = await _run()
 
-        assert events[-1] == ("error", {"message": runner.CRASHED})
+        assert events[-1] == ("error", {"notice": {"key": "turnFailed", "params": {}}})
         seams["record_failure"].assert_awaited_once_with("uid-1", "thread-1", runner.CRASHED)
 
     async def test_the_users_timezone_sets_today_for_context_and_tools(self, seams, monkeypatch):

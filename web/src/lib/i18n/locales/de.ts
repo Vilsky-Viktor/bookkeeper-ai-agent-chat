@@ -36,6 +36,17 @@ const de: Locale = {
     savedTransactions: "{n} Transaktion(en) aus dem Beleg gespeichert.",
     saveFailed: "Speichern fehlgeschlagen: {error}",
     viewAttachment: "Anhang ansehen",
+    receiptProposed: "Dein Beleg vom {date} wurde ausgelesen — du kannst ihn unten bearbeiten oder bestätigen.",
+    notAReceipt: "Das sieht nicht wie ein Beleg aus. Bitte lade ein Foto oder PDF eines echten Belegs hoch.",
+    receiptUnreadable:
+      "Ich konnte die Datei nicht lesen. Bitte lade den Beleg als Foto (JPEG, PNG, WEBP, GIF) oder PDF hoch.",
+    alreadySent: "Diese Nachricht wurde bereits gesendet — du musst sie nicht erneut senden.",
+    requestFailed: "Das hat leider nicht geklappt — bitte versuche es noch einmal.",
+    turnFailed:
+      "Leider ist ein Problem aufgetreten und ich konnte das nicht abschließen. Bitte versuche es noch einmal.",
+    turnLimitReached: "Du hast das heutige Chat-Limit erreicht. Versuche es morgen wieder.",
+    receiptLimitReached: "Du hast das heutige Beleg-Limit erreicht. Versuche es morgen wieder.",
+    noResponse: "(keine Antwort)",
   },
   categories: {
     groceries: "Lebensmittel",
@@ -47,6 +58,7 @@ const de: Locale = {
     health: "Gesundheit",
     shopping: "Einkaufen",
     travel: "Reisen",
+    subscriptions: "Abonnements",
     income: "Einkommen",
     fees: "Gebühren",
     other: "Sonstiges",

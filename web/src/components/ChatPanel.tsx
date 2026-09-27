@@ -3,7 +3,7 @@ import { Sparkles } from "lucide-react";
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { createTransactionBatch, requestUploadTarget, uploadReceiptImage } from "../lib/api";
 import type { TransactionFilter } from "../lib/api";
-import { errorDetail } from "../lib/chat";
+import { errorDetail, messageText } from "../lib/chat";
 import type { ProposedItem, ReceiptProposal } from "../lib/chat";
 import { useTranslation } from "../lib/i18n";
 import { receiptViewUrlFromObject } from "../lib/receipts";
@@ -57,7 +57,7 @@ const ChatPanel = forwardRef<ChatPanelHandle, Props>(function ChatPanel(
 
   const history = useThreadMessages(threadId, filterRef, messageListRef);
   const { messages, appendMessage } = history;
-  const { streaming, pendingText, send } = useChatStream(threadId, filterRef, {
+  const { streaming, pendingText, pendingNotice, send } = useChatStream(threadId, filterRef, {
     onMessage: appendMessage,
     onThreadId,
     onFilterSet,
@@ -69,7 +69,7 @@ const ChatPanel = forwardRef<ChatPanelHandle, Props>(function ChatPanel(
       setInput("");
       await send(typed ? `${typed} ${text}` : text);
     },
-    onError: () => appendMessage({ role: "assistant", text: t("micError") }),
+    onError: () => appendMessage({ role: "assistant", text: "", notice: { key: "micError" } }),
   });
 
   useEffect(() => {
@@ -80,7 +80,7 @@ const ChatPanel = forwardRef<ChatPanelHandle, Props>(function ChatPanel(
       return;
     }
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, pendingText, history.justLoadedOlderRef]);
+  }, [messages, pendingText, pendingNotice, history.justLoadedOlderRef]);
 
   useEffect(() => {
     // The textarea is disabled (and loses focus) while a turn streams or a recording
@@ -97,7 +97,7 @@ const ChatPanel = forwardRef<ChatPanelHandle, Props>(function ChatPanel(
 
   async function handleFileSelected(file: File) {
     // Sent as typed, possibly empty: an upload with no text skips the chat model on
-    // the server (see services/agent/app/chat/receipt_turn.py), so don't pad it.
+    // the server (see services/agent/app/workflows/main.py), so don't pad it.
     const caption = input.trim();
     setInput("");
     setProposal(null); // clear any unconfirmed card from a previous upload
@@ -119,12 +119,16 @@ const ChatPanel = forwardRef<ChatPanelHandle, Props>(function ChatPanel(
       await createTransactionBatch(proposal.items as unknown as Record<string, unknown>[], crypto.randomUUID());
     } catch (e) {
       // Keep the card so the user can fix the field the server rejected and retry.
-      appendMessage({ role: "assistant", text: t("saveFailed").replace("{error}", errorDetail(e)) });
+      appendMessage({ role: "assistant", text: "", notice: { key: "saveFailed", params: { error: errorDetail(e) } } });
       return;
     }
     queryClient.invalidateQueries({ queryKey: ["transactions"] });
     setProposal(null);
-    appendMessage({ role: "assistant", text: t("savedTransactions").replace("{n}", String(proposal.items.length)) });
+    appendMessage({
+      role: "assistant",
+      text: "",
+      notice: { key: "savedTransactions", params: { n: String(proposal.items.length) } },
+    });
   }
 
   useImperativeHandle(ref, () => ({
@@ -160,40 +164,43 @@ const ChatPanel = forwardRef<ChatPanelHandle, Props>(function ChatPanel(
             {t("loadEarlierMessages")}
           </button>
         )}
-        {messages.map((m, i) => (
-          <div
-            key={i}
-            className={`flex max-w-[90%] flex-col gap-1.5 ${m.role === "user" ? "self-end items-end" : "self-start items-start"}`}
-          >
-            {m.text && (
-              <div
-                className={`whitespace-pre-wrap rounded-xl px-3 py-2 text-sm leading-relaxed ${
-                  m.role === "user"
-                    ? "bg-sky-200 text-sky-900 dark:bg-sky-900/70 dark:text-sky-100"
-                    : "bg-zinc-100 text-zinc-900 dark:bg-zinc-800/80 dark:text-zinc-100"
-                }`}
-              >
-                {m.text}
-              </div>
-            )}
-            {m.imageUrl && (
-              <ReceiptThumb
-                url={m.imageUrl}
-                onView={onViewImage}
-                // The image loads after the scroll-to-bottom effect already ran against
-                // the shorter layout — scroll again once it has its real height.
-                onLoad={() => messagesEndRef.current?.scrollIntoView({ behavior: "auto" })}
-              />
-            )}
-            {m.csvUrl && m.csvFilename && <FileAttachment url={m.csvUrl} filename={m.csvFilename} />}
-          </div>
-        ))}
-        {streaming && pendingText && (
+        {messages.map((m, i) => {
+          const text = messageText(m, t);
+          return (
+            <div
+              key={i}
+              className={`flex max-w-[90%] flex-col gap-1.5 ${m.role === "user" ? "self-end items-end" : "self-start items-start"}`}
+            >
+              {text && (
+                <div
+                  className={`whitespace-pre-wrap rounded-xl px-3 py-2 text-sm leading-relaxed ${
+                    m.role === "user"
+                      ? "bg-sky-200 text-sky-900 dark:bg-sky-900/70 dark:text-sky-100"
+                      : "bg-zinc-100 text-zinc-900 dark:bg-zinc-800/80 dark:text-zinc-100"
+                  }`}
+                >
+                  {text}
+                </div>
+              )}
+              {m.imageUrl && (
+                <ReceiptThumb
+                  url={m.imageUrl}
+                  onView={onViewImage}
+                  // The image loads after the scroll-to-bottom effect already ran against
+                  // the shorter layout — scroll again once it has its real height.
+                  onLoad={() => messagesEndRef.current?.scrollIntoView({ behavior: "auto" })}
+                />
+              )}
+              {m.csvUrl && m.csvFilename && <FileAttachment url={m.csvUrl} filename={m.csvFilename} />}
+            </div>
+          );
+        })}
+        {streaming && (pendingText || pendingNotice) && (
           <div className="max-w-[90%] self-start whitespace-pre-wrap rounded-xl bg-zinc-100 px-3 py-2 text-sm leading-relaxed text-zinc-900 dark:bg-zinc-800/80 dark:text-zinc-100">
-            {pendingText}
+            {messageText({ role: "assistant", text: pendingText, notice: pendingNotice }, t)}
           </div>
         )}
-        {streaming && !pendingText && (
+        {streaming && !pendingText && !pendingNotice && (
           <div className="mt-1.5 flex items-center gap-2 self-center text-base text-zinc-400 dark:text-zinc-600">
             <Sparkles size={18} className="animate-pulse" />
             <span className="animate-pulse">{t("thinking")}</span>

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { StoredMessage } from "./api";
-import { errorDetail, mapStoredMessages, toReceiptProposal } from "./chat";
+import { errorDetail, mapStoredMessages, messageText, toReceiptProposal } from "./chat";
+import { LOCALES } from "./i18n/languages";
 
 function stored(seq: number, role: StoredMessage["role"], content: StoredMessage["content"]): StoredMessage {
   return { seq, role, content, created_at: "2026-01-01T00:00:00Z" };
@@ -29,6 +30,38 @@ describe("mapStoredMessages", () => {
       stored(4, "assistant", { text: "Anytime." }),
     ]);
     expect(exportIndexes).toEqual([1]);
+  });
+
+  it("keeps a stored notice, so it's shown in the current language", () => {
+    const { messages } = mapStoredMessages([
+      stored(1, "assistant", { text: "", notice: { key: "receiptProposed", params: { date: "2026-09-26" } } }),
+      stored(2, "assistant", { text: "", notice: { key: "noSuchKey" } }),
+    ]);
+    expect(messages.map((m) => m.notice)).toEqual([
+      { key: "receiptProposed", params: { date: "2026-09-26" } },
+      undefined, // a key this page doesn't know isn't shown raw
+    ]);
+  });
+});
+
+describe("messageText", () => {
+  const tIn =
+    (lang: keyof typeof LOCALES) => (key: keyof (typeof LOCALES)["en"]["ui"], params?: Record<string, string>) =>
+      LOCALES[lang].ui[key].replace(/\{(\w+)\}/g, (m, name: string) => params?.[name] ?? m);
+
+  it("shows the text, then the notice worded in the given language", () => {
+    const m = { role: "assistant" as const, text: "Partial", notice: { key: "turnFailed" as const } };
+    expect(messageText(m, tIn("en"))).toBe(`Partial\n${LOCALES.en.ui.turnFailed}`);
+    expect(messageText(m, tIn("uk"))).toBe(`Partial\n${LOCALES.uk.ui.turnFailed}`);
+  });
+
+  it("fills a notice's params", () => {
+    const m = {
+      role: "assistant" as const,
+      text: "",
+      notice: { key: "receiptProposed" as const, params: { date: "2026-09-26" } },
+    };
+    expect(messageText(m, tIn("en"))).toContain("2026-09-26");
   });
 });
 

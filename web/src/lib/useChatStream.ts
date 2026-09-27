@@ -4,8 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
 import { authHeaders, fetchAllTransactions } from "./api";
 import type { TransactionFilter } from "./api";
-import { toReceiptProposal } from "./chat";
-import type { DisplayMessage, ReceiptProposal } from "./chat";
+import { toNotice, toReceiptProposal } from "./chat";
+import type { DisplayMessage, Notice, ReceiptProposal } from "./chat";
 import { createCsvObjectUrl } from "./csv";
 import { defaultFilter, exportFilename } from "./filters";
 
@@ -17,11 +17,12 @@ interface Callbacks {
 }
 
 /** Sends one chat turn and turns the server's SSE events into UI state: the reply
- * streaming in (`pendingText`), table refreshes, filter changes, a receipt proposal,
+ * streaming in (`pendingText`, plus `pendingNotice` for a fixed reply), table refreshes, filter changes, a receipt proposal,
  * and a CSV attachment when the turn exported. */
 export function useChatStream(threadId: string | null, filterRef: RefObject<TransactionFilter>, callbacks: Callbacks) {
   const [streaming, setStreaming] = useState(false);
   const [pendingText, setPendingText] = useState("");
+  const [pendingNotice, setPendingNotice] = useState<Notice | undefined>(undefined);
   // Read inside the SSE callbacks, which outlive the render that started the send.
   const threadIdRef = useRef(threadId);
   useEffect(() => {
@@ -34,9 +35,11 @@ export function useChatStream(threadId: string | null, filterRef: RefObject<Tran
     callbacks.onMessage({ role: "user", text: message, imageUrl: receiptImageUrl });
     setStreaming(true);
     setPendingText("");
+    setPendingNotice(undefined);
 
     const headers = await authHeaders({ "Content-Type": "application/json" });
     let assistantText = "";
+    let notice: Notice | undefined;
     let exportRequested = false;
 
     try {
@@ -83,13 +86,16 @@ export function useChatStream(threadId: string | null, filterRef: RefObject<Tran
             exportRequested = true;
           } else if (kind === "receipt_proposed") {
             callbacks.onReceiptProposed(toReceiptProposal(data));
+          } else if (kind === "notice") {
+            // A fixed reply (e.g. a receipt read), sent as a key — shown translated.
+            notice = toNotice(data);
+            setPendingNotice(notice);
           } else if (kind === "done") {
             if (!threadIdRef.current) callbacks.onThreadId(data.thread_id);
           } else if (kind === "error") {
-            // Always a plain, conversational sentence from the server — shown like
-            // normal reply text.
-            assistantText += (assistantText ? "\n" : "") + data.message;
-            setPendingText(assistantText);
+            // Shown like normal reply text, after anything already streamed.
+            notice = toNotice(data.notice) ?? { key: "requestFailed" };
+            setPendingNotice(notice);
           }
         },
         onerror(err) {
@@ -107,10 +113,12 @@ export function useChatStream(threadId: string | null, filterRef: RefObject<Tran
           // best effort — the assistant's own text still told the user an export happened
         }
       }
-      callbacks.onMessage({ role: "assistant", text: assistantText || "(no response)", ...csvAttachment });
+      if (!assistantText && !notice) notice = { key: "noResponse" };
+      callbacks.onMessage({ role: "assistant", text: assistantText, notice, ...csvAttachment });
       setPendingText("");
+      setPendingNotice(undefined);
     }
   }
 
-  return { streaming, pendingText, send };
+  return { streaming, pendingText, pendingNotice, send };
 }

@@ -61,10 +61,15 @@ PLAIN: list[tuple[str, set[str]]] = [
     ("USB-C cable - Anker", {"shopping"}),
     ("Uniqlo t-shirt", {"shopping"}),
     # entertainment
-    ("Netflix monthly subscription", {"entertainment"}),
     ("Cinema tickets - CGV", {"entertainment"}),
     ("Steam game purchase", {"entertainment"}),
-    ("Spotify Premium", {"entertainment"}),
+    # subscriptions
+    ("Netflix monthly subscription", {"subscriptions"}),
+    ("Spotify Premium", {"subscriptions"}),
+    ("Claude Pro subscription", {"subscriptions"}),
+    ("Prepaid extra usage, Individual plan - Anthropic Ireland, Limited", {"subscriptions"}),
+    ("iCloud+ 200GB", {"subscriptions"}),
+    ("Gym monthly membership - Fitness First", {"subscriptions"}),
     # utilities
     ("PLN electricity token", {"utilities"}),
     ("Internet bill - IndiHome", {"utilities"}),

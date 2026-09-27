@@ -6,6 +6,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from .notices import Notice
+
 
 class ToolCallRecord(BaseModel):
     """One `on_chat_model_end` tool call — also the shape stored in the `assistant`
@@ -37,3 +39,4 @@ class TurnState(BaseModel):
     tool_calls_made: list[ToolCallRecord] = Field(default_factory=list)
     tool_results: list[ToolResult] = Field(default_factory=list)
     total_tokens_used: int = 0
+    notice: Notice | None = None

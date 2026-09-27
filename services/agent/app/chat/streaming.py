@@ -3,6 +3,7 @@ translating graph events into the chat SSE wire format."""
 
 import json
 
+from ..models.notices import Notice
 from ..models.turns import ToolCallRecord, ToolResult, TurnState
 
 
@@ -97,7 +98,8 @@ async def run_graph_turn(compiled_graph, inputs: dict, run_config: dict, state: 
                 yield sse(ui_event, payload)
 
         # Workflows that don't go through the assistant's model (receipt.py) report
-        # through custom events: a UI event, a record for the chat history, a reply.
+        # through custom events: a UI event, a record for the chat history, and a
+        # fixed reply as a notice (a key the web app translates).
         elif kind == "on_custom_event":
             data = event["data"]
             if event["name"] == "ui_event":
@@ -105,6 +107,6 @@ async def run_graph_turn(compiled_graph, inputs: dict, run_config: dict, state: 
             elif event["name"] == "tool_record":
                 state.tool_calls_made.append(ToolCallRecord(id=data["id"], name=data["name"], args=data["args"]))
                 state.tool_results.append(ToolResult(name=data["name"], tool_call_id=data["id"], result=data["result"]))
-            elif event["name"] == "reply":
-                state.assistant_text_parts.append(data["text"])
-                yield sse(None, {"type": "token", "text": data["text"]})
+            elif event["name"] == "notice":
+                state.notice = Notice.model_validate(data)
+                yield sse("notice", state.notice.model_dump())
