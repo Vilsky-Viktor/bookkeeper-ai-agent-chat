@@ -90,11 +90,13 @@ def _fold_merchant(description: str | None, merchant: str | None) -> str | None:
     return f"{description} - {merchant}"
 
 
-async def _read_receipt(image_bytes: bytes, content_type: str, language: str) -> ReceiptExtraction:
+async def _read_receipt(
+    image_bytes: bytes, content_type: str, language: str, today: datetime.date | None = None
+) -> ReceiptExtraction:
     b64 = base64.b64encode(image_bytes).decode()
     language_name = SUPPORTED_LANGUAGES.get(language, "English")
     prompt = RECEIPT_EXTRACTION_PROMPT.replace("{language}", language_name).replace(
-        "{today}", datetime.date.today().isoformat()
+        "{today}", (today or datetime.date.today()).isoformat()
     )
     message = HumanMessage(
         content=[
@@ -121,7 +123,9 @@ def _majority_category(categories: list[str]) -> str:
     return next(c for c in categories if counts[c] == top)
 
 
-def build_receipt_tools(http_client: Callable[[], httpx.AsyncClient], language: str) -> list[BaseTool]:
+def build_receipt_tools(
+    http_client: Callable[[], httpx.AsyncClient], language: str, today: datetime.date | None = None
+) -> list[BaseTool]:
     @tool
     async def extract_receipt(object_name: str) -> dict:
         """Read an uploaded receipt, given in the user's message as '[uploaded
@@ -142,7 +146,7 @@ def build_receipt_tools(http_client: Callable[[], httpx.AsyncClient], language: 
             ).model_dump()
 
         image_bytes, content_type = _shrink_for_vision(image_bytes, content_type)
-        extracted = await _read_receipt(image_bytes, content_type, language)
+        extracted = await _read_receipt(image_bytes, content_type, language, today)
 
         if not extracted.is_receipt or not extracted.total_paid:
             return NotAReceiptResult(

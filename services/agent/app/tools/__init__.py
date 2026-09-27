@@ -3,6 +3,7 @@
 build_tools() so each closure carries this turn's JWT/X-Client-Id without leaking across
 requests."""
 
+import datetime
 import os
 
 import httpx
@@ -15,7 +16,9 @@ TRANSACTIONS_URL = os.environ["TRANSACTIONS_URL"]
 __all__ = ["build_tools"]
 
 
-def build_tools(jwt: str, x_client_id: str | None, language: str = "en") -> list[BaseTool]:
+def build_tools(
+    jwt: str, x_client_id: str | None, language: str = "en", today: datetime.date | None = None
+) -> list[BaseTool]:
     headers = {"Authorization": f"Bearer {jwt}"}
     if x_client_id:
         headers["X-Client-Id"] = x_client_id
@@ -27,5 +30,5 @@ def build_tools(jwt: str, x_client_id: str | None, language: str = "en") -> list
         *crud.build_crud_tools(http_client),
         *currency.build_currency_tools(http_client),
         *utility.build_utility_tools(),
-        *receipts.build_receipt_tools(http_client, language),
+        *receipts.build_receipt_tools(http_client, language, today),
     ]

@@ -58,6 +58,7 @@ describe("useChatStream", () => {
 
     const body = JSON.parse(fetchEventSourceMock.mock.calls[0][1].body);
     expect(body).toMatchObject({ thread_id: "thread-1", message: "hello" });
+    expect(body.timezone).toBe(Intl.DateTimeFormat().resolvedOptions().timeZone);
     expect(callbacks.onMessage.mock.calls.map((c) => c[0])).toEqual([
       { role: "user", text: "hello", imageUrl: undefined },
       { role: "assistant", text: "Hi there" },

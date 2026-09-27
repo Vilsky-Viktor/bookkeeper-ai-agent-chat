@@ -48,6 +48,9 @@ export function useChatStream(threadId: string | null, filterRef: RefObject<Tran
           message,
           client_msg_id: crypto.randomUUID(),
           receipt_object: receiptObject,
+          // So "today"/"yesterday" and receipt dates resolve in the user's timezone,
+          // not the server's (UTC).
+          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
         }),
         openWhenHidden: true,
         onmessage(ev) {

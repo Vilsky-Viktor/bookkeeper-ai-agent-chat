@@ -1,3 +1,4 @@
+import datetime
 import json
 
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -246,3 +247,9 @@ class TestFirstKeptSeq:
 
     def test_none_for_an_empty_history(self):
         assert context.first_kept_seq([]) is None
+
+
+class TestToday:
+    def test_uses_the_users_date_when_given(self):
+        messages = context.build_context({}, None, [], "hi", today=datetime.date(2026, 9, 27))
+        assert "Today's date is 2026-09-27" in messages[0].content

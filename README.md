@@ -121,7 +121,9 @@ boundary rather than hitting a network). The chat pane is covered through its pa
   ("that one", "the coffee one") from transactions already touched this conversation,
   or searches the whole table by description text ("the bagel one") when it isn't —
   or, unambiguously, from an explicit `#` reference button on any table row, which
-  drops a `[transaction: <id>]` marker into the message box.
+  drops a `[transaction: <id>]` marker into the message box. "Today", "yesterday" and
+  receipt dates resolve in the user's own timezone: the browser sends it with each
+  message and the agent computes the date from its own clock (`app/dates.py`).
 - **Directly editable table.** Every column (date via a native date picker, category
   via a dropdown built from the same list the categorizer uses, amount,
   currency, description — full text on hover via a tooltip once it's truncated) is

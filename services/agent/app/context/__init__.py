@@ -51,9 +51,10 @@ def build_context(
     recent_rows: list,  # oldest-first, from chat_db.unsummarized_messages
     current_user_text: str,
     current_images: list[str] | None = None,
+    today: datetime.date | None = None,  # the user's date (dates.user_today); server's if unset
 ) -> list[AnyMessage]:
     sys_text = (
-        SYSTEM_PROMPT + f'\nToday\'s date is {datetime.date.today().isoformat()}. Resolve "today",'
+        SYSTEM_PROMPT + f'\nToday\'s date is {(today or datetime.date.today()).isoformat()}. Resolve "today",'
         ' "yesterday", "last month" etc. against this date, not your training cutoff.'
     )
     if preferences and preferences.get("default_currency"):

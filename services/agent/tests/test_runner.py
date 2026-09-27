@@ -1,3 +1,4 @@
+import datetime
 import json
 from contextlib import contextmanager
 from unittest.mock import AsyncMock
@@ -44,6 +45,8 @@ def seams(monkeypatch, patch_chat_uid_conn):
         state.assistant_text_parts.append("receipt reply")
         yield runner.sse(None, {"type": "token", "text": "receipt reply"})
 
+    built_tools_with: list = []
+
     @contextmanager
     def fake_traced_turn(*args, **kwargs):
         yield {}
@@ -55,10 +58,11 @@ def seams(monkeypatch, patch_chat_uid_conn):
         "record_failure": AsyncMock(),
         "graph_runs": graph_runs,
         "graph_tool_calls": graph_tool_calls,
+        "built_tools_with": built_tools_with,
     }
     monkeypatch.setattr(runner, "_open_thread", s["open_thread"])
     monkeypatch.setattr(runner, "_prepare_turn", s["prepare"])
-    monkeypatch.setattr(runner, "build_tools", lambda *a: [])
+    monkeypatch.setattr(runner, "build_tools", lambda *a: built_tools_with.append(a) or [])
     monkeypatch.setattr(runner, "build_graph", lambda tools: "graph")
     monkeypatch.setattr(runner, "traced_turn", fake_traced_turn)
     monkeypatch.setattr(runner.streaming, "run_graph_turn", fake_graph_turn)
@@ -69,8 +73,10 @@ def seams(monkeypatch, patch_chat_uid_conn):
     return s
 
 
-async def _run(message: str = "hi", receipt_object: str | None = None) -> list[tuple[str | None, dict]]:
-    body = ChatRequest(message=message, receipt_object=receipt_object, thread_id=None)
+async def _run(
+    message: str = "hi", receipt_object: str | None = None, timezone: str | None = None
+) -> list[tuple[str | None, dict]]:
+    body = ChatRequest(message=message, receipt_object=receipt_object, thread_id=None, timezone=timezone)
     return _events([c async for c in runner.stream_chat_turn(body, "uid-1", "jwt", None, "https://agent")])
 
 
@@ -159,3 +165,11 @@ class TestStreamChatTurn:
 
         assert events[-1] == ("error", {"message": runner.CRASHED})
         seams["record_failure"].assert_awaited_once_with("uid-1", "thread-1", runner.CRASHED)
+
+    async def test_the_users_timezone_sets_today_for_context_and_tools(self, seams, monkeypatch):
+        monkeypatch.setattr(runner, "user_today", lambda tz: {"Asia/Makassar": datetime.date(2026, 9, 27)}[tz])
+
+        await _run("what did I spend today?", timezone="Asia/Makassar")
+
+        assert seams["prepare"].await_args.args[4] == datetime.date(2026, 9, 27)
+        assert seams["built_tools_with"][0][3] == datetime.date(2026, 9, 27)

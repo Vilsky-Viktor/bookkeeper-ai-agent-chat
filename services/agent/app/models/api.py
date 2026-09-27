@@ -11,6 +11,7 @@ class ChatRequest(BaseModel):
     message: str
     client_msg_id: str | None = None
     receipt_object: str | None = None  # gs object path from a just-completed upload
+    timezone: str | None = None  # the browser's IANA timezone, for the user's "today" (see dates.py)
 
 
 class PreferencesUpdate(BaseModel):

@@ -1,3 +1,4 @@
+import datetime
 import io
 import json
 from unittest.mock import AsyncMock, MagicMock
@@ -531,10 +532,10 @@ class TestReadReceipt:
 
         monkeypatch.setattr(receipts_module.llm, "vision_model", lambda: _FakeVisionModel())
 
-        await receipts_module._read_receipt(b"imgdata", "image/jpeg", "en")
+        await receipts_module._read_receipt(b"imgdata", "image/jpeg", "en", datetime.date(2026, 9, 27))
 
         prompt = captured["prompt"]
-        today = receipts_module.datetime.date.today().isoformat()
+        today = "2026-09-27"  # the user's date, not the server's
         assert today in prompt
         assert "{today}" not in prompt and "{language}" not in prompt
         # A relative date label ("Today, 5:52 PM") can only be resolved with today's date.

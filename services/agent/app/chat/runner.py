@@ -2,6 +2,7 @@
 build the model's context, run the turn (one of three ways, see stream_chat_turn),
 save the result, and turn any failure into a user-facing error event."""
 
+import datetime
 import logging
 import uuid
 from dataclasses import dataclass
@@ -10,6 +11,7 @@ from fastapi import HTTPException
 from langchain_core.messages import AnyMessage
 
 from .. import chat_db, context, quotas, signal
+from ..dates import user_today
 from ..graph import build_graph
 from ..langsmith_obs import traced_turn
 from ..models.api import ChatRequest
@@ -48,7 +50,7 @@ async def _open_thread(conn, uid: str, thread_id: str | None) -> dict:
     return dict(row)
 
 
-async def _prepare_turn(conn, uid: str, thread: dict, body: ChatRequest) -> _PreparedTurn | None:
+async def _prepare_turn(conn, uid: str, thread: dict, body: ChatRequest, today: datetime.date) -> _PreparedTurn | None:
     """Saves the user's message and builds the model's context. None if this exact
     message (same client_msg_id) was already processed."""
     thread_id = str(thread["id"])
@@ -86,7 +88,7 @@ async def _prepare_turn(conn, uid: str, thread: dict, body: ChatRequest) -> _Pre
         user_text=user_text,
         user_tokens=user_tokens,
         language=(preferences or {}).get("language") or "en",
-        messages=context.build_context(thread, preferences, rows, user_text),
+        messages=context.build_context(thread, preferences, rows, user_text, today=today),
         trimmed_before_seq=kept_from if rows and kept_from and kept_from > rows[0]["seq"] else None,
     )
 
@@ -116,16 +118,17 @@ async def stream_chat_turn(body: ChatRequest, uid: str, jwt: str, x_client_id: s
     (_run_marker_turn); anything else streams the graph's output live."""
     request_id = str(uuid.uuid4())
     thread_id: str | None = None
+    today = user_today(body.timezone)
     try:
         async with chat_db.uid_conn(uid) as conn:
             thread = await _open_thread(conn, uid, body.thread_id)
             thread_id = str(thread["id"])
-            turn = await _prepare_turn(conn, uid, thread, body)
+            turn = await _prepare_turn(conn, uid, thread, body, today)
         if turn is None:
             yield sse("error", {"message": ALREADY_SENT})
             return
 
-        tools = build_tools(jwt, x_client_id, turn.language)
+        tools = build_tools(jwt, x_client_id, turn.language, today)
         marker_ids = context.TRANSACTION_MARKER_RE.findall(turn.user_text)
         state = TurnState()
 
