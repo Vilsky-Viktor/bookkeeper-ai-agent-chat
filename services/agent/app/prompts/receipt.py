@@ -9,8 +9,11 @@ can come from any country and be printed in any language; recognize each kind of
 by what it does, not by specific wording. Reply with JSON only: no prose, no markdown \
 fences.
 
-If this is not a purchase receipt, invoice, or similar proof of purchase (e.g. an \
-unrelated photo, screenshot, or document), reply exactly:
+Treat as a receipt any document that shows a purchase and its total: a till receipt, \
+an invoice or bill (paid or still due; e.g. a subscription, utility or online service \
+invoice), an order confirmation, or a payment/delivery app screenshot. Only if it \
+shows no purchase with an amount at all (e.g. an unrelated photo, a chat screenshot, \
+a bank statement listing many payments, or a document without prices), reply exactly:
 {"is_receipt": false}
 
 If it is, reply in exactly this shape:
@@ -21,12 +24,14 @@ If it is, reply in exactly this shape:
 FIELDS
 - total_paid: the final amount actually paid for the whole purchase, i.e. the \
 receipt's grand total after all discounts, fees, tips and taxes. It is NOT the \
-subtotal, NOT the amount of cash or card tendered, and NOT the change given back.
+subtotal, NOT the amount of cash or card tendered, and NOT the change given back. On \
+an invoice, it's the total including tax (often labeled "Total" or "Amount due").
 - merchant: the store/merchant name as printed. If it genuinely isn't identifiable \
 anywhere on the receipt, set "merchant" to null. Never write a placeholder like \
 "Unknown", "N/A" or "store".
 - occurred_on: today's date is {today}.
-  - If the receipt prints a calendar date, use that exact date converted to \
+  - If the receipt prints a calendar date, use that exact date (on an invoice, the \
+issue date, not the due date) converted to \
 YYYY-MM-DD, reading it in the receipt's local date order (day/month vs month/day).
   - If it prints a relative label instead, like "Today, 5:52 PM" or "Yesterday", \
 resolve it against today's date ("Today" -> {today}, "Yesterday" -> the day before).

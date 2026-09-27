@@ -74,6 +74,9 @@ services:
       # and never read from it (host test runs write __pycache__ there too, and a
       # reload that reads one mid-write crashes on a truncated .pyc).
       PYTHONPYCACHEPREFIX: /tmp/pycache
+      # Poll for source changes: file events through Docker Desktop's bind mounts get
+      # lost (a file replaced by rename, as some editors save, was never reloaded).
+      WATCHFILES_FORCE_POLLING: "true"
       DATABASE_URL: postgresql://app_user:app_pw@postgres:5432/bookkeeping
       FIREBASE_AUTH_EMULATOR_HOST: firebase:9099
       GOOGLE_CLOUD_PROJECT: demo-bookkeeping
@@ -91,6 +94,7 @@ services:
     env_file: .env
     environment:
       PYTHONPYCACHEPREFIX: /tmp/pycache # see transactions above
+      WATCHFILES_FORCE_POLLING: "true"
       CHAT_DATABASE_URL: postgresql://chat_user:chat_pw@postgres:5432/chat
       TRANSACTIONS_URL: http://transactions:8000
       FIREBASE_AUTH_EMULATOR_HOST: firebase:9099
