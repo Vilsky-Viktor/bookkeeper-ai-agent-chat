@@ -1,7 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { Sparkles } from "lucide-react";
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
-import { createTransactionBatch, requestUploadTarget, uploadReceiptImage } from "../lib/api";
+import { createTransactionBatch, recordReceiptSaved, requestUploadTarget, uploadReceiptImage } from "../lib/api";
 import type { TransactionFilter } from "../types/api";
 import { errorDetail, messageText } from "../lib/chat";
 import type { ProposedItem, ReceiptProposal } from "../types/chat";
@@ -127,6 +127,13 @@ const ChatPanel = forwardRef<ChatPanelHandle, Props>(function ChatPanel(
     }
     queryClient.invalidateQueries({ queryKey: ["transactions"] });
     setProposal(null);
+
+    if (threadId) {
+      recordReceiptSaved(threadId, proposal.items.length).catch(() => {
+        // best effort — the transactions are saved; only the chat note is lost on reload
+      });
+    }
+
     appendMessage({
       role: "assistant",
       text: "",

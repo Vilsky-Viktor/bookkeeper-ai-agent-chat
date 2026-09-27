@@ -64,7 +64,9 @@ ONLY one short sentence naming the receipt's date (e.g. "Extracted your receipt 
 2026-09-25 — you can edit or confirm it below."), then answer anything else the user \
 asked in the same message. Do NOT add a numbered or bulleted list and do NOT restate \
 the receipt's amount, category or items: the card already shows them. If the result \
-says not_a_receipt or has an error, say so plainly instead. \
+says not_a_receipt or has an error, say so plainly instead. A later \
+"[notice: savedTransactions n=N]" in the history means the user confirmed that card \
+and N transactions were saved. \
 The user can edit or delete a row directly in the table, so a row may have \
 changed since you last saw it — re-query before relying on an earlier amount, \
 category or description. The table has no filter controls of its own: every filter \

@@ -57,12 +57,16 @@ def row_to_message(row, full_detail: bool) -> BaseMessage:
 
     if role == "assistant":
         assistant_content = AssistantMessageContent.model_validate(content)
-        # A notice-only reply (a fixed receipt reply, an error) has no text of its own:
-        # the model sees its key, e.g. "[notice: turnFailed]".
+        # A notice-only reply (a fixed receipt reply, an error, a saved receipt) has no
+        # text of its own: the model sees its key and params, e.g.
+        # "[notice: savedTransactions n=1]".
         notice = assistant_content.notice
+        notice_text = (
+            " ".join([f"notice: {notice.key}"] + [f"{k}={v}" for k, v in notice.params.items()]) if notice else ""
+        )
 
         return AIMessage(
-            content=assistant_content.text or (f"[notice: {notice.key}]" if notice else ""),
+            content=assistant_content.text or (f"[{notice_text}]" if notice else ""),
             tool_calls=[tc.model_dump() for tc in assistant_content.tool_calls],
         )
 

@@ -109,6 +109,18 @@ export async function listThreads(): Promise<{ items: ThreadSummary[] }> {
   return unwrap(res, "list threads");
 }
 
+/** Records a confirmed receipt card in the thread, so its "saved N transactions"
+ * message survives a reload and the model knows the receipt was saved. */
+export async function recordReceiptSaved(threadId: string, count: number): Promise<void> {
+  const res = await fetch(`/api/chat/threads/${threadId}/receipt-saved`, {
+    method: "POST",
+    headers: await authHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify({ count }),
+  });
+
+  if (!res.ok) throw new Error(`record receipt saved failed: ${res.status}`);
+}
+
 export async function getThreadMessages(
   threadId: string,
   opts?: { beforeSeq?: number; limit?: number },

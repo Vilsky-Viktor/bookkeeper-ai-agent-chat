@@ -184,3 +184,34 @@ class TestUploadTargetEndpoint:
     def test_other_types_are_rejected(self, monkeypatch):
         client, _ = self._client(monkeypatch)
         assert client.post("/api/chat/uploads", json={"content_type": "text/html"}).status_code == 422
+
+
+class TestReceiptSavedEndpoint:
+    def _client(self, monkeypatch):
+        from fastapi.testclient import TestClient
+
+        from app import main
+        from app.auth import require_uid
+
+        monkeypatch.setitem(main.app.dependency_overrides, require_uid, lambda: "uid-1")
+
+        return TestClient(main.app)
+
+    def test_records_the_saved_count_as_a_notice_in_the_thread(self, monkeypatch, patch_chat_uid_conn):
+        thread_id = "8d4f0a9e-3c8b-4a55-9a52-5c1d2e3f4a5b"
+        patch_chat_uid_conn.fetchrow.side_effect = [{"id": thread_id}, {"seq": 7}]
+
+        res = self._client(monkeypatch).post(f"/api/chat/threads/{thread_id}/receipt-saved", json={"count": 2})
+
+        assert res.status_code == 204
+        insert_args = patch_chat_uid_conn.fetchrow.await_args_list[1].args
+        assert (insert_args[1], insert_args[3]) == (thread_id, "assistant")
+        assert '"notice": {"key": "savedTransactions", "params": {"n": "2"}}' in insert_args[4]
+
+    def test_another_users_or_a_missing_thread_is_404(self, monkeypatch, patch_chat_uid_conn):
+        res = self._client(monkeypatch).post(
+            "/api/chat/threads/8d4f0a9e-3c8b-4a55-9a52-5c1d2e3f4a5b/receipt-saved", json={"count": 1}
+        )
+
+        assert res.status_code == 404
+        assert patch_chat_uid_conn.fetchrow.await_count == 1  # nothing inserted

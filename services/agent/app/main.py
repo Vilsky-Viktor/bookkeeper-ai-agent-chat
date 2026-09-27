@@ -17,6 +17,7 @@ from .models.api import (
     MessagesPageResponse,
     PreferencesOut,
     PreferencesUpdate,
+    ReceiptSavedRequest,
     SummarizeRequest,
     ThreadOut,
     ThreadsListResponse,
@@ -25,6 +26,8 @@ from .models.api import (
     UploadTargetOut,
     UploadTargetRequest,
 )
+from .models.message_content import AssistantMessageContent
+from .models.notices import Notice
 from .serializers import message_out
 from .service_auth import require_service_caller
 from .summarize import run_summarize
@@ -92,6 +95,22 @@ async def get_messages(
         rows, has_more = await chat_db.messages_page(conn, uid, thread_id, before_seq, limit)
 
     return MessagesPageResponse(items=[message_out(r) for r in rows], has_more=has_more)
+
+
+@app.post("/api/chat/threads/{thread_id}/receipt-saved", status_code=204)
+async def receipt_saved(thread_id: uuid.UUID, body: ReceiptSavedRequest, uid: str = Depends(require_uid)):
+    """The user confirmed a receipt card; the web app saved it straight to the
+    transactions service. Recorded in the thread so the confirmation survives a reload
+    and the model knows the receipt was saved."""
+    notice = Notice(key="savedTransactions", params={"n": str(body.count)})
+
+    async with chat_db.uid_conn(uid) as conn:
+        if await chat_db.get_thread(conn, uid, str(thread_id)) is None:
+            raise HTTPException(status_code=404, detail="thread not found")
+
+        await chat_db.insert_message(
+            conn, uid, str(thread_id), "assistant", AssistantMessageContent(text="", notice=notice).model_dump(), 0
+        )
 
 
 # --- preferences ---------------------------------------------------------------------

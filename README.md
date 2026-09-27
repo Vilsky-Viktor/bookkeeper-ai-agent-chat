@@ -88,9 +88,10 @@ Cloud Run's injected `$PORT` — see [Deploying to GCP](docs/deployment.md)).
   item name goes through the same categorizer as chat adds, and the majority wins (a tie
   goes to whichever category appears first on the receipt). The UI shows the proposal
   as an editable row (description on its own line; category, amount and currency
-  below) — nothing is written until you confirm. The category is a dropdown built
-  from the same built-in list the categorizer uses. There's no separate
-  merchant field: a merchant name, when identifiable, is folded into the description.
+  below) — nothing is written until you confirm. Confirming also records "saved N
+  transactions" in the chat thread, so the message survives a reload and the model
+  knows the receipt was saved. The category is a dropdown built from the same
+  built-in list the categorizer uses. There's no separate merchant field: a merchant name, when identifiable, is folded into the description.
   Text typed with the upload is a note to the receipt reader first ("this was
   yesterday" sets the date), then a follow-up agent confirms the card and answers any
   question in it. A plain upload (no typed text) skips the chat model entirely: the

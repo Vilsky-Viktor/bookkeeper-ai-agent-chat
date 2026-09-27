@@ -16,6 +16,7 @@ NoticeKey = Literal[
     "turnFailed",
     "turnLimitReached",
     "receiptLimitReached",
+    "savedTransactions",  # params: n
 ]
 
 

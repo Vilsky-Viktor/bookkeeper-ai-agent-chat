@@ -108,6 +108,15 @@ class TestBuildContext:
         messages = context.build_context({}, None, [{**_user_row("hi"), "seq": 0}, row], "again")
         assert messages[-2].content == "[notice: turnFailed]"
 
+    def test_a_notice_shows_the_model_its_params_too(self):
+        content = {"text": "", "notice": {"key": "savedTransactions", "params": {"n": "2"}}}
+        rows = [
+            {**_user_row("hi"), "seq": 0},
+            {"seq": 1, "role": "assistant", "content": json.dumps(content), "compact": None},
+        ]
+
+        assert context.build_context({}, None, rows, "thanks")[-2].content == "[notice: savedTransactions n=2]"
+
     def test_minimal_context_has_system_and_human_message(self):
         messages = context.build_context({}, None, [], "hello")
         assert isinstance(messages[0], SystemMessage)

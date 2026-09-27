@@ -3,7 +3,7 @@
 import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class ChatRequest(BaseModel):
@@ -12,6 +12,10 @@ class ChatRequest(BaseModel):
     client_msg_id: str | None = None
     receipt_object: str | None = None  # gs object path from a just-completed upload
     timezone: str | None = None  # the browser's IANA timezone, for the user's "today" (see dates.py)
+
+
+class ReceiptSavedRequest(BaseModel):
+    count: int = Field(ge=1, le=100)  # how many transactions the confirmed card saved
 
 
 class PreferencesUpdate(BaseModel):
