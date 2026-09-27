@@ -5,7 +5,8 @@ reads them (GET /corrections) to categorize; this service only stores them."""
 
 import asyncpg
 
-# How many corrections the agent gets, for its categorization prompt.
+# How many corrections the agent gets, for its categorization prompt — the most
+# recently made ones, so newer choices win once a user has more than this.
 LIST_LIMIT = 200
 
 
@@ -21,7 +22,7 @@ async def save_correction(conn: asyncpg.Connection, uid: str, description: str |
         """
         INSERT INTO category_corrections (uid, item_key, category)
         VALUES ($1,$2,$3)
-        ON CONFLICT (uid, item_key) DO UPDATE SET category = EXCLUDED.category
+        ON CONFLICT (uid, item_key) DO UPDATE SET category = EXCLUDED.category, updated_at = now()
         """,
         uid,
         item_key,
@@ -31,5 +32,7 @@ async def save_correction(conn: asyncpg.Connection, uid: str, description: str |
 
 async def list_corrections(conn: asyncpg.Connection, uid: str) -> list[asyncpg.Record]:
     return await conn.fetch(
-        "SELECT item_key, category FROM category_corrections WHERE uid=$1 LIMIT $2", uid, LIST_LIMIT
+        "SELECT item_key, category FROM category_corrections WHERE uid=$1 ORDER BY updated_at DESC LIMIT $2",
+        uid,
+        LIST_LIMIT,
     )

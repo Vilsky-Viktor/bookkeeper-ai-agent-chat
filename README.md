@@ -382,7 +382,7 @@ database, twice, on each PR that touches `db/`.
 | `LLM_SUMMARY_MODEL` | no | default `gpt-4o-mini` — rolling chat summary |
 | `LLM_VISION_MODEL` | no | default `gpt-4o` — receipt image extraction (not tied to `LLM_MODEL`: `gpt-4o-mini` bills images at a large multiplier and reads receipts less reliably) |
 | `TRANSCRIBE_MODEL` | no | default `gpt-4o-mini-transcribe` — voice-input transcription |
-| `LLM_CATEGORIZE_MODEL` | no | default `gpt-4o` — the categorizer (`gpt-4.1-mini` is ~6x cheaper for a small accuracy cost; `gpt-4o-mini` ~16x but misfiles brand-only names more often — see `make eval-categorize`) |
+| `LLM_CATEGORIZE_MODEL` | no | default `gpt-4.1-mini` — the categorizer (~6x cheaper than `gpt-4o` for a small accuracy cost; `gpt-4o-mini` misfiles brand-only names more often — see `make eval-categorize`) |
 | `LLM_HISTORY_TOKEN_BUDGET` | no | default `6000` — max tokens of conversation history per model call; anything trimmed is folded into the summary |
 | `LANGSMITH_TRACING` / `LANGSMITH_API_KEY` / `LANGSMITH_PROJECT` / `LANGSMITH_ENDPOINT` | no | tracing no-ops if unset |
 
@@ -432,8 +432,8 @@ What the agent does to keep per-turn cost low (measured with the eval below and
 LangSmith's per-run token counts):
 
 - **Cheap chat model, strong where it matters.** Chat runs on `gpt-4o-mini`; receipt
-  reading and categorization stay on `gpt-4o`, where the mini models were measurably
-  worse (see the env var table).
+  reading stays on `gpt-4o` and categorization uses `gpt-4.1-mini`, where
+  `gpt-4o-mini` was measurably worse (see the env var table).
 - **No model call when the outcome is fixed.** Routing is plain code, and a receipt
   upload without a note is handled by the deterministic receipt workflow alone, with
   no chat model call.

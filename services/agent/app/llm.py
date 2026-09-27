@@ -28,10 +28,10 @@ SUMMARY_MODEL = os.environ.get("LLM_SUMMARY_MODEL", "gpt-4o-mini")
 # multiplier (so it's no cheaper for vision) and reads receipts less reliably.
 VISION_MODEL = os.environ.get("LLM_VISION_MODEL", "gpt-4o")
 TRANSCRIBE_MODEL = os.environ.get("TRANSCRIBE_MODEL", "gpt-4o-mini-transcribe")
-# gpt-4o by default: on evals/categorize_eval.py the mini models misfiled brand-only
-# names (e.g. "Laurier" sanitary pads as groceries) and used the user's corrections
-# less reliably. gpt-4.1-mini is ~6x cheaper for a small accuracy cost.
-CATEGORIZE_MODEL = os.environ.get("LLM_CATEGORIZE_MODEL", "gpt-4o")
+# gpt-4.1-mini: ~6x cheaper than gpt-4o on evals/categorize_eval.py for a small
+# accuracy cost. Not gpt-4o-mini: it misfiled brand-only names (e.g. "Laurier"
+# sanitary pads as groceries) and used the user's corrections less reliably.
+CATEGORIZE_MODEL = os.environ.get("LLM_CATEGORIZE_MODEL", "gpt-4.1-mini")
 
 
 def _build_openai(model: str, temperature: float, *, json_mode: bool, max_tokens: int) -> BaseChatModel:

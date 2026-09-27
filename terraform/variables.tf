@@ -88,6 +88,24 @@ variable "cloud_sql_tier" {
   default     = "db-f1-micro"
 }
 
+# --- Cloud Run scaling caps: a ceiling on cost from a traffic spike or abuse, and on
+# Postgres connections — each agent instance holds up to 3 (chat_db.py) and each
+# transactions instance up to 5 (db.py). The defaults use 19 of db-f1-micro's ~25,
+# leaving room for the migrate job and admin. Raise them together with cloud_sql_tier.
+# One instance serves up to 80 concurrent requests.
+
+variable "agent_max_instances" {
+  description = "Max Cloud Run instances for the agent service."
+  type        = number
+  default     = 3
+}
+
+variable "transactions_max_instances" {
+  description = "Max Cloud Run instances for the transactions service."
+  type        = number
+  default     = 2
+}
+
 # --- CI/CD (GitHub Actions) — see ci_cd.tf.
 
 variable "github_repository" {

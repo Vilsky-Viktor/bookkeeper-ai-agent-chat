@@ -29,6 +29,10 @@ resource "google_cloud_run_v2_service" "transactions" {
   template {
     service_account = google_service_account.transactions.email
 
+    scaling {
+      max_instance_count = var.transactions_max_instances
+    }
+
     containers {
       image = var.transactions_image
 
@@ -86,6 +90,10 @@ resource "google_cloud_run_v2_service" "agent" {
 
   template {
     service_account = google_service_account.agent.email
+
+    scaling {
+      max_instance_count = var.agent_max_instances
+    }
 
     containers {
       image = var.agent_image

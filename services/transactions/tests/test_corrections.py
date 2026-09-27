@@ -27,11 +27,12 @@ class TestSaveCorrection:
 
 
 class TestListCorrections:
-    async def test_lists_the_users_corrections_up_to_the_limit(self, mock_conn: AsyncMock):
+    async def test_lists_the_users_most_recent_corrections_up_to_the_limit(self, mock_conn: AsyncMock):
         mock_conn.fetch.return_value = [{"item_key": "coffee", "category": "dining"}]
         rows = await list_corrections(mock_conn, "uid-1")
         assert rows == [{"item_key": "coffee", "category": "dining"}]
         assert mock_conn.fetch.call_args.args[1:] == ("uid-1", LIST_LIMIT)
+        assert "ORDER BY updated_at DESC" in mock_conn.fetch.call_args.args[0]
 
 
 class TestCorrectionsEndpoint:
