@@ -51,10 +51,14 @@ class TestBuildChatModel:
 
 
 class TestModelConstructors:
-    def test_every_purpose_but_the_fallback_defaults_to_gpt_6_luna(self):
+    def test_chat_summary_and_categorizer_default_to_gpt_6_luna(self):
         # Unless an env var points a purpose elsewhere (the test env sets none).
-        for name in ("PRIMARY_MODEL", "SUMMARY_MODEL", "VISION_MODEL", "CATEGORIZE_MODEL"):
+        for name in ("PRIMARY_MODEL", "SUMMARY_MODEL", "CATEGORIZE_MODEL"):
             assert getattr(llm, name) == "gpt-6-luna", name
+
+    def test_receipts_are_read_by_gpt_6_1_sol(self):
+        # gpt-6-luna can't read faded dot-matrix receipts.
+        assert llm.VISION_MODEL == "gpt-6.1-sol"
 
     def test_the_fallback_is_gpt_4o_without_reasoning_effort(self):
         # A different model, so one outage doesn't take both down; gpt-4o rejects

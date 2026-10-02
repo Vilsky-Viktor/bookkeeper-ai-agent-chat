@@ -24,7 +24,9 @@ PRIMARY_MODEL = os.environ.get("LLM_MODEL", "gpt-6-luna")
 # A different model as the fallback, so an outage of one doesn't take both down.
 FALLBACK_MODEL = os.environ.get("LLM_FALLBACK_MODEL", "gpt-4o")
 SUMMARY_MODEL = os.environ.get("LLM_SUMMARY_MODEL", "gpt-6-luna")
-VISION_MODEL = os.environ.get("LLM_VISION_MODEL", "gpt-6-luna")
+# gpt-6.1-sol: gpt-6-luna invented the items, date and total of a faded dot-matrix
+# receipt that gpt-6.1-sol read right (~$0.01 a receipt vs ~$0.0006).
+VISION_MODEL = os.environ.get("LLM_VISION_MODEL", "gpt-6.1-sol")
 CATEGORIZE_MODEL = os.environ.get("LLM_CATEGORIZE_MODEL", "gpt-6-luna")
 # Speech-to-text needs a transcription model, not a chat model.
 TRANSCRIBE_MODEL = os.environ.get("TRANSCRIBE_MODEL", "gpt-4o-mini-transcribe")

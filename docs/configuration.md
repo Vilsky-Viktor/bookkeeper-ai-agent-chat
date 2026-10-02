@@ -9,7 +9,7 @@
 | `LLM_MODEL` | no | default `gpt-6-luna` — main chat/tool-calling loop |
 | `LLM_FALLBACK_MODEL` | no | default `gpt-4o` — used only when a chat call errors or times out; a different model, so one outage doesn't take both down (sent without `reasoning_effort`) |
 | `LLM_SUMMARY_MODEL` | no | default `gpt-6-luna` — rolling chat summary |
-| `LLM_VISION_MODEL` | no | default `gpt-6-luna` — receipt reading (structured output) |
+| `LLM_VISION_MODEL` | no | default `gpt-6.1-sol` — receipt reading (structured output). Not `gpt-6-luna`: it invented the contents of a faded dot-matrix receipt that `gpt-6.1-sol` read right; about $0.01 a receipt vs $0.0006 |
 | `LLM_CATEGORIZE_MODEL` | no | default `gpt-6-luna` — the categorizer (structured output; see `make eval-categorize`) |
 | `LLM_REASONING_EFFORT` | no | default `medium` (at `low` the chat eval missed some tool choices) — `gpt-6-luna` is a reasoning model (`none`, `low`, `medium`, …); OpenAI only. Set it empty when pointing a purpose at a non-reasoning model (e.g. `gpt-4o`), which rejects the parameter |
 | `TRANSCRIBE_MODEL` | no | default `gpt-4o-mini-transcribe` — voice-input transcription (needs a speech-to-text model) |
@@ -60,7 +60,7 @@ transcription means a builder in that registry too.
 What the agent does to keep per-turn cost low (measured with the eval below and
 LangSmith's per-run token counts):
 
-- **One model, little reasoning.** Everything but the fallback runs on `gpt-6-luna` with
+- **One cheap model, little reasoning.** Everything but receipt reading (`gpt-6.1-sol`) and the fallback runs on `gpt-6-luna` with
   `LLM_REASONING_EFFORT=medium`: reasoning tokens are billed as output, and each call's
   output cap (`integrations/llm.py`) leaves room for them.
 - **No model call when the outcome is fixed.** Routing is plain code, and a receipt

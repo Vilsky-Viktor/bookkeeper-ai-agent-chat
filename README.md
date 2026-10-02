@@ -1,15 +1,15 @@
-# SMAKER.ai — bookkeeping chat
+# smaker. — bookkeeping chat
 
 A B2C bookkeeping app: a chat pane driven by a LangGraph agent sits next to a
 transactions table. Two independent FastAPI services front two Postgres databases; a
 local Docker Compose stack stands in for every GCP piece the design targets (Firebase
 Auth, Cloud Storage, Cloud Tasks, Cloud Run, Hosting rewrites), so the only
-thing that talks to the real internet is the LLM provider's API (OpenAI by default —
-see [Swapping the LLM provider](docs/configuration.md#swapping-the-llm-provider)) and a free public exchange-rate lookup.
+thing that talks to the real internet is the LLM provider's API (OpenAI by default,
+see [Models](#models)) and a free public exchange-rate lookup.
 
 ⭐ If you find this project useful, please consider giving it a star ⭐ — it helps a lot!
 
-![SMAKER.ai screenshot](smaker-screenshot.png)
+![smaker. screenshot](smaker-screenshot.png)
 
 ## Quickstart
 
@@ -22,8 +22,9 @@ see [Swapping the LLM provider](docs/configuration.md#swapping-the-llm-provider)
 
 `make` lists every task: `check` (format check, lint and tests for all three
 projects), `logs`, `rebuild s=<service>`, `migrate`, `migration db=… name=…`,
-`format`, `eval-chat`, `eval-categorize`. Data survives restarts: Postgres in a named
-volume, emulator accounts in `firebase/emulator-data/`, receipts in `gcs/`.
+`format`, `eval-chat`, `eval-categorize` (the two evals call the real models, so they
+spend API credit). Data survives restarts: Postgres in a named volume, emulator
+accounts in `firebase/emulator-data/`, receipts in `gcs/`.
 
 **First boot is slow to become responsive (15–30s):** the `agent` container imports the
 full LangGraph/LangChain/LangSmith stack at startup, and `firebase-tools` needs a
@@ -80,9 +81,10 @@ Cloud Run's injected `$PORT` — see [Deploying to GCP](docs/deployment.md)).
   server-side (`gpt-4o-mini-transcribe` by default) and dropped into the message box
   for you to review or edit before sending — same as typing it, nothing is sent
   automatically.
-- **Receipts.** Upload a photo or PDF; the configured vision model (`gpt-6-luna` by
-  default — see [Swapping the LLM provider](docs/configuration.md#swapping-the-llm-provider)) reads the receipt's grand total, date and
-  merchant, plus a short summary and the names of the items bought. That becomes ONE
+- **Receipts.** Upload a photo or PDF; the vision model (`gpt-6.1-sol` by default,
+  see [Models](#models)) reads the receipt's grand total, date and
+  merchant, plus a short summary and the names of the items bought, as structured
+  output validated against a schema. That becomes ONE
   proposed transaction for the total (per-item price splitting proved unreliable
   across real receipts). Its category is the one most of the items fall into: each
   item name goes through the same categorizer as chat adds, and the majority wins (a tie
@@ -91,7 +93,8 @@ Cloud Run's injected `$PORT` — see [Deploying to GCP](docs/deployment.md)).
   below) — nothing is written until you confirm. Confirming also records "saved N
   transactions" in the chat thread, so the message survives a reload and the model
   knows the receipt was saved. The category is a dropdown built from the same
-  built-in list the categorizer uses. There's no separate merchant field: a merchant name, when identifiable, is folded into the description.
+  built-in list the categorizer uses. There's no separate merchant field: a merchant
+  name, when identifiable, is folded into the description.
   Text typed with the upload is a note to the receipt reader first ("this was
   yesterday" sets the date), then a follow-up agent confirms the card and answers any
   question in it. A plain upload (no typed text) skips the chat model entirely: the
@@ -133,6 +136,22 @@ Cloud Run's injected `$PORT` — see [Deploying to GCP](docs/deployment.md)).
   `DAILY_TURN_LIMIT`/`DAILY_RECEIPT_LIMIT`) and optional LangSmith tracing; it
   activates purely from environment variables, so an empty `.env` still runs the full
   app with tracing simply never turning on.
+
+## Models
+
+OpenAI by default; every purpose has its own env var (see
+[Configuration and LLMs](docs/configuration.md)).
+
+| Purpose | Default model | Why |
+|---|---|---|
+| Chat agents, rolling summary, categorizer | `gpt-6-luna` (reasoning effort `medium`) | Cheapest; passed every case of both evals. At `low` it picked the wrong tool in a few chat cases |
+| Receipt reading | `gpt-6.1-sol` | `gpt-6-luna` invented the contents of a faded dot-matrix receipt that `gpt-6.1-sol` read right (about $0.01 a receipt) |
+| Fallback when a chat call fails | `gpt-4o` | A different model, so one outage doesn't take both down |
+| Voice input | `gpt-4o-mini-transcribe` | Needs a speech-to-text model |
+
+The receipt reader and the categorizer use LangChain's `.with_structured_output()`, so
+their replies always match a schema (for the categorizer, an enum of the allowed
+categories), on any provider.
 
 ## Documentation
 
