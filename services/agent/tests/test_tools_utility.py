@@ -20,3 +20,10 @@ class TestExportTransactions:
     def test_returns_export_ready_event(self, build):
         tool = tool_by_name(build(lambda r: httpx.Response(200)), "export_transactions")
         assert tool.func() == {"ui_event": "export_ready"}
+
+
+class TestBlankFilterValues:
+    def test_blank_strings_are_left_out_like_unset_ones(self):
+        from app.helpers.filters import filter_params
+
+        assert filter_params(category="", from_date=" ", currency="USD") == {"currency": "USD"}

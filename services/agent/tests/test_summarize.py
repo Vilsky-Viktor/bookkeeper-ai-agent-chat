@@ -1,14 +1,15 @@
 from unittest.mock import AsyncMock, MagicMock
 
+from langchain_core.messages import AIMessage
+
 from app.integrations import llm as llm_module
 from app.services import summarize
 
 
 def _mock_model(reply_text: str):
+    # The Responses API's shape: content as a list of text blocks, read via .text.
     model = MagicMock()
-    response = MagicMock()
-    response.content = reply_text
-    model.ainvoke = AsyncMock(return_value=response)
+    model.ainvoke = AsyncMock(return_value=AIMessage(content=[{"type": "text", "text": reply_text}]))
 
     return model
 

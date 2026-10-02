@@ -32,7 +32,7 @@ variable "llm_provider" {
 
 variable "llm_model" {
   type    = string
-  default = "gpt-4o-mini"
+  default = "gpt-6-luna"
 }
 
 variable "llm_fallback_model" {
@@ -42,7 +42,7 @@ variable "llm_fallback_model" {
 
 variable "llm_summary_model" {
   type    = string
-  default = "gpt-4o-mini"
+  default = "gpt-6-luna"
 }
 
 # --- LangSmith (optional — see services/agent/app/integrations/tracing.py). Off by default:

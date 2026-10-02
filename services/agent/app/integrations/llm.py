@@ -2,8 +2,8 @@
 backoff+jitter is handled by the provider SDK's own max_retries; we add an overall
 timeout, an in-process concurrency cap, and a one-shot fallback to a secondary model.
 
-Every chat model in the app — including the one-shot receipt-vision call in
-receipts.py — is built through build_chat_model() below instead of importing a
+Every chat model in the app — including the receipt reader and the categorizer
+(services/) — is built through build_chat_model() below instead of importing a
 provider's LangChain integration at each call site, so swapping providers means adding
 one builder function (and its package) here and setting LLM_PROVIDER."""
 
@@ -19,22 +19,24 @@ LLM_CONCURRENCY = int(os.environ.get("LLM_CONCURRENCY", "40"))
 _semaphore = asyncio.Semaphore(LLM_CONCURRENCY)
 
 LLM_PROVIDER = os.environ.get("LLM_PROVIDER", "openai")
-# gpt-4o-mini matched gpt-4o on every case of evals/chat_model_eval.py at ~14x lower
-# cost per turn; gpt-4o is the fallback (used only when a call errors or times out).
-PRIMARY_MODEL = os.environ.get("LLM_MODEL", "gpt-4o-mini")
+# One model for everything; each purpose can still be pointed elsewhere by its env var.
+PRIMARY_MODEL = os.environ.get("LLM_MODEL", "gpt-6-luna")
+# A different model as the fallback, so an outage of one doesn't take both down.
 FALLBACK_MODEL = os.environ.get("LLM_FALLBACK_MODEL", "gpt-4o")
-SUMMARY_MODEL = os.environ.get("LLM_SUMMARY_MODEL", "gpt-4o-mini")
-# Deliberately not tied to PRIMARY_MODEL: gpt-4o-mini bills images at a large
-# multiplier (so it's no cheaper for vision) and reads receipts less reliably.
-VISION_MODEL = os.environ.get("LLM_VISION_MODEL", "gpt-4o")
+SUMMARY_MODEL = os.environ.get("LLM_SUMMARY_MODEL", "gpt-6-luna")
+VISION_MODEL = os.environ.get("LLM_VISION_MODEL", "gpt-6-luna")
+CATEGORIZE_MODEL = os.environ.get("LLM_CATEGORIZE_MODEL", "gpt-6-luna")
+# Speech-to-text needs a transcription model, not a chat model.
 TRANSCRIBE_MODEL = os.environ.get("TRANSCRIBE_MODEL", "gpt-4o-mini-transcribe")
-# gpt-4.1-mini: ~6x cheaper than gpt-4o on evals/categorize_eval.py for a small
-# accuracy cost. Not gpt-4o-mini: it misfiled brand-only names (e.g. "Laurier"
-# sanitary pads as groceries) and used the user's corrections less reliably.
-CATEGORIZE_MODEL = os.environ.get("LLM_CATEGORIZE_MODEL", "gpt-4.1-mini")
+# medium: at low, the chat eval missed tool choices (query instead of set_filter, a
+# description searched as a category); medium passed every case.
+# gpt-6-luna is a reasoning model: it only accepts its default temperature (so no
+# call sets one), and its reasoning tokens count against max_tokens below. Empty
+# means "not sent", for non-reasoning models, which reject the parameter.
+REASONING_EFFORT = os.environ.get("LLM_REASONING_EFFORT", "medium") or None
 
 
-def _build_openai(model: str, temperature: float, *, json_mode: bool, max_tokens: int) -> BaseChatModel:
+def _build_openai(model: str, max_tokens: int, reasoning_effort: str | None) -> BaseChatModel:
     # Imported here, not at module level, so a provider whose package isn't installed
     # only breaks when actually selected, not for everyone importing this module.
     from langchain_openai import ChatOpenAI
@@ -44,31 +46,28 @@ def _build_openai(model: str, temperature: float, *, json_mode: bool, max_tokens
         api_key=SecretStr(os.environ["LLM_API_KEY"]),
         timeout=CALL_TIMEOUT,
         max_retries=2,  # SDK-level: retries 429/5xx only, backoff+jitter, honors Retry-After
-        temperature=temperature,
         max_completion_tokens=max_tokens,
-        model_kwargs={"response_format": {"type": "json_object"}} if json_mode else {},
+        reasoning_effort=reasoning_effort,
     )
 
 
-def _build_anthropic(model: str, temperature: float, *, json_mode: bool, max_tokens: int) -> BaseChatModel:
+def _build_anthropic(model: str, max_tokens: int, reasoning_effort: str | None) -> BaseChatModel:
     from langchain_anthropic import ChatAnthropic
 
-    # Anthropic has no JSON mode, so json_mode is a no-op: the receipt prompt asks for
-    # JSON only, which Claude follows. The constructor args use the fields' aliases
-    # (model_name, api_key, timeout, max_tokens_to_sample) because mypy only accepts
-    # aliases here; stop=None is also only there for mypy.
+    # The constructor args use the fields' aliases (model_name, api_key, timeout,
+    # max_tokens_to_sample) because mypy only accepts aliases here; stop=None is also
+    # only there for mypy.
     return ChatAnthropic(
         model_name=model,
         api_key=SecretStr(os.environ["LLM_API_KEY"]),
         timeout=CALL_TIMEOUT,
         max_retries=2,
-        temperature=temperature,
         max_tokens_to_sample=max_tokens,
         stop=None,
     )
 
 
-def _build_google(model: str, temperature: float, *, json_mode: bool, max_tokens: int) -> BaseChatModel:
+def _build_google(model: str, max_tokens: int, reasoning_effort: str | None) -> BaseChatModel:
     from langchain_google_genai import ChatGoogleGenerativeAI
 
     return ChatGoogleGenerativeAI(
@@ -76,9 +75,7 @@ def _build_google(model: str, temperature: float, *, json_mode: bool, max_tokens
         google_api_key=SecretStr(os.environ["LLM_API_KEY"]),
         timeout=CALL_TIMEOUT,
         max_retries=2,
-        temperature=temperature,
         max_output_tokens=max_tokens,
-        response_mime_type="application/json" if json_mode else None,
     )
 
 
@@ -94,10 +91,12 @@ _PROVIDER_BUILDERS: dict[str, Callable[..., BaseChatModel]] = {
 
 
 # max_tokens caps output, billed at ~4x input: a runaway answer is the priciest
-# failure, and chat replies are meant to be short anyway (see SYSTEM_PROMPT).
+# failure. The caps leave room for reasoning tokens on top of the reply itself.
 def build_chat_model(
-    model: str, temperature: float = 0.2, *, json_mode: bool = False, max_tokens: int = 800
+    model: str, max_tokens: int = 2000, reasoning_effort: str | None = REASONING_EFFORT
 ) -> BaseChatModel:
+    """`reasoning_effort` is OpenAI-only (the other builders ignore it)."""
+
     try:
         builder = _PROVIDER_BUILDERS[LLM_PROVIDER]
     except KeyError:
@@ -105,7 +104,7 @@ def build_chat_model(
             f"unsupported LLM_PROVIDER: {LLM_PROVIDER!r} (supported: {sorted(_PROVIDER_BUILDERS)})"
         ) from None
 
-    return builder(model, temperature, json_mode=json_mode, max_tokens=max_tokens)
+    return builder(model, max_tokens, reasoning_effort)
 
 
 def primary_model() -> BaseChatModel:
@@ -113,25 +112,25 @@ def primary_model() -> BaseChatModel:
 
 
 def fallback_model() -> BaseChatModel:
-    return build_chat_model(FALLBACK_MODEL)
+    # gpt-4o isn't a reasoning model and rejects reasoning_effort.
+    return build_chat_model(FALLBACK_MODEL, reasoning_effort=None)
 
 
 def summary_model() -> BaseChatModel:
-    return build_chat_model(SUMMARY_MODEL, temperature=0, max_tokens=400)
+    return build_chat_model(SUMMARY_MODEL, max_tokens=1500)
 
 
 def vision_model() -> BaseChatModel:
-    """Used for receipt image extraction (see services/receipts.py) — a one-shot structured-JSON
-    call outside the main chat graph, so it's built directly rather than bound with
-    tools."""
+    """For services/receipts.py, which adds the structured output schema."""
 
-    return build_chat_model(VISION_MODEL, temperature=0, json_mode=True, max_tokens=600)
+    return build_chat_model(VISION_MODEL, max_tokens=2000)
 
 
 def categorize_model(items: int, model: str | None = None) -> BaseChatModel:
-    """For services/categorize.py: a JSON reply with one short category word per item."""
+    """For services/categorize.py, which adds the structured output schema: one short
+    category word per item, plus room for reasoning."""
 
-    return build_chat_model(model or CATEGORIZE_MODEL, temperature=0, json_mode=True, max_tokens=12 * items + 20)
+    return build_chat_model(model or CATEGORIZE_MODEL, max_tokens=12 * items + 1000)
 
 
 def _build_openai_transcribe_client() -> Any:

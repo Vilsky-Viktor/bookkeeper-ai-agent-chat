@@ -3,7 +3,8 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>SMAKER.ai</title>
+    <title>smaker.</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet" />
@@ -16,7 +17,7 @@
       } catch (e) {}
       // Same idea for direction — a cached Hebrew (RTL) preference shouldn't flash as
       // LTR before lib/i18n's LanguageProvider mounts. Keep this list of RTL codes in
-      // sync with SUPPORTED_LANGUAGES in src/lib/i18n.tsx.
+      // sync with SUPPORTED_LANGUAGES in src/lib/i18n/languages.ts.
       try {
         var lang = localStorage.getItem("language");
         if (lang) {

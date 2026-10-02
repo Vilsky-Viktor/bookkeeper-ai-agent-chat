@@ -168,9 +168,10 @@ def build_crud_tools(http_client: Callable[[], httpx.AsyncClient], categorize_gr
     ) -> dict:
         """List transactions matching the filters (newest first, one page of up to
         50), or with aggregate=true, sums by category and month per currency.
-        description is a case-insensitive substring match: to find a vaguely
-        referenced transaction ("the bagel one"), pass one short distinctive word, not
-        the full phrase."""
+        category is one of the category keys (dining, groceries, ...); what was
+        bought ("coffee", "rent") goes in description, a case-insensitive substring
+        match: to find a vaguely referenced transaction ("the bagel one"), pass one
+        short distinctive word, not the full phrase."""
         params = filter_params(
             currency=currency,
             category=category,

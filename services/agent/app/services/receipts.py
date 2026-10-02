@@ -3,7 +3,6 @@
 
 import base64
 import datetime
-import json
 
 from langchain_core.messages import HumanMessage
 
@@ -31,11 +30,7 @@ async def read_receipt(
             {"type": "image_url", "image_url": {"url": f"data:{content_type};base64,{b64}"}},
         ]
     )
-    response = await llm.vision_model().ainvoke(
-        [message], config={"run_name": "receipt-vision", "tags": ["receipt-vision"]}
-    )
-    text = response.content if isinstance(response.content, str) else str(response.content)
+    model = llm.vision_model().with_structured_output(ReceiptExtraction)
+    extraction = await model.ainvoke([message], config={"run_name": "receipt-vision", "tags": ["receipt-vision"]})
 
-    # Validated immediately after parsing so a malformed/off-spec vision response
-    # raises a clear error here instead of an AttributeError several lines later.
-    return ReceiptExtraction.model_validate(json.loads(text or "{}"))
+    return ReceiptExtraction.model_validate(extraction)

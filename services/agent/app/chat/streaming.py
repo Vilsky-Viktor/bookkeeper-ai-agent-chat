@@ -41,7 +41,9 @@ async def run_graph_turn(compiled_graph, inputs: dict, run_config: dict, state: 
 
         if kind == "on_chat_model_stream" and is_call_model_node:
             chunk = event["data"]["chunk"]
-            text = chunk.content if isinstance(chunk.content, str) else ""
+            # .text, not .content: with tools bound, gpt-6-luna replies through the
+            # Responses API, whose content is a list of blocks, not a string.
+            text = chunk.text
 
             if text:
                 state.assistant_text_parts.append(text)

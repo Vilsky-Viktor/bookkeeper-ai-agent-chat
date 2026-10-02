@@ -2,7 +2,7 @@
 
 from typing import Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class ToolError(BaseModel):
@@ -52,6 +52,13 @@ class TransactionFilter(BaseModel):
     description: Optional[str] = None
 
     model_config = ConfigDict(populate_by_name=True)
+
+    @field_validator("*", mode="before")
+    @classmethod
+    def _blank_is_unset(cls, value):
+        # gpt-6-luna fills optional tool params with "" instead of leaving them out;
+        # an empty date would fail the transactions service's date parsing.
+        return None if isinstance(value, str) and not value.strip() else value
 
 
 class FilterSetResult(BaseModel):
@@ -110,10 +117,9 @@ _ZERO_DECIMAL_CURRENCIES = {"JPY", "KRW", "VND", "CLP", "ISK", "HUF", "PYG", "UG
 
 
 class ReceiptExtraction(BaseModel):
-    """Validates the vision model's parsed JSON output immediately after json.loads —
-    catches a malformed/off-spec response early with a clear error instead of an
-    AttributeError several lines later. A receipt becomes one transaction for
-    total_paid; items are names only, used to pick the category by majority."""
+    """The receipt reader's structured output (services/receipts.py). A receipt becomes
+    one transaction for total_paid; items are names only, used to pick the category by
+    majority."""
 
     is_receipt: bool
     merchant: str | None = None

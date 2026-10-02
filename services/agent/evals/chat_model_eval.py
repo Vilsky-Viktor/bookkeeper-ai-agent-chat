@@ -9,7 +9,7 @@ transactions service or real data. Only the model under test is called.
 Run inside the agent container (it has LLM_API_KEY and TRANSACTIONS_URL set, and
 mounts this folder):
     docker compose exec agent uv run python -m evals.chat_model_eval \\
-        --models gpt-4o gpt-4.1-mini --runs 3
+        --models gpt-6-luna --runs 3
 """
 
 import argparse
@@ -66,7 +66,7 @@ async def run_case(model_name: str, case: Case) -> Run:
         messages.append(ai)
 
         if not ai.tool_calls:
-            run.text = ai.content if isinstance(ai.content, str) else str(ai.content)
+            run.text = ai.text
 
             return run
 
@@ -142,7 +142,7 @@ async def main(models: list[str], runs: int, only: list[str] | None, concurrency
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--models", nargs="+", default=["gpt-4o", "gpt-4.1-mini"])
+    parser.add_argument("--models", nargs="+", default=["gpt-6-luna"])
     parser.add_argument("--runs", type=int, default=3)
     parser.add_argument("--only", nargs="*", help="case names to run (default: all)")
     parser.add_argument("--concurrency", type=int, default=2, help="parallel runs; keep low on low rate-limit tiers")

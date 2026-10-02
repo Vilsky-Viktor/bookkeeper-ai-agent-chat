@@ -8,7 +8,6 @@ description; there's no separate merchant field). An exact match applies directl
 for near-duplicates ("Claude subscription" vs "Claude AI subscription payment") the
 model sees the user's corrections and decides."""
 
-import json
 import logging
 
 import httpx
@@ -16,7 +15,7 @@ from langchain_core.messages import HumanMessage
 
 from ..constants.categories import CATEGORIES
 from ..integrations import llm
-from ..models.categorize import Correction
+from ..models.categorize import Correction, categories_schema
 from ..prompts.categorize import CATEGORIZE_PROMPT, CATEGORY_DEFINITIONS, MATCHING_RULES
 
 log = logging.getLogger("categorize")
@@ -42,38 +41,32 @@ async def fetch_corrections(client: httpx.AsyncClient) -> list[Correction]:
 
 
 async def classify(descriptions: list[str], corrections: list[Correction], model: str | None = None) -> list[str]:
-    """One model call for all descriptions. Raises if the call fails or the reply
-    doesn't parse; categorize() turns that into "other"."""
+    """One model call for all descriptions. Raises if the call fails; categorize()
+    turns that into "other"."""
     # Custom categories from corrections are allowed answers too, or the model could
-    # recognize a match but never apply it. Keyed by lowercase so its (lowercased)
-    # reply maps back to the user's own casing ("work" -> "Work").
-    custom = {c.category.lower(): c.category for c in corrections if c.category not in CATEGORIES}
+    # recognize a match but never apply it.
+    custom = sorted({c.category for c in corrections if c.category not in CATEGORIES})
     category_list = "\n".join(f"- {c}: {CATEGORY_DEFINITIONS[c]}" for c in CATEGORIES if c != "income")
 
     if custom:
         category_list += "\n" + "\n".join(
             f"- {c}: a category the user created via a past correction (see below) — use it for anything that matches that correction"
-            for c in sorted(custom.values())
+            for c in custom
         )
     history = "\n".join(f'- "{c.item_key}" -> {c.category}' for c in corrections) or "(none yet)"
     numbered = "\n".join(f"{n + 1}. {d}" for n, d in enumerate(descriptions))
     prompt = CATEGORIZE_PROMPT.format(
         category_list=category_list, items=numbered, history=history, matching_rules=MATCHING_RULES
     )
-    response = await llm.categorize_model(len(descriptions), model).ainvoke(
+    allowed = [c for c in CATEGORIES if c != "income"] + custom
+    structured = llm.categorize_model(len(descriptions), model).with_structured_output(categories_schema(allowed))
+    result = await structured.ainvoke(
         [HumanMessage(content=prompt)], config={"run_name": "categorize", "tags": ["categorize"]}
     )
-    text = response.content if isinstance(response.content, str) else str(response.content)
-    guesses = json.loads(text or "{}").get("categories", [])
+    guesses = result["categories"] if isinstance(result, dict) else []
 
-    allowed = {c for c in CATEGORIES if c != "income"}
-    resolved = []
-
-    for n in range(len(descriptions)):
-        guess = guesses[n].strip().lower() if n < len(guesses) and isinstance(guesses[n], str) else ""
-        resolved.append(custom.get(guess) or (guess if guess in allowed else "other"))
-
-    return resolved
+    # The enum guarantees each answer is allowed; only a short list needs filling in.
+    return [guesses[n] if n < len(guesses) else "other" for n in range(len(descriptions))]
 
 
 async def categorize(descriptions: list[str], corrections: list[Correction]) -> list[str]:

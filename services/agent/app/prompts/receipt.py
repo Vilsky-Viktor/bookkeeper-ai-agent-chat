@@ -6,20 +6,14 @@ deliberately locale-neutral: receipts come from any country in any language."""
 
 RECEIPT_EXTRACTION_PROMPT = """You read a photo (or PDF render) of a receipt. Receipts \
 can come from any country and be printed in any language; recognize each kind of line \
-by what it does, not by specific wording. Reply with JSON only: no prose, no markdown \
-fences.
+by what it does, not by specific wording.
 
 Treat as a receipt any document that shows a purchase and its total: a till receipt, \
 an invoice or bill (paid or still due; e.g. a subscription, utility or online service \
 invoice), an order confirmation, or a payment/delivery app screenshot. Only if it \
 shows no purchase with an amount at all (e.g. an unrelated photo, a chat screenshot, \
-a bank statement listing many payments, or a document without prices), reply exactly:
-{"is_receipt": false}
-
-If it is, reply in exactly this shape:
-{"is_receipt": true, "merchant": "string or null", "occurred_on": "YYYY-MM-DD", \
-"currency": "3-letter ISO 4217 code", "total_paid": "12.50", \
-"description": "string", "items": ["string", "string"]}
+a bank statement listing many payments, or a document without prices), set \
+is_receipt to false and leave every other field empty (null, and [] for items).
 
 FIELDS
 - total_paid: the final amount actually paid for the whole purchase, i.e. the \

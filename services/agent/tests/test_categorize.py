@@ -2,7 +2,6 @@ import json
 
 import httpx
 import pytest
-from langchain_core.messages import AIMessage
 
 from app.integrations import llm
 from app.models.categorize import Correction
@@ -10,9 +9,18 @@ from app.services import categorize
 
 
 class _FakeModel:
+    """Stands in for the model plus its structured output: records the schema it was
+    given and answers `reply` (a JSON string) as the parsed dict."""
+
     def __init__(self, reply: str | Exception):
         self.reply = reply
         self.prompts: list[str] = []
+        self.schemas: list[dict] = []
+
+    def with_structured_output(self, schema):
+        self.schemas.append(schema)
+
+        return self
 
     async def ainvoke(self, messages, config=None):
         self.prompts.append(messages[0].content)
@@ -20,7 +28,7 @@ class _FakeModel:
         if isinstance(self.reply, Exception):
             raise self.reply
 
-        return AIMessage(content=self.reply)
+        return json.loads(self.reply)
 
 
 @pytest.fixture
@@ -58,18 +66,20 @@ class TestCategorize:
         assert "Shampoo" not in prompt.split("Items:")[1].split("The user has")[0]
         assert model.built == [(2, None)]  # output budget sized for 2 items
 
-    async def test_unknown_or_missing_answers_become_other(self, model):
-        model.reply = json.dumps({"categories": ["not-a-category"]})
-        assert await categorize.categorize(["a", "b"], []) == ["other", "other"]
+    async def test_missing_answers_become_other(self, model):
+        model.reply = json.dumps({"categories": ["dining"]})
+        assert await categorize.categorize(["a", "b"], []) == ["dining", "other"]
 
-    async def test_income_is_never_a_guess(self, model):
-        model.reply = json.dumps({"categories": ["income"]})
-        assert await categorize.categorize(["salary"], []) == ["other"]
-
-    async def test_a_custom_category_keeps_the_users_casing(self, model):
-        model.reply = json.dumps({"categories": ["work tools"]})
+    async def test_the_schema_allows_only_the_built_in_and_custom_categories(self, model):
+        # An enum in the structured output, so the model can't answer with anything
+        # else; "income" is never a guess (it's only set for income transactions).
+        model.reply = json.dumps({"categories": ["Work Tools"]})
         corrections = [Correction(item_key="claude subscription", category="Work Tools")]
+
         assert await categorize.categorize(["Claude AI subscription payment"], corrections) == ["Work Tools"]
+        (schema,) = model.schemas
+        allowed = schema["properties"]["categories"]["items"]["enum"]
+        assert "Work Tools" in allowed and "groceries" in allowed and "income" not in allowed
 
     async def test_a_failed_model_call_falls_back_to_other(self, model):
         model.reply = RuntimeError("API down")

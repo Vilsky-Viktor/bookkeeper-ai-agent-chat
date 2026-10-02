@@ -12,78 +12,72 @@ from app.integrations import llm
 
 class TestBuildChatModel:
     def test_openai_provider_builds_chat_openai_with_requested_model(self):
-        model = llm.build_chat_model("gpt-4o", temperature=0.3)
+        model = llm.build_chat_model("gpt-6-luna", max_tokens=1234)
+
         assert isinstance(model, ChatOpenAI)
-        assert model.model_name == "gpt-4o"
-        assert model.temperature == 0.3
+        assert model.model_name == "gpt-6-luna"
+        assert model.max_tokens == 1234
 
-    def test_json_mode_sets_response_format(self):
-        model = llm.build_chat_model("gpt-4o", json_mode=True)
-        assert model.model_kwargs == {"response_format": {"type": "json_object"}}
+    def test_openai_sets_reasoning_effort_and_no_temperature(self):
+        # gpt-6-luna rejects any temperature but its default (a 400 error).
+        model = llm.build_chat_model("gpt-6-luna", reasoning_effort="none")
 
-    def test_no_json_mode_leaves_model_kwargs_empty(self):
-        model = llm.build_chat_model("gpt-4o")
-        assert model.model_kwargs == {}
+        assert model.reasoning_effort == "none"
+        assert model.temperature is None
+
+    def test_no_reasoning_effort_is_sent_when_unset(self):
+        # A non-reasoning model (e.g. gpt-4o) rejects the parameter with a 400.
+        assert llm.build_chat_model("gpt-4o", reasoning_effort=None).reasoning_effort is None
 
     def test_unsupported_provider_raises(self, monkeypatch):
         monkeypatch.setattr(llm, "LLM_PROVIDER", "some-unsupported-provider")
 
         with pytest.raises(ValueError, match="unsupported LLM_PROVIDER"):
-            llm.build_chat_model("gpt-4o")
+            llm.build_chat_model("gpt-6-luna")
 
     def test_anthropic_provider_builds_chat_anthropic_with_requested_model(self, monkeypatch):
         monkeypatch.setattr(llm, "LLM_PROVIDER", "anthropic")
-        model = llm.build_chat_model("claude-haiku-4-5", temperature=0.3)
+        model = llm.build_chat_model("claude-haiku-4-5")
+
         assert isinstance(model, ChatAnthropic)
         assert model.model == "claude-haiku-4-5"
-        assert model.temperature == 0.3
-
-    def test_anthropic_provider_ignores_json_mode(self, monkeypatch):
-        # Anthropic's Messages API has no response_format/json_object equivalent.
-        monkeypatch.setattr(llm, "LLM_PROVIDER", "anthropic")
-        model = llm.build_chat_model("claude-haiku-4-5", json_mode=True)
-        assert model.model_kwargs == {}
 
     def test_google_provider_builds_chat_google_with_requested_model(self, monkeypatch):
         monkeypatch.setattr(llm, "LLM_PROVIDER", "google")
-        model = llm.build_chat_model("gemini-2.5-flash", temperature=0.3)
+        model = llm.build_chat_model("gemini-2.5-flash")
+
         assert isinstance(model, ChatGoogleGenerativeAI)
         assert model.model == "gemini-2.5-flash"
-        assert model.temperature == 0.3
-
-    def test_google_provider_json_mode_sets_response_mime_type(self, monkeypatch):
-        monkeypatch.setattr(llm, "LLM_PROVIDER", "google")
-        model = llm.build_chat_model("gemini-2.5-flash", json_mode=True)
-        assert model.response_mime_type == "application/json"
-
-    def test_google_provider_no_json_mode_leaves_response_mime_type_unset(self, monkeypatch):
-        monkeypatch.setattr(llm, "LLM_PROVIDER", "google")
-        model = llm.build_chat_model("gemini-2.5-flash")
-        assert model.response_mime_type is None
 
 
 class TestModelConstructors:
+    def test_every_purpose_but_the_fallback_defaults_to_gpt_6_luna(self):
+        # Unless an env var points a purpose elsewhere (the test env sets none).
+        for name in ("PRIMARY_MODEL", "SUMMARY_MODEL", "VISION_MODEL", "CATEGORIZE_MODEL"):
+            assert getattr(llm, name) == "gpt-6-luna", name
+
+    def test_the_fallback_is_gpt_4o_without_reasoning_effort(self):
+        # A different model, so one outage doesn't take both down; gpt-4o rejects
+        # reasoning_effort with a 400.
+        assert llm.FALLBACK_MODEL == "gpt-4o"
+        assert llm.fallback_model().reasoning_effort is None
+
     def test_primary_model_uses_primary_model_constant(self, monkeypatch):
-        monkeypatch.setattr(llm, "PRIMARY_MODEL", "gpt-4o-test")
-        assert llm.primary_model().model_name == "gpt-4o-test"
+        monkeypatch.setattr(llm, "PRIMARY_MODEL", "model-a")
+        assert llm.primary_model().model_name == "model-a"
 
     def test_fallback_model_uses_fallback_model_constant(self, monkeypatch):
-        monkeypatch.setattr(llm, "FALLBACK_MODEL", "gpt-4o-mini-test")
-        assert llm.fallback_model().model_name == "gpt-4o-mini-test"
+        monkeypatch.setattr(llm, "FALLBACK_MODEL", "model-b")
+        assert llm.fallback_model().model_name == "model-b"
 
-    def test_summary_model_uses_zero_temperature(self):
-        assert llm.summary_model().temperature == 0
+    def test_vision_model_uses_vision_model_constant(self, monkeypatch):
+        monkeypatch.setattr(llm, "VISION_MODEL", "model-c")
+        assert llm.vision_model().model_name == "model-c"
 
-    def test_vision_model_defaults_to_primary_model(self, monkeypatch):
-        monkeypatch.setattr(llm, "PRIMARY_MODEL", "gpt-4o-test")
-        monkeypatch.setattr(llm, "VISION_MODEL", "gpt-4o-test")
-        assert llm.vision_model().model_name == "gpt-4o-test"
-
-    def test_vision_model_uses_json_mode(self):
-        assert llm.vision_model().model_kwargs == {"response_format": {"type": "json_object"}}
-
-    def test_vision_model_uses_zero_temperature(self):
-        assert llm.vision_model().temperature == 0
+    def test_categorize_cap_leaves_room_for_reasoning(self):
+        # A reasoning model spends output tokens before answering; a cap sized for
+        # the answer alone (~12 per item) would cut the reply off.
+        assert llm.categorize_model(1).max_tokens >= 500
 
 
 class TestTranscribeClient:
@@ -141,3 +135,9 @@ class TestAinvokeWithFallback:
         result = await llm.ainvoke_with_fallback(primary, fallback, ["msg"])
 
         assert result == "fallback result"
+
+
+class TestReasoningEffortDefault:
+    def test_defaults_to_medium(self):
+        assert llm.REASONING_EFFORT == "medium"
+        assert llm.primary_model().reasoning_effort == "medium"

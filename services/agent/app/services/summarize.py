@@ -60,7 +60,7 @@ async def run_summarize(uid: str, thread_id: str, through_seq: int) -> None:
         response = await model.ainvoke(
             [HumanMessage(content=prompt)], config={"run_name": "summarize", "tags": ["summarize"]}
         )
-        new_summary = response.content if isinstance(response.content, str) else str(response.content)
+        new_summary = response.text
 
         await conn.execute(
             """

@@ -9,9 +9,9 @@ web_origin = "https://your-project-id.web.app"
 
 # environment         = "prod"
 # llm_provider        = "openai"
-# llm_model           = "gpt-4o"
-# llm_fallback_model  = "gpt-4o-mini"
-# llm_summary_model   = "gpt-4o-mini"
+# llm_model           = "gpt-6-luna"
+# llm_fallback_model  = "gpt-4o"
+# llm_summary_model   = "gpt-6-luna"
 # langsmith_tracing   = false
 # cloud_sql_tier      = "db-f1-micro"
 

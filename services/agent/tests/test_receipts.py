@@ -1,6 +1,5 @@
 import datetime
 import io
-from unittest.mock import MagicMock
 
 from PIL import Image
 
@@ -20,21 +19,34 @@ class TestMajorityCategory:
         assert majority_category([]) == "other"
 
 
+def _fake_vision_model(monkeypatch) -> list[str]:
+    """Replaces the vision model (and its structured output) with one that answers
+    "not a receipt"; returns the prompts it was sent."""
+    prompts: list[str] = []
+
+    class _FakeVisionModel:
+        def with_structured_output(self, schema):
+            assert schema is receipts_module.ReceiptExtraction
+
+            return self
+
+        async def ainvoke(self, messages, config=None):
+            prompts.append(messages[0].content[0]["text"])
+
+            return receipts_module.ReceiptExtraction(is_receipt=False)
+
+    monkeypatch.setattr(receipts_module.llm, "vision_model", lambda: _FakeVisionModel())
+
+    return prompts
+
+
 class TestReadReceipt:
     async def test_prompt_substitutes_placeholders_and_stays_locale_neutral(self, monkeypatch):
-        captured = {}
-
-        class _FakeVisionModel:
-            async def ainvoke(self, messages, config=None):
-                captured["prompt"] = messages[0].content[0]["text"]
-
-                return MagicMock(content='{"is_receipt": false}')
-
-        monkeypatch.setattr(receipts_module.llm, "vision_model", lambda: _FakeVisionModel())
+        prompts = _fake_vision_model(monkeypatch)
 
         await receipts_module.read_receipt(b"imgdata", "image/jpeg", "en", datetime.date(2026, 9, 27))
 
-        prompt = captured["prompt"]
+        prompt = prompts[0]
         today = "2026-09-27"  # the user's date, not the server's
         assert today in prompt
         assert "{today}" not in prompt and "{language}" not in prompt
@@ -42,7 +54,7 @@ class TestReadReceipt:
         assert "Today" in prompt and "Yesterday" in prompt
         assert 'set "merchant" to null' in prompt
         # The one amount read is the grand total — not the subtotal or cash tendered.
-        assert '"total_paid"' in prompt
+        assert "total_paid:" in prompt
         assert "NOT the subtotal" in prompt
         # items drive the majority category: summary labels and fees in there once
         # voted a restaurant delivery order into "groceries" ("Price" vs "Handling and
@@ -59,15 +71,7 @@ class TestReadReceipt:
 
 class TestReceiptNote:
     async def test_the_users_note_reaches_the_prompt_and_defaults_to_none(self, monkeypatch):
-        prompts = []
-
-        class _FakeVisionModel:
-            async def ainvoke(self, messages, config=None):
-                prompts.append(messages[0].content[0]["text"])
-
-                return MagicMock(content='{"is_receipt": false}')
-
-        monkeypatch.setattr(receipts_module.llm, "vision_model", lambda: _FakeVisionModel())
+        prompts = _fake_vision_model(monkeypatch)
 
         await receipts_module.read_receipt(b"x", "image/jpeg", "en", datetime.date(2026, 9, 27), "this was yesterday")
         await receipts_module.read_receipt(b"x", "image/jpeg", "en", datetime.date(2026, 9, 27))
@@ -76,15 +80,7 @@ class TestReceiptNote:
         assert "Note: (none)" in prompts[1]
 
     async def test_a_note_cant_fill_the_other_placeholders(self, monkeypatch):
-        prompts = []
-
-        class _FakeVisionModel:
-            async def ainvoke(self, messages, config=None):
-                prompts.append(messages[0].content[0]["text"])
-
-                return MagicMock(content='{"is_receipt": false}')
-
-        monkeypatch.setattr(receipts_module.llm, "vision_model", lambda: _FakeVisionModel())
+        prompts = _fake_vision_model(monkeypatch)
 
         await receipts_module.read_receipt(b"x", "image/jpeg", "en", datetime.date(2026, 9, 27), "{today}")
 

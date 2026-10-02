@@ -6,12 +6,13 @@
 |---|---|---|
 | `LLM_API_KEY` | yes | API key for the selected provider |
 | `LLM_PROVIDER` | no | default `openai` — see "Swapping the LLM provider" below |
-| `LLM_MODEL` | no | default `gpt-4o-mini` — main chat/tool-calling loop (matched `gpt-4o` on the model eval at ~14x lower cost) |
-| `LLM_FALLBACK_MODEL` | no | default `gpt-4o` — used only when a primary call errors or times out |
-| `LLM_SUMMARY_MODEL` | no | default `gpt-4o-mini` — rolling chat summary |
-| `LLM_VISION_MODEL` | no | default `gpt-4o` — receipt image extraction (not tied to `LLM_MODEL`: `gpt-4o-mini` bills images at a large multiplier and reads receipts less reliably) |
-| `TRANSCRIBE_MODEL` | no | default `gpt-4o-mini-transcribe` — voice-input transcription |
-| `LLM_CATEGORIZE_MODEL` | no | default `gpt-4.1-mini` — the categorizer (~6x cheaper than `gpt-4o` for a small accuracy cost; `gpt-4o-mini` misfiles brand-only names more often — see `make eval-categorize`) |
+| `LLM_MODEL` | no | default `gpt-6-luna` — main chat/tool-calling loop |
+| `LLM_FALLBACK_MODEL` | no | default `gpt-4o` — used only when a chat call errors or times out; a different model, so one outage doesn't take both down (sent without `reasoning_effort`) |
+| `LLM_SUMMARY_MODEL` | no | default `gpt-6-luna` — rolling chat summary |
+| `LLM_VISION_MODEL` | no | default `gpt-6-luna` — receipt reading (structured output) |
+| `LLM_CATEGORIZE_MODEL` | no | default `gpt-6-luna` — the categorizer (structured output; see `make eval-categorize`) |
+| `LLM_REASONING_EFFORT` | no | default `medium` (at `low` the chat eval missed some tool choices) — `gpt-6-luna` is a reasoning model (`none`, `low`, `medium`, …); OpenAI only. Set it empty when pointing a purpose at a non-reasoning model (e.g. `gpt-4o`), which rejects the parameter |
+| `TRANSCRIBE_MODEL` | no | default `gpt-4o-mini-transcribe` — voice-input transcription (needs a speech-to-text model) |
 | `LLM_HISTORY_TOKEN_BUDGET` | no | default `6000` — max tokens of conversation history per model call; anything trimmed is folded into the summary |
 | `LANGSMITH_TRACING` / `LANGSMITH_API_KEY` / `LANGSMITH_PROJECT` / `LANGSMITH_ENDPOINT` | no | tracing no-ops if unset |
 
@@ -36,12 +37,11 @@ claude-haiku-4-5` or `LLM_MODEL=gemini-2.5-flash`) — no code change. Also set
 defaults are OpenAI model names. The receipt-vision
 call's multimodal message (`services/receipts.py`'s `HumanMessage` with an `image_url`
 content block) works unchanged across all three; `langchain-anthropic` and
-`langchain-google-genai` both translate that OpenAI-shaped block internally. The one
-real difference between providers is JSON-only output: OpenAI's `response_format`
-json_object mode has no Anthropic equivalent (Claude relies on the prompt asking for
-JSON, which it follows reliably), while Gemini has its own native mechanism
-(`response_mime_type`) — `_build_anthropic`/`_build_google` in `app/integrations/llm.py` handle this
-per-provider so call sites don't need to know or care.
+`langchain-google-genai` both translate that OpenAI-shaped block internally. The
+receipt reader and the categorizer get their replies through LangChain's
+`.with_structured_output()` (a Pydantic model and a JSON schema), which each provider
+implements natively: strict JSON schema on OpenAI, tool calling on Anthropic and
+Gemini. So the reply always has the expected shape, on any provider.
 
 To add another provider: write one builder function (importing that provider's
 LangChain integration package inside the function, not at module level, so an
@@ -60,9 +60,9 @@ transcription means a builder in that registry too.
 What the agent does to keep per-turn cost low (measured with the eval below and
 LangSmith's per-run token counts):
 
-- **Cheap chat model, strong where it matters.** Chat runs on `gpt-4o-mini`; receipt
-  reading stays on `gpt-4o` and categorization uses `gpt-4.1-mini`, where
-  `gpt-4o-mini` was measurably worse (see the env var table).
+- **One model, little reasoning.** Everything but the fallback runs on `gpt-6-luna` with
+  `LLM_REASONING_EFFORT=medium`: reasoning tokens are billed as output, and each call's
+  output cap (`integrations/llm.py`) leaves room for them.
 - **No model call when the outcome is fixed.** Routing is plain code, and a receipt
   upload without a note is handled by the deterministic receipt workflow alone, with
   no chat model call.
@@ -89,7 +89,7 @@ so no real data is touched. It reports pass rates and API cost per model:
 
 ```bash
 docker compose exec agent uv run python -m evals.chat_model_eval \
-  --models gpt-4o gpt-4.1-mini --runs 3
+  --models gpt-6-luna --runs 3
 ```
 
 Keep `--concurrency` low on low OpenAI rate-limit tiers (the eval retries 429s).
@@ -100,5 +100,5 @@ judged against a correction history, run through the real `classify()`:
 
 ```bash
 docker compose exec agent uv run python -m evals.categorize_eval \
-  --models gpt-4o gpt-4o-mini --runs 3
+  --models gpt-6-luna --runs 3
 ```

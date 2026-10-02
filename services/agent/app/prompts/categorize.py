@@ -1,5 +1,5 @@
 """The categorizer's prompt (services/categorize.py): the category definitions, how to use
-the user's past corrections, and the reply format."""
+the user's past corrections. The reply's shape is a structured output schema."""
 
 # Short definitions so an ambiguous item (e.g. toothpaste from a minimarket that also
 # sells food) lands on the right bucket instead of the merchant's usual one. "income"
@@ -43,6 +43,4 @@ Items:
 The user has previously corrected these categorizations:
 {history}
 
-{matching_rules} Reply with JSON only, in this shape: \
-{{"categories": ["<category word for item 1>", "<category word for item 2>", ...]}} \
-— exactly one entry per item, in the same order."""
+{matching_rules} Give exactly one category per item, in the same order as the items."""

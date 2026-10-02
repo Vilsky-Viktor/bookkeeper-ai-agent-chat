@@ -1,6 +1,6 @@
 import type { User } from "firebase/auth";
 import { onAuthStateChanged } from "firebase/auth";
-import { Coins, LogOut, Moon, Sun } from "lucide-react";
+import { LogOut, Moon, Sun } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import ChatPanel from "./components/ChatPanel";
 import type { ChatPanelHandle } from "./components/ChatPanel";
@@ -83,7 +83,7 @@ function AppContent({ user }: { user: User | null }) {
     return (
       <div className="flex h-screen items-center justify-center bg-zinc-100 dark:bg-[#141416]">
         <div className="flex flex-col items-center gap-4 rounded-2xl border border-zinc-200 bg-white p-10 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-          <h1 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">SMAKER.ai</h1>
+          <h1 className="text-4xl font-bold tracking-tight text-zinc-900 dark:text-zinc-100">smaker.</h1>
           <p className="text-sm text-zinc-500 dark:text-zinc-400">{t("signInSubtitle")}</p>
           <button
             onClick={() => signIn()}
@@ -102,10 +102,7 @@ function AppContent({ user }: { user: User | null }) {
   return (
     <div className="flex h-screen flex-col bg-zinc-100 dark:bg-[#141416]">
       <header className="relative z-30 flex items-center justify-between px-5 py-3">
-        <div className="flex items-center gap-1.5 text-zinc-900 dark:text-zinc-100">
-          <Coins size={18} />
-          <span className="text-sm font-semibold">SMAKER.ai</span>
-        </div>
+        <span className="text-xl font-bold tracking-tight text-zinc-900 dark:text-zinc-100">smaker.</span>
         <div className="relative" ref={menuRef}>
           <button
             onClick={() => setMenuOpen((o) => !o)}

@@ -9,7 +9,7 @@ same shop).
 
 Run inside the agent container (it has LLM_API_KEY and mounts this folder):
     docker compose exec agent uv run python -m evals.categorize_eval \\
-        --models gpt-4o gpt-4o-mini --runs 3
+        --models gpt-6-luna --runs 3
 """
 
 import argparse
@@ -189,7 +189,7 @@ async def main(models: list[str], runs: int, concurrency: int) -> None:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--models", nargs="+", default=["gpt-4o", "gpt-4o-mini"])
+    parser.add_argument("--models", nargs="+", default=["gpt-6-luna"])
     parser.add_argument("--runs", type=int, default=3)
     parser.add_argument("--concurrency", type=int, default=3)
     args = parser.parse_args()

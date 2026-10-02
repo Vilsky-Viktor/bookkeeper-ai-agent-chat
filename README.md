@@ -80,7 +80,7 @@ Cloud Run's injected `$PORT` — see [Deploying to GCP](docs/deployment.md)).
   server-side (`gpt-4o-mini-transcribe` by default) and dropped into the message box
   for you to review or edit before sending — same as typing it, nothing is sent
   automatically.
-- **Receipts.** Upload a photo or PDF; the configured vision model (`gpt-4o` by
+- **Receipts.** Upload a photo or PDF; the configured vision model (`gpt-6-luna` by
   default — see [Swapping the LLM provider](docs/configuration.md#swapping-the-llm-provider)) reads the receipt's grand total, date and
   merchant, plus a short summary and the names of the items bought. That becomes ONE
   proposed transaction for the total (per-item price splitting proved unreliable
