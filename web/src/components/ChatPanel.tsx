@@ -43,8 +43,15 @@ const ChatPanel = forwardRef<ChatPanelHandle, Props>(function ChatPanel(
   const [input, setInput] = useState("");
   const [proposal, setProposal] = useState<ReceiptProposal | null>(null);
   const textInputRef = useRef<HTMLTextAreaElement>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
   const messageListRef = useRef<HTMLDivElement>(null);
+
+  // Scrolls only the message list. scrollIntoView() would scroll every scrollable
+  // ancestor too, up to the page, moving the whole UI.
+  function scrollToBottom(behavior: ScrollBehavior) {
+    const list = messageListRef.current;
+
+    list?.scrollTo({ top: list.scrollHeight, behavior });
+  }
   // Refs, not closure reads: a recording's transcript is sent long after it started,
   // and set_filter + export can happen in one turn before React re-renders.
   const inputRef = useRef(input);
@@ -81,8 +88,8 @@ const ChatPanel = forwardRef<ChatPanelHandle, Props>(function ChatPanel(
 
       return;
     }
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, pendingText, pendingNotice, history.justLoadedOlderRef]);
+    scrollToBottom("smooth");
+  }, [messages, pendingText, pendingNotice, proposal, history.justLoadedOlderRef]);
 
   useEffect(() => {
     // The textarea is disabled (and loses focus) while a turn streams or a recording
@@ -179,7 +186,7 @@ const ChatPanel = forwardRef<ChatPanelHandle, Props>(function ChatPanel(
                   onView={onViewImage}
                   // The image loads after the scroll-to-bottom effect already ran against
                   // the shorter layout — scroll again once it has its real height.
-                  onLoad={() => messagesEndRef.current?.scrollIntoView({ behavior: "auto" })}
+                  onLoad={() => scrollToBottom("auto")}
                 />
               )}
               {m.csvUrl && m.csvFilename && <FileAttachment url={m.csvUrl} filename={m.csvFilename} />}
@@ -200,7 +207,6 @@ const ChatPanel = forwardRef<ChatPanelHandle, Props>(function ChatPanel(
             onCancel={() => setProposal(null)}
           />
         )}
-        <div ref={messagesEndRef} />
       </div>
       <ChatComposer
         value={input}

@@ -129,6 +129,13 @@
   html {
     @apply font-sans;
   }
+  /* The app is one full-height screen whose panels scroll inside themselves; the page
+     itself never scrolls, so nothing (a popup near an edge, a scroll in a panel) can
+     move the whole UI. */
+  html,
+  body {
+    overflow: hidden;
+  }
   /* Titles, buttons, menu items, badges and input placeholders are lowercase, like the wordmark.
      Content people typed or the model wrote keeps its case with .normal-case. */
   h1,
