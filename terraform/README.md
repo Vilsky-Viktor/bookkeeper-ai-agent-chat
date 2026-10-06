@@ -30,6 +30,19 @@ reasoning behind that piece.
   directly via `gcloud`/`deploy-cloudrun` (not by changing these variables — see
   `cloud_run.tf`'s `lifecycle.ignore_changes` and "GitHub Actions setup" below).
 
+## Models and scaling
+
+- **Models.** `llm_provider`, `llm_model`, `llm_fallback_model` and `llm_summary_model`
+  are variables (defaults: `openai`, `gpt-6-luna`, `gpt-4o`, `gpt-6-luna`). The receipt
+  reader (`gpt-6.1-sol`), the categorizer (`gpt-6-luna`) and the reasoning effort
+  (`medium`) aren't, so Cloud Run uses the agent's code defaults
+  (`services/agent/app/integrations/llm.py`). See the root README's "Models".
+- **Instance caps.** `agent_max_instances` (3) and `transactions_max_instances` (2) cap
+  Cloud Run scaling: a ceiling on cost from a traffic spike, and on Postgres
+  connections. Each agent instance holds up to 3 and each transactions instance up to
+  5, so the defaults use 19 of `db-f1-micro`'s ~25, leaving room for the migrate job.
+  Raise them together with `cloud_sql_tier`.
+
 ## Service-to-service auth
 
 `services/agent/app/service_auth.py`'s `require_service_caller` verifies a

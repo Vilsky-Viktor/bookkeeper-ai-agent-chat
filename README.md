@@ -9,7 +9,7 @@ see [Models](#models)) and a free public exchange-rate lookup.
 
 ⭐ If you find this project useful, please consider giving it a star ⭐ — it helps a lot!
 
-![smaker. screenshot](smaker-screenshot.png)
+![smaker. screenshot](readme.png)
 
 ## Quickstart
 
@@ -66,9 +66,8 @@ Cloud Run's injected `$PORT` — see [Deploying to GCP](docs/deployment.md)).
   via a dropdown built from the same list the categorizer uses, amount,
   currency, description — full text on hover via a tooltip once it's truncated) is
   also editable in place, and each row has its own delete button, gated behind a
-  custom confirmation dialog (`ConfirmDialog.tsx`, styled to match the rest of the
-  app) since deleting is irreversible — chat isn't the only way to change a
-  transaction, just the natural-language one.
+  confirmation dialog since deleting is irreversible — chat isn't the only way to
+  change a transaction, just the natural-language one.
 - **Analysis.** "How much did I spend on dining last month?" always calls a real
   aggregates endpoint — the model is instructed to never state a number from memory
   or from the conversation summary.
@@ -131,7 +130,11 @@ Cloud Run's injected `$PORT` — see [Deploying to GCP](docs/deployment.md)).
   receipt's outcome, errors, daily limits) arrive as a key plus params, a "notice"
   (`services/agent/app/models/notices.py`), which the chat shows in the current
   language — also after switching languages, and in reloaded history.
-- **Dark/light theme**, persisted locally, no flash of the wrong theme on reload.
+- **Design.** The prepza project's design system on the same libraries: shadcn/ui on
+  Base UI, Tailwind CSS v4, Geist and Poppins, one blue accent, lowercase titles and
+  buttons ending in the wordmark's blue dot. System, light and dark themes (the
+  account menu switches them), with no flash of the wrong theme on reload. See
+  [Architecture](docs/architecture.md#frontend).
 - Per-user daily quotas (chat turns, receipts, tokens — configurable via
   `DAILY_TURN_LIMIT`/`DAILY_RECEIPT_LIMIT`) and optional LangSmith tracing; it
   activates purely from environment variables, so an empty `.env` still runs the full

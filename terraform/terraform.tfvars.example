@@ -14,6 +14,8 @@ web_origin = "https://your-project-id.web.app"
 # llm_summary_model   = "gpt-6-luna"
 # langsmith_tracing   = false
 # cloud_sql_tier      = "db-f1-micro"
+# agent_max_instances        = 3  # raise together with cloud_sql_tier (connections)
+# transactions_max_instances = 2
 
 # Set these once CI has pushed real images (see terraform/README.md):
 # agent_image        = "us-central1-docker.pkg.dev/your-gcp-project-id/prod-services/agent:latest"
