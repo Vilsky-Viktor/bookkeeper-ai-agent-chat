@@ -21,10 +21,11 @@ describe("ReceiptModal", () => {
 
   it("calls onClose when the backdrop is clicked", () => {
     const onClose = vi.fn();
-    const { container } = render(<ReceiptModal url="https://example.com/receipt.jpg" onClose={onClose} />, {
-      wrapper,
-    });
-    fireEvent.click(container.firstChild as Element);
+    render(<ReceiptModal url="https://example.com/receipt.jpg" onClose={onClose} />, { wrapper });
+    const overlay = document.querySelector('[data-slot="dialog-overlay"]') as Element;
+    fireEvent.pointerDown(overlay);
+    fireEvent.mouseDown(overlay);
+    fireEvent.click(overlay);
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
@@ -45,7 +46,7 @@ describe("ReceiptModal", () => {
   it("calls onClose on Escape", () => {
     const onClose = vi.fn();
     render(<ReceiptModal url="https://example.com/receipt.jpg" onClose={onClose} />, { wrapper });
-    fireEvent.keyDown(window, { key: "Escape" });
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 

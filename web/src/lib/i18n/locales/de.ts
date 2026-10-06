@@ -36,6 +36,10 @@ const de: Locale = {
     savedTransactions: "{n} Transaktion(en) aus dem Beleg gespeichert.",
     saveFailed: "Speichern fehlgeschlagen: {error}",
     viewAttachment: "Anhang ansehen",
+    send: "Senden",
+    close: "Schließen",
+    systemTheme: "System",
+    theme: "Design",
     receiptProposed: "Dein Beleg vom {date} wurde ausgelesen — du kannst ihn unten bearbeiten oder bestätigen.",
     notAReceipt: "Das sieht nicht wie ein Beleg aus. Bitte lade ein Foto oder PDF eines echten Belegs hoch.",
     receiptUnreadable:

@@ -46,18 +46,18 @@ export default function FileAttachment({ url, filename }: Props) {
       download={filename}
       aria-label={filename}
       title={filename}
-      className="group relative inline-flex h-[88px] w-[88px] items-center justify-center overflow-hidden rounded-lg border border-zinc-200 bg-white dark:border-zinc-700 dark:bg-zinc-900"
+      className="group relative inline-flex h-[88px] w-[88px] items-center justify-center overflow-hidden rounded-2xl border border-border bg-background"
     >
       {rows && rows.length > 0 ? (
         <table
-          className="absolute left-0 top-0 origin-top-left border-collapse text-[11px] leading-tight text-zinc-500 dark:text-zinc-400"
+          className="absolute left-0 top-0 origin-top-left border-collapse text-[11px] leading-tight text-muted-foreground"
           style={{ width: PREVIEW_VIRTUAL_WIDTH, transform: `scale(${PREVIEW_SCALE})` }}
         >
           <tbody>
             {rows.map((cells, i) => (
-              <tr key={i} className={i === 0 ? "font-semibold text-zinc-700 dark:text-zinc-200" : undefined}>
+              <tr key={i} className={i === 0 ? "font-semibold text-foreground" : undefined}>
                 {cells.map((cell, j) => (
-                  <td key={j} className="max-w-[55px] truncate border border-zinc-100 px-1 py-0.5 dark:border-zinc-800">
+                  <td key={j} className="max-w-[55px] truncate border border-border px-1 py-0.5">
                     {cell}
                   </td>
                 ))}
@@ -66,7 +66,7 @@ export default function FileAttachment({ url, filename }: Props) {
           </tbody>
         </table>
       ) : (
-        <FileText size={32} className="text-zinc-400 dark:text-zinc-600" />
+        <FileText size={32} className="text-muted-foreground" />
       )}
       <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition-opacity duration-150 group-hover:opacity-100">
         <Download size={20} className="text-white" />

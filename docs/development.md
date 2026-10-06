@@ -140,7 +140,9 @@ web/                          React + Vite + TypeScript — chat pane + transact
                                  chat pane logic (streaming, history, voice, helpers)
   src/lib/format.ts              amount formatting
   src/types/                     api.ts (backend request/response shapes), chat.ts
-  src/components/                ChatPanel (+ ChatComposer, ReceiptProposalCard),
+  src/components/ui/             shadcn/ui components (Base UI), copied from prepza
+  src/components/                ChatPanel (+ ChatComposer, ChatBubble, ReceiptProposalCard),
+                                  UserMenu, ThemeModes, Wordmark,
                                   TransactionsTable (+ AmountText), ReceiptModal,
                                   ConfirmDialog, …
 Caddyfile                     Reverse proxy — same routing shape as Firebase Hosting rewrites

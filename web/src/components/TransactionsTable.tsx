@@ -8,8 +8,8 @@ import { BUILT_IN_CATEGORIES, useTranslation } from "../lib/i18n";
 import { receiptViewUrl } from "../lib/receipts";
 import AmountText from "./AmountText";
 import ConfirmDialog from "./ConfirmDialog";
-import IconButton from "./IconButton";
-import Tooltip from "./Tooltip";
+import { Button } from "./ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
 // How close to the bottom (px) of the table's own scroll container triggers loading
 // the next page — matches the 50-row page size on the backend (see
@@ -24,7 +24,7 @@ interface Props {
 }
 
 const editableCellClass =
-  "w-full min-w-0 rounded-md border border-transparent bg-transparent px-1.5 py-1 text-inherit focus:border-zinc-300 focus:bg-white focus:outline-none focus:ring-1 focus:ring-sky-500/40 dark:focus:border-zinc-600 dark:focus:bg-zinc-800";
+  "w-full min-w-0 rounded-lg border border-transparent bg-transparent px-2 py-1 text-inherit transition-colors outline-none focus:border-ring focus:bg-muted focus:ring-3 focus:ring-ring/50 dark:focus:bg-input/30";
 
 // Every field is directly editable in place (a plain uncontrolled input per cell,
 // keyed on the row's current value so it remounts — and picks up the fresh
@@ -93,7 +93,7 @@ export default function TransactionsTable({ filter, onViewImage, onReferenceTran
 
   return (
     <div onScroll={handleScroll} className="min-h-0 flex-1 overflow-auto">
-      <table className="w-full min-w-[640px] table-fixed border-spacing-0 text-sm bg-white dark:bg-zinc-900">
+      <table className="w-full min-w-[640px] table-fixed border-spacing-0 text-sm">
         <colgroup>
           <col className="w-[130px]" />
           <col className="w-[110px]" />
@@ -102,38 +102,37 @@ export default function TransactionsTable({ filter, onViewImage, onReferenceTran
           <col />
           <col className="w-28" />
         </colgroup>
-        <thead className="sticky top-0 z-10 will-change-transform bg-zinc-50 dark:bg-zinc-800">
+        <thead className="sticky top-0 z-10 bg-card will-change-transform">
           <tr>
-            <th className="truncate px-3 py-2 text-start font-normal text-zinc-600 dark:text-zinc-400">
+            <th className="truncate border-b border-border px-3 py-3 text-start text-xs font-normal text-muted-foreground">
               {t("colDate")}
             </th>
-            <th className="truncate px-3 py-2 text-start font-normal text-zinc-600 dark:text-zinc-400">
+            <th className="truncate border-b border-border px-3 py-3 text-start text-xs font-normal text-muted-foreground">
               {t("colAmount")}
             </th>
-            <th className="truncate px-3 py-2 text-start font-normal text-zinc-600 dark:text-zinc-400">
+            <th className="truncate border-b border-border px-3 py-3 text-start text-xs font-normal text-muted-foreground">
               {t("colCurrency")}
             </th>
-            <th className="truncate px-3 py-2 text-start font-normal text-zinc-600 dark:text-zinc-400">
+            <th className="truncate border-b border-border px-3 py-3 text-start text-xs font-normal text-muted-foreground">
               {t("colCategory")}
             </th>
-            <th className="truncate px-3 py-2 text-start font-normal text-zinc-600 dark:text-zinc-400">
+            <th className="truncate border-b border-border px-3 py-3 text-start text-xs font-normal text-muted-foreground">
               {t("colDescription")}
             </th>
-            <th className="px-3 py-2" />
+            <th className="border-b border-border px-3 py-3" />
           </tr>
         </thead>
         <tbody>
           {items && items.length === 0 && (
             <tr>
-              <td colSpan={6} className="px-3 py-10 text-center text-sm text-zinc-500 dark:text-zinc-400">
+              <td colSpan={6} className="px-3 py-10 text-center text-sm text-muted-foreground">
                 {t("noTransactions")}
               </td>
             </tr>
           )}
           {items?.map((tx) => {
             const receiptUrl = receiptViewUrl(tx.receipt_uri);
-            const amountColor =
-              tx.type === "expense" ? "text-red-600 dark:text-red-400" : "text-emerald-600 dark:text-emerald-400";
+            const amountColor = tx.type === "expense" ? "text-destructive" : "text-success";
             const descriptionInput = (
               <input
                 key={`description-${tx.id}-${tx.description}`}
@@ -144,11 +143,8 @@ export default function TransactionsTable({ filter, onViewImage, onReferenceTran
             );
 
             return (
-              <tr
-                key={tx.id}
-                className="border-t border-zinc-100 hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-800/40"
-              >
-                <td className="px-1 py-1 text-zinc-700 dark:text-zinc-300">
+              <tr key={tx.id} className="border-t border-border transition-colors hover:bg-muted/50">
+                <td className="px-1 py-1">
                   <input
                     key={`date-${tx.id}-${tx.occurred_on}`}
                     type="date"
@@ -185,7 +181,7 @@ export default function TransactionsTable({ filter, onViewImage, onReferenceTran
                     )}
                   </div>
                 </td>
-                <td className="px-1 py-1 text-zinc-700 dark:text-zinc-300">
+                <td className="px-1 py-1">
                   <input
                     key={`currency-${tx.id}-${tx.currency}`}
                     defaultValue={tx.currency}
@@ -194,7 +190,7 @@ export default function TransactionsTable({ filter, onViewImage, onReferenceTran
                     className={`${editableCellClass} uppercase`}
                   />
                 </td>
-                <td className="px-1 py-1 text-zinc-700 dark:text-zinc-300">
+                <td className="px-1 py-1">
                   <select
                     key={`category-${tx.id}-${tx.category}`}
                     defaultValue={tx.category}
@@ -211,10 +207,11 @@ export default function TransactionsTable({ filter, onViewImage, onReferenceTran
                     ))}
                   </select>
                 </td>
-                <td className="px-1 py-1 text-zinc-700 dark:text-zinc-300">
+                <td className="px-1 py-1">
                   {tx.description ? (
-                    <Tooltip label={tx.description} className="w-full">
-                      {descriptionInput}
+                    <Tooltip>
+                      <TooltipTrigger render={descriptionInput} />
+                      <TooltipContent className="normal-case">{tx.description}</TooltipContent>
                     </Tooltip>
                   ) : (
                     descriptionInput
@@ -223,16 +220,34 @@ export default function TransactionsTable({ filter, onViewImage, onReferenceTran
                 <td className="px-3 py-3.5">
                   <div className="flex items-center justify-end gap-1">
                     {receiptUrl && (
-                      <IconButton onClick={() => onViewImage(receiptUrl)} label={t("viewReceipt")} align="end">
-                        <Paperclip size={14} />
-                      </IconButton>
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        className="text-muted-foreground"
+                        onClick={() => onViewImage(receiptUrl)}
+                        aria-label={t("viewReceipt")}
+                      >
+                        <Paperclip />
+                      </Button>
                     )}
-                    <IconButton onClick={() => onReferenceTransaction(tx.id)} label={t("referenceInChat")} align="end">
-                      <Hash size={14} />
-                    </IconButton>
-                    <IconButton onClick={() => setConfirmDeleteId(tx.id)} label={t("deleteTransaction")} align="end">
-                      <Trash2 size={14} />
-                    </IconButton>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      className="text-muted-foreground"
+                      onClick={() => onReferenceTransaction(tx.id)}
+                      aria-label={t("referenceInChat")}
+                    >
+                      <Hash />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      className="text-muted-foreground hover:text-destructive"
+                      onClick={() => setConfirmDeleteId(tx.id)}
+                      aria-label={t("deleteTransaction")}
+                    >
+                      <Trash2 />
+                    </Button>
                   </div>
                 </td>
               </tr>
@@ -240,7 +255,7 @@ export default function TransactionsTable({ filter, onViewImage, onReferenceTran
           })}
           {isFetchingNextPage && (
             <tr>
-              <td colSpan={6} className="px-3 py-3 text-center text-xs text-zinc-400 dark:text-zinc-600">
+              <td colSpan={6} className="px-3 py-3 text-center text-xs text-muted-foreground">
                 {t("loadingEarlier")}
               </td>
             </tr>

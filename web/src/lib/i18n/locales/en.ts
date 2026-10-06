@@ -36,6 +36,10 @@ const en = {
     savedTransactions: "Saved {n} transaction(s) from the receipt.",
     saveFailed: "Couldn't save: {error}",
     viewAttachment: "View attachment",
+    send: "Send",
+    close: "Close",
+    systemTheme: "System",
+    theme: "Theme",
     // Fixed replies: the backend sends one of these keys (a "notice", see
     // services/agent/app/models/notices.py) and the chat shows it in this language.
     receiptProposed: "Extracted your receipt from {date} — you can edit or confirm it below.",

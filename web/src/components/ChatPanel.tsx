@@ -1,5 +1,4 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { Sparkles } from "lucide-react";
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { createTransactionBatch, recordReceiptSaved, requestUploadTarget, uploadReceiptImage } from "../lib/api";
 import type { TransactionFilter } from "../types/api";
@@ -11,7 +10,9 @@ import { prepareReceiptUpload } from "../lib/receiptUpload";
 import { useChatStream } from "../lib/useChatStream";
 import { useThreadMessages } from "../lib/useThreadMessages";
 import { useVoiceRecorder } from "../lib/useVoiceRecorder";
+import { ChatBubble, ThinkingBubble } from "./ChatBubble";
 import ChatComposer from "./ChatComposer";
+import { Button } from "./ui/button";
 import FileAttachment from "./FileAttachment";
 import ReceiptProposalCard from "./ReceiptProposalCard";
 import ReceiptThumb from "./ReceiptThumb";
@@ -150,7 +151,7 @@ const ChatPanel = forwardRef<ChatPanelHandle, Props>(function ChatPanel(
   }));
 
   return (
-    <>
+    <div className="flex min-h-0 flex-1 flex-col rounded-3xl bg-card shadow-sm ring-1 ring-foreground/5">
       <div
         ref={messageListRef}
         onScroll={(e) => {
@@ -158,41 +159,20 @@ const ChatPanel = forwardRef<ChatPanelHandle, Props>(function ChatPanel(
             history.loadEarlierMessages();
           }
         }}
-        className="flex min-h-0 flex-1 flex-col gap-2.5 overflow-y-auto rounded-xl bg-white p-3 shadow-sm dark:bg-zinc-900"
+        className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4"
       >
-        {history.loadingOlder && (
-          <div className="flex items-center justify-center gap-2 self-center py-1 text-xs text-zinc-400 dark:text-zinc-600">
-            <Sparkles size={14} className="animate-pulse" />
-            <span className="animate-pulse">{t("loadingEarlier")}</span>
-          </div>
-        )}
+        {history.loadingOlder && <ThinkingBubble label={t("loadingEarlier")} />}
         {!history.loadingOlder && history.hasMoreOlder && (
-          <button
-            onClick={history.loadEarlierMessages}
-            className="self-center rounded-full border border-sky-200 px-3 py-1 text-xs font-medium text-sky-700 transition-colors hover:bg-sky-50 dark:border-sky-900 dark:text-sky-300 dark:hover:bg-sky-950/40"
-          >
+          <Button variant="outline" className="self-center" onClick={history.loadEarlierMessages}>
             {t("loadEarlierMessages")}
-          </button>
+          </Button>
         )}
         {messages.map((m, i) => {
           const text = messageText(m, t);
 
           return (
-            <div
-              key={i}
-              className={`flex max-w-[90%] flex-col gap-1.5 ${m.role === "user" ? "self-end items-end" : "self-start items-start"}`}
-            >
-              {text && (
-                <div
-                  className={`whitespace-pre-wrap rounded-xl px-3 py-2 text-sm leading-relaxed ${
-                    m.role === "user"
-                      ? "bg-sky-200 text-sky-900 dark:bg-sky-900/70 dark:text-sky-100"
-                      : "bg-zinc-100 text-zinc-900 dark:bg-zinc-800/80 dark:text-zinc-100"
-                  }`}
-                >
-                  {text}
-                </div>
-              )}
+            <div key={i} className={`flex flex-col gap-1.5 ${m.role === "user" ? "items-end" : "items-start"}`}>
+              {text && <ChatBubble role={m.role}>{text}</ChatBubble>}
               {m.imageUrl && (
                 <ReceiptThumb
                   url={m.imageUrl}
@@ -207,16 +187,11 @@ const ChatPanel = forwardRef<ChatPanelHandle, Props>(function ChatPanel(
           );
         })}
         {streaming && (pendingText || pendingNotice) && (
-          <div className="max-w-[90%] self-start whitespace-pre-wrap rounded-xl bg-zinc-100 px-3 py-2 text-sm leading-relaxed text-zinc-900 dark:bg-zinc-800/80 dark:text-zinc-100">
+          <ChatBubble role="assistant">
             {messageText({ role: "assistant", text: pendingText, notice: pendingNotice }, t)}
-          </div>
+          </ChatBubble>
         )}
-        {streaming && !pendingText && !pendingNotice && (
-          <div className="mt-1.5 flex items-center gap-2 self-center text-base text-zinc-400 dark:text-zinc-600">
-            <Sparkles size={18} className="animate-pulse" />
-            <span className="animate-pulse">{t("thinking")}</span>
-          </div>
-        )}
+        {streaming && !pendingText && !pendingNotice && <ThinkingBubble label={t("thinking")} />}
         {proposal && (
           <ReceiptProposalCard
             proposal={proposal}
@@ -238,7 +213,7 @@ const ChatPanel = forwardRef<ChatPanelHandle, Props>(function ChatPanel(
         transcribing={voice.transcribing}
         micButtonProps={voice.micButtonProps}
       />
-    </>
+    </div>
   );
 });
 

@@ -1,18 +1,19 @@
 import type { User } from "firebase/auth";
 import { onAuthStateChanged } from "firebase/auth";
-import { LogOut, Moon, Sun } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import ChatPanel from "./components/ChatPanel";
 import type { ChatPanelHandle } from "./components/ChatPanel";
 import GoogleIcon from "./components/GoogleIcon";
 import ReceiptModal from "./components/ReceiptModal";
 import TransactionsTable from "./components/TransactionsTable";
+import { UserMenu } from "./components/UserMenu";
+import { Wordmark } from "./components/Wordmark";
+import { Button } from "./components/ui/button";
 import { listThreads } from "./lib/api";
 import type { TransactionFilter } from "./types/api";
 import { defaultFilter } from "./lib/filters";
-import { auth, signIn, signOut } from "./lib/firebase";
-import { LanguageProvider, SUPPORTED_LANGUAGES, useTranslation } from "./lib/i18n";
-import { useTheme } from "./lib/theme";
+import { auth, signIn } from "./lib/firebase";
+import { LanguageProvider, useTranslation } from "./lib/i18n";
 import { useMediaQuery } from "./lib/useMediaQuery";
 import { useResizable } from "./lib/useResizable";
 
@@ -42,11 +43,8 @@ function AppContent({ user }: { user: User | null }) {
   const [filter, setFilter] = useState<TransactionFilter>(defaultFilter());
   const [threadId, setThreadId] = useState<string | null>(null);
   const [viewingImage, setViewingImage] = useState<string | null>(null);
-  const [menuOpen, setMenuOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
   const chatPanelRef = useRef<ChatPanelHandle>(null);
-  const [theme, toggleTheme] = useTheme();
-  const { t, language, setLanguage } = useTranslation();
+  const { t } = useTranslation();
 
   // Desktop: a vertical handle resizes the chat pane's width (left/right split).
   // Mobile: a horizontal handle resizes its height instead (top/bottom split, table
@@ -68,92 +66,30 @@ function AppContent({ user }: { user: User | null }) {
     });
   }, [user]);
 
-  useEffect(() => {
-    if (!menuOpen) return;
-
-    function onPointerDown(e: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
-    }
-    document.addEventListener("mousedown", onPointerDown);
-
-    return () => document.removeEventListener("mousedown", onPointerDown);
-  }, [menuOpen]);
-
   if (!user) {
     return (
-      <div className="flex h-screen items-center justify-center bg-zinc-100 dark:bg-[#141416]">
-        <div className="flex flex-col items-center gap-4 rounded-2xl border border-zinc-200 bg-white p-10 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-          <h1 className="text-4xl font-bold tracking-tight text-zinc-900 dark:text-zinc-100">smaker.</h1>
-          <p className="text-sm text-zinc-500 dark:text-zinc-400">{t("signInSubtitle")}</p>
-          <button
-            onClick={() => signIn()}
-            className="inline-flex items-center gap-2 rounded-lg bg-sky-200 px-4 py-2 text-sm font-medium text-sky-900 transition-colors hover:bg-sky-300 dark:bg-sky-900/70 dark:text-sky-100 dark:hover:bg-sky-900/90"
-          >
+      <div className="flex h-screen items-center justify-center bg-background p-4">
+        <div className="flex flex-col items-center gap-6 text-center">
+          <Wordmark className="text-6xl" />
+          <p className="max-w-xs text-base text-muted-foreground">{t("signInSubtitle")}</p>
+          <Button variant="outline" size="lg" className="h-10 px-5" onClick={() => signIn()}>
             <GoogleIcon size={16} />
             {t("signInButton")}
-          </button>
+          </Button>
         </div>
       </div>
     );
   }
 
-  const avatarLetter = (user.email ?? user.uid).charAt(0).toUpperCase();
-
   return (
-    <div className="flex h-screen flex-col bg-zinc-100 dark:bg-[#141416]">
-      <header className="relative z-30 flex items-center justify-between px-5 py-3">
-        <span className="text-xl font-bold tracking-tight text-zinc-900 dark:text-zinc-100">smaker.</span>
-        <div className="relative" ref={menuRef}>
-          <button
-            onClick={() => setMenuOpen((o) => !o)}
-            aria-label={user.email ?? user.uid}
-            className="flex h-8 w-8 items-center justify-center rounded-full bg-sky-200 text-xs font-semibold text-sky-900 transition-colors hover:bg-sky-300 dark:bg-sky-900/70 dark:text-sky-100 dark:hover:bg-sky-900/90"
-          >
-            {avatarLetter}
-          </button>
-          {menuOpen && (
-            <div className="absolute end-0 top-full z-20 mt-2 w-56 rounded-lg border border-zinc-200 bg-white p-1.5 shadow-lg dark:border-zinc-800 dark:bg-zinc-900">
-              <div className="truncate px-2.5 py-1.5 text-xs text-zinc-500 dark:text-zinc-400">
-                {user.email ?? user.uid}
-              </div>
-              <div className="px-2.5 py-1.5">
-                <label className="mb-1 block text-[11px] font-medium uppercase tracking-wide text-zinc-400 dark:text-zinc-600">
-                  {t("language")}
-                </label>
-                <select
-                  value={language}
-                  onChange={(e) => setLanguage(e.target.value)}
-                  className="w-full rounded-md border border-zinc-200 bg-white px-2 py-1.5 text-sm text-zinc-700 focus:outline-none focus:ring-2 focus:ring-sky-500/40 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300"
-                >
-                  {SUPPORTED_LANGUAGES.map((l) => (
-                    <option key={l.code} value={l.code}>
-                      {l.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <button
-                onClick={() => {
-                  toggleTheme();
-                  setMenuOpen(false);
-                }}
-                className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2.5 text-start text-sm text-zinc-700 transition-colors hover:bg-sky-50 dark:text-zinc-300 dark:hover:bg-sky-950/40"
-              >
-                {theme === "dark" ? <Sun size={17} /> : <Moon size={17} />}
-                {theme === "dark" ? t("lightMode") : t("darkMode")}
-              </button>
-              <button
-                onClick={() => signOut()}
-                className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2.5 text-start text-sm text-zinc-700 transition-colors hover:bg-sky-50 dark:text-zinc-300 dark:hover:bg-sky-950/40"
-              >
-                <LogOut size={17} />
-                {t("signOut")}
-              </button>
-            </div>
-          )}
+    <div className="flex h-screen flex-col bg-background">
+      <header className="relative z-30 h-14 shrink-0 border-b">
+        <div className="flex h-full items-center justify-between gap-4 px-4 sm:px-6">
+          <Wordmark className="text-xl leading-none" />
+          <UserMenu user={user} />
         </div>
       </header>
-      <div className="flex min-h-0 flex-1 flex-col p-3 pt-0 md:flex-row">
+      <div className="flex min-h-0 flex-1 flex-col p-3 md:flex-row md:p-4">
         <div
           className="order-3 flex min-h-0 flex-col gap-3 md:order-1"
           style={isDesktop ? { width: chatSize } : { height: chatSize }}
@@ -171,9 +107,9 @@ function AppContent({ user }: { user: User | null }) {
           {...chatHandleProps}
           role="separator"
           aria-orientation={isDesktop ? "vertical" : "horizontal"}
-          className="order-2 my-2 h-1 w-full shrink-0 cursor-row-resize touch-none self-center rounded-full bg-zinc-200 transition-colors hover:bg-zinc-300 active:bg-zinc-400 dark:bg-zinc-800 dark:hover:bg-zinc-700 dark:active:bg-zinc-600 md:mx-2 md:my-0 md:h-full md:w-1 md:cursor-col-resize"
+          className="order-2 my-1.5 h-1 w-12 shrink-0 cursor-row-resize touch-none self-center rounded-full bg-border transition-colors hover:bg-ring/50 active:bg-ring md:mx-1.5 md:my-0 md:h-12 md:w-1 md:cursor-col-resize"
         />
-        <div className="order-1 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-xl bg-white shadow-sm dark:bg-zinc-900 md:order-3">
+        <div className="order-1 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-3xl bg-card shadow-sm ring-1 ring-foreground/5 md:order-3">
           <TransactionsTable
             filter={filter}
             onViewImage={setViewingImage}

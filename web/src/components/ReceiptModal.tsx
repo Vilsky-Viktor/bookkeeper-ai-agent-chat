@@ -1,12 +1,13 @@
-import { X } from "lucide-react";
-import { useEffect, useState } from "react";
-import { useTranslation } from "../lib/i18n";
+import { useState } from "react";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { useTranslation } from "@/lib/i18n";
 
 interface Props {
   url: string | null;
   onClose: () => void;
 }
 
+/** A receipt shown full size, in the prepza project's dialog. */
 export default function ReceiptModal({ url, onClose }: Props) {
   const [failed, setFailed] = useState(false);
   // Resetting `failed` when `url` changes during render (React's documented pattern
@@ -20,52 +21,33 @@ export default function ReceiptModal({ url, onClose }: Props) {
   }
   const { t } = useTranslation();
 
-  useEffect(() => {
-    if (!url) return;
-    const onKeyDown = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    window.addEventListener("keydown", onKeyDown);
-
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [url, onClose]);
-
-  if (!url) return null;
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6" onClick={onClose}>
-      <div
-        className="relative max-h-[90vh] max-w-[90vw] rounded-xl bg-white p-3 shadow-xl dark:bg-zinc-900"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <button
-          onClick={onClose}
-          aria-label="Close"
-          className="absolute -top-3 -end-3 inline-flex h-7 w-7 items-center justify-center rounded-full border border-zinc-200 bg-white text-zinc-600 shadow-sm hover:text-zinc-900 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:text-zinc-100"
-        >
-          <X size={15} />
-        </button>
-        {failed ? (
-          // A PDF receipt can't render in <img> — offer a direct link instead of a
-          // broken-image icon (see ReceiptThumb.tsx for the same fallback in chat).
-          <div className="px-6 py-8 text-center text-sm">
-            <p className="mb-2.5 text-zinc-500 dark:text-zinc-400">{t("cantPreview")}</p>
-            <a
-              href={url}
-              target="_blank"
-              rel="noreferrer"
-              className="font-medium text-sky-600 underline dark:text-sky-400"
-            >
-              {t("openInNewTab")}
-            </a>
-          </div>
-        ) : (
-          <img
-            src={url}
-            alt="Receipt"
-            onError={() => setFailed(true)}
-            className="block max-h-[80vh] max-w-full rounded-lg"
-          />
-        )}
-      </div>
-    </div>
+    <Dialog open={url !== null} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="w-auto max-w-[90vw] gap-0 p-3 sm:max-w-[90vw]">
+        {url &&
+          (failed ? (
+            // A PDF receipt can't render in <img> — offer a direct link instead of a
+            // broken-image icon (see ReceiptThumb.tsx for the same fallback in chat).
+            <div className="px-6 py-8 text-center text-sm">
+              <p className="mb-2.5 text-muted-foreground">{t("cantPreview")}</p>
+              <a
+                href={url}
+                target="_blank"
+                rel="noreferrer"
+                className="text-primary underline-offset-4 hover:underline"
+              >
+                {t("openInNewTab")}
+              </a>
+            </div>
+          ) : (
+            <img
+              src={url}
+              alt="Receipt"
+              onError={() => setFailed(true)}
+              className="block max-h-[80vh] max-w-full rounded-lg"
+            />
+          ))}
+      </DialogContent>
+    </Dialog>
   );
 }

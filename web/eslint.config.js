@@ -30,6 +30,11 @@ export default tseslint.config(
   },
   eslintConfigPrettier,
   {
+    // shadcn/ui components export their variant helpers next to the component.
+    files: ["src/components/ui/**"],
+    rules: { "react-refresh/only-export-components": "off" },
+  },
+  {
     // CLAUDE.md rule 2: an empty line before every block statement and every return
     // (not needed when it's the first statement of its block). `pnpm run lint --fix`
     // adds them.

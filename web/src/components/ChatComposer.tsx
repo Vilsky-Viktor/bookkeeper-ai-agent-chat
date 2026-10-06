@@ -1,13 +1,9 @@
-import { Mic, Paperclip, Square } from "lucide-react";
+import { ArrowUpIcon, MicIcon, PaperclipIcon, SquareIcon } from "lucide-react";
 import { useRef } from "react";
 import type { ComponentProps, RefObject } from "react";
-import { useTranslation } from "../lib/i18n";
-import Tooltip from "./Tooltip";
-
-const circleButton =
-  "flex h-12 w-12 items-center justify-center rounded-full shadow-md transition-colors disabled:cursor-not-allowed disabled:opacity-50";
-const idleCircle =
-  "bg-white text-sky-600 ring-1 ring-zinc-200 hover:bg-sky-50 dark:bg-zinc-800 dark:text-sky-400 dark:ring-zinc-700 dark:hover:bg-sky-950/40";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { useTranslation } from "@/lib/i18n";
 
 interface Props {
   value: string;
@@ -21,7 +17,9 @@ interface Props {
   micButtonProps: Pick<ComponentProps<"button">, "onPointerDown" | "onPointerUp" | "onPointerCancel" | "onContextMenu">;
 }
 
-/** The message box, with the receipt-upload and hold-to-record buttons on its corners. */
+/** The message box, as the prepza project's description box: a rounded field that turns
+ * blue on focus, with attach and hold-to-record on the start side and the send arrow on
+ * the end. */
 export default function ChatComposer({
   value,
   onChange,
@@ -35,39 +33,31 @@ export default function ChatComposer({
 }: Props) {
   const { t } = useTranslation();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const busy = streaming || transcribing;
 
   return (
-    <div className="relative z-10 shrink-0 rounded-xl bg-white pt-4 pb-8 ps-8 pe-8 shadow-sm dark:bg-zinc-900">
+    <div className="shrink-0 p-3 pt-0">
       {transcribing && (
-        <div className="mb-1.5 flex items-center justify-center gap-2 text-base text-zinc-400 dark:text-zinc-600">
-          <Mic size={18} className="animate-pulse" />
+        <div className="mb-2 flex items-center justify-center gap-2 text-sm text-muted-foreground">
+          <MicIcon className="size-4 animate-pulse" />
           <span className="animate-pulse">{t("transcribing")}</span>
         </div>
       )}
-      <div className="relative">
-        {/* The frame and the <textarea> are separate elements, with a fixed strip of
-            dead space below the textarea inside the frame. Padding on the textarea
-            alone isn't enough: once text overflows, the browser scrolls to keep the
-            caret visible and the padding scrolls away, so text would slide under the
-            corner buttons. A sibling element can never be scrolled into. */}
-        <div className="rounded-lg border border-zinc-200 bg-white focus-within:ring-1 focus-within:ring-sky-500/40 dark:border-zinc-700 dark:bg-zinc-900">
-          <textarea
-            ref={textareaRef}
-            rows={4}
-            placeholder={t("chatPlaceholder")}
-            value={value}
-            disabled={streaming || transcribing}
-            onChange={(e) => onChange(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey && !streaming) {
-                e.preventDefault(); // Enter sends; Shift+Enter for a newline
-                onSend();
-              }
-            }}
-            className="block w-full resize-none border-0 bg-transparent pt-4 ps-5 pe-5 text-sm text-zinc-900 placeholder-zinc-400 focus:outline-none disabled:opacity-50 dark:text-zinc-100 dark:placeholder-zinc-600"
-          />
-          <div className="h-10" aria-hidden="true" />
-        </div>
+      <div className="w-full rounded-3xl border border-transparent bg-muted p-3 transition-colors focus-within:border-ring dark:bg-input/30">
+        <Textarea
+          ref={textareaRef}
+          placeholder={t("chatPlaceholder")}
+          value={value}
+          disabled={busy}
+          onChange={(e) => onChange(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey && !streaming) {
+              e.preventDefault(); // Enter sends; Shift+Enter for a newline
+              onSend();
+            }
+          }}
+          className="max-h-48 min-h-12 resize-none border-0 bg-transparent p-2 text-base shadow-none focus-visible:ring-0 md:text-sm dark:bg-transparent"
+        />
         <input
           type="file"
           accept="image/*,application/pdf"
@@ -79,35 +69,36 @@ export default function ChatComposer({
             if (file) onFileSelected(file);
           }}
         />
-        {/* The attach and mic circles straddle the frame's bottom corners. The absolute
-            positioning is on a wrapper outside each Tooltip: Tooltip's root is
-            `relative` (to anchor its bubble), so positioning the button itself would
-            make the Tooltip, not this frame, the reference. */}
-        <div className="absolute bottom-0 start-0 translate-x-[-35%] translate-y-[35%]">
-          <Tooltip label={t("uploadReceipt")} align="start">
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              disabled={streaming || recording || transcribing}
-              aria-label={t("uploadReceipt")}
-              className={`${circleButton} ${idleCircle}`}
-            >
-              <Paperclip size={20} />
-            </button>
-          </Tooltip>
-        </div>
-        <div className="absolute bottom-0 end-0 translate-x-[35%] translate-y-[35%]">
-          <Tooltip label={recording ? t("stopRecording") : t("recordVoice")} align="end">
-            <button
-              {...micButtonProps}
-              disabled={streaming || transcribing}
-              aria-label={recording ? t("stopRecording") : t("recordVoice")}
-              className={`${circleButton} touch-none select-none ${
-                recording ? "animate-pulse bg-red-600 text-white hover:bg-red-500" : idleCircle
-              }`}
-            >
-              {recording ? <Square size={17} fill="currentColor" /> : <Mic size={22} />}
-            </button>
-          </Tooltip>
+        <div className="flex items-center gap-1 pt-2">
+          <Button
+            variant="ghost"
+            size="icon-lg"
+            className="rounded-full text-muted-foreground"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={busy || recording}
+            aria-label={t("uploadReceipt")}
+          >
+            <PaperclipIcon />
+          </Button>
+          <Button
+            {...micButtonProps}
+            variant={recording ? "destructive" : "ghost"}
+            size="icon-lg"
+            className={`touch-none rounded-full select-none ${recording ? "animate-pulse" : "text-muted-foreground"}`}
+            disabled={busy}
+            aria-label={recording ? t("stopRecording") : t("recordVoice")}
+          >
+            {recording ? <SquareIcon className="fill-current" /> : <MicIcon />}
+          </Button>
+          <Button
+            size="icon-lg"
+            className="ms-auto rounded-full"
+            onClick={onSend}
+            disabled={busy || !value.trim()}
+            aria-label={t("send")}
+          >
+            <ArrowUpIcon />
+          </Button>
         </div>
       </div>
     </div>

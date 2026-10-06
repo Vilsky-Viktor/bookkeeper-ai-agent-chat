@@ -1,65 +1,179 @@
+/* The design system of the prepza project (~/projects/prepza/frontend/app/globals.css). */
 @import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
 
-/* Class-based dark mode (toggled on <html> — see lib/theme.ts and index.html's
-   pre-mount script) instead of Tailwind v4's default prefers-color-scheme-only
-   strategy, since this app has an explicit toggle, not just OS-following. */
-@custom-variant dark (&:where(.dark, .dark *));
+/* Class-based dark mode, set on <html> by next-themes (and index.html's pre-mount script). */
+@custom-variant dark (&:is(.dark *));
 
-@theme {
-  --font-sans: "Poppins", ui-sans-serif, system-ui, sans-serif;
+@theme inline {
+  /* Poppins has no Cyrillic: those letters fall back to Geist, never to a serif. */
+  --font-heading: var(--font-poppins), var(--font-geist), sans-serif;
+  --font-sans: var(--font-geist);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  /* Not in prepza: income amounts in the transactions table. */
+  --color-success: var(--success);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-foreground: var(--foreground);
+  --color-background: var(--background);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
 }
 
-html,
-body,
-#root {
-  height: 100%;
+/* Light tokens. */
+:root {
+  /* Loaded from Google Fonts in index.html (prepza loads the same ones via next/font). */
+  --font-geist: "Geist", ui-sans-serif, system-ui, sans-serif;
+  --font-poppins: "Poppins";
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  /* Light enough to read as the brand's blue, dark enough for 4.5:1 on the muted gray. */
+  --primary: oklch(0.54 0.19 255);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  /* 4.5:1 on the muted gray, not only on white (WCAG AA). */
+  --muted-foreground: oklch(0.54 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --success: oklch(0.55 0.15 155);
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.56 0.19 255);
+  --radius: 0.625rem;
 }
 
-body {
-  @apply bg-zinc-50 text-zinc-900 antialiased dark:bg-[#141416] dark:text-zinc-100 font-sans;
+.dark {
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.68 0.16 255);
+  --primary-foreground: oklch(0.17 0.03 255);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --success: oklch(0.75 0.15 155);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.68 0.16 255);
 }
 
-/* Tailwind's preflight resets button cursor to the browser default — buttons should
-   still look clickable. */
-button:not(:disabled) {
-  cursor: pointer;
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+    /* Thin, quiet scrollbars, as prepza's scroll areas (notification list, question list). */
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+  /* Safari, which doesn't style scrollbars through the two properties above. */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    border: 2px solid transparent;
+    border-radius: 9999px;
+    background-color: var(--border);
+    background-clip: content-box;
+  }
+  ::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+  html {
+    @apply font-sans;
+  }
+  /* Titles, buttons, menu items, badges and input placeholders are lowercase, like the wordmark.
+     Content people typed or the model wrote keeps its case with .normal-case. */
+  h1,
+  h2,
+  h3,
+  [data-slot="dialog-title"],
+  button,
+  [role="button"],
+  [data-slot="button"],
+  [data-slot="dropdown-menu-item"],
+  [data-slot="dropdown-menu-sub-trigger"],
+  [data-slot="badge"],
+  ::placeholder {
+    text-transform: lowercase;
+  }
+  /* Titles and menu links end with the wordmark's blue dot; as text, it scales with their font.
+     Titles that end with a question mark opt out with .no-dot. */
+  h1:not(.no-dot)::after,
+  h2:not(.no-dot)::after,
+  [data-slot="dialog-title"]:not(.no-dot)::after,
+  nav[data-slot="main-nav"] a::after {
+    content: ".";
+    color: var(--primary);
+  }
 }
 
-/* The default OS scrollbar (thick, opaque, theme-blind) clashes with a minimal
-   dark/light design — thin, subtle, and matched to the current theme instead. */
-* {
-  scrollbar-width: thin;
-  scrollbar-color: #d4d4d8 transparent;
+/* The chat's thinking dots: each rises and brightens in turn. */
+@keyframes thinking {
+  0%,
+  80%,
+  100% {
+    opacity: 0.3;
+    transform: translateY(0);
+  }
+  40% {
+    opacity: 1;
+    transform: translateY(-3px);
+  }
 }
 
-.dark * {
-  scrollbar-color: #52525b transparent;
-}
-
-*::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-
-*::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-*::-webkit-scrollbar-thumb {
-  background-color: #d4d4d8;
-  border-radius: 9999px;
-  border: 2px solid transparent;
-  background-clip: content-box;
-}
-
-.dark *::-webkit-scrollbar-thumb {
-  background-color: #52525b;
-}
-
-*::-webkit-scrollbar-thumb:hover {
-  background-color: #a1a1aa;
-}
-
-.dark *::-webkit-scrollbar-thumb:hover {
-  background-color: #71717a;
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }

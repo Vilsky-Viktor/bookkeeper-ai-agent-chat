@@ -7,12 +7,17 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Poppins:wght@500;600&display=swap"
+      rel="stylesheet"
+    />
     <script>
       // Applied before React mounts so there's no flash of the wrong theme on load.
       try {
+        // next-themes stores "light", "dark" or "system" under the same key.
         var stored = localStorage.getItem("theme");
-        var dark = stored ? stored === "dark" : window.matchMedia("(prefers-color-scheme: dark)").matches;
+        var dark =
+          stored === "dark" || (stored !== "light" && window.matchMedia("(prefers-color-scheme: dark)").matches);
         document.documentElement.classList.toggle("dark", dark);
       } catch (e) {}
       // Same idea for direction — a cached Hebrew (RTL) preference shouldn't flash as

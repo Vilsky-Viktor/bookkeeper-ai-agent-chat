@@ -33,7 +33,7 @@ export default function ReceiptThumb({ url, onView, onLoad }: Props) {
         href={url}
         target="_blank"
         rel="noreferrer"
-        className="inline-block text-xs text-zinc-500 underline hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
+        className="inline-block text-xs text-muted-foreground underline hover:text-foreground"
       >
         {t("viewAttachment")}
       </a>
@@ -43,7 +43,7 @@ export default function ReceiptThumb({ url, onView, onLoad }: Props) {
   return (
     <div
       onClick={() => onView(url)}
-      className="group relative h-[88px] w-[88px] cursor-pointer overflow-hidden rounded-lg border border-zinc-200 dark:border-zinc-700"
+      className="group relative h-[88px] w-[88px] cursor-pointer overflow-hidden rounded-2xl border border-border"
     >
       <img
         src={pdfThumbUrl ?? url}

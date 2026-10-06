@@ -151,10 +151,18 @@ its items.
 ### Frontend
 React 19 + Vite 6 + TypeScript. TanStack Query for server cache, invalidated by the
 SSE `table_changed` event, and refetched on window focus and every 60 s while focused
-(how other tabs' and devices' changes show up). Tailwind CSS v4
-for styling (dark mode via a class toggle + `@custom-variant`, RTL via logical
-properties), `lucide-react` for icons, `@microsoft/fetch-event-source` for SSE (plain
-`EventSource` can't send an auth header or a POST body).
+(how other tabs' and devices' changes show up). `@microsoft/fetch-event-source` for SSE
+(plain `EventSource` can't send an auth header or a POST body).
+
+The design system is the prepza project's (`~/projects/prepza/frontend`), on the same
+libraries: shadcn/ui components in the `base-nova` style on Base UI (`@base-ui/react`),
+in `src/components/ui/` (copied from prepza; `components.json` lets `shadcn add` bring
+more), `class-variance-authority` for variants, `cn` for class merging, Tailwind CSS v4
+with `tw-animate-css` and shadcn's Tailwind CSS, `next-themes` for the system/light/dark
+theme and `lucide-react` icons. `src/index.css` holds prepza's tokens (neutral grays, one
+blue primary), Geist for text and Poppins for headings and the `smaker.` wordmark, and
+its rules: titles, buttons, menu items and placeholders are lowercase, and titles end
+with the blue dot. RTL works through logical properties.
 
 Key files: `src/lib/i18n/` (`locales/<lang>.ts` — one file per language, typed
 against `en.ts` so a missing key is a compile error; `LanguageProvider`, RTL/`dir`
@@ -168,8 +176,9 @@ message/receipt types and pure helpers), `src/components/ChatComposer.tsx` (mess
 box with the upload and mic buttons), `src/components/ReceiptProposalCard.tsx` (the
 editable receipt proposal), `src/components/TransactionsTable.tsx` (every column editable
 in place — date/category/amount/currency/description — via `lib/api.ts`'s
-`patchTransaction`/`deleteTransaction`), `src/components/ConfirmDialog.tsx` (a
-styled `window.confirm()` stand-in, used by the delete button above).
+`patchTransaction`/`deleteTransaction`), `src/components/ConfirmDialog.tsx` (the
+delete confirmation, on the shadcn dialog), `src/components/UserMenu.tsx` (account,
+language, sign-out and theme).
 
 ### Local infrastructure
 - **`firebase/`** — a container running the Firebase Auth emulator plus the Emulator
